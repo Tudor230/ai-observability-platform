@@ -1,0 +1,48 @@
+name: sdk
+
+on:
+  push:
+    paths: ["sdk/**", ".github/workflows/sdk.yml"]
+  pull_request:
+    paths: ["sdk/**", ".github/workflows/sdk.yml"]
+
+defaults:
+  run:
+    working-directory: sdk
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Sync dependencies
+        run: uv sync --group dev
+      - name: Run unit + scenario tests (offline)
+        run: uv run pytest -q
+      - name: Run mock-workflow CLI report
+        run: uv run aiobs-mock
+
+  e2e:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Python
+        run: uv python install 3.12
+      - name: Sync dependencies
+        run: uv sync --group dev
+      - name: Start Phoenix + PostgreSQL
+        run: docker compose -f dev/docker-compose.yml up -d --wait
+      - name: Run e2e (SDK -> Phoenix -> Postgres)
+        run: |
+          AI_OBSERVABILITY_E2E=1 uv run pytest -q -m e2e
+          uv run python dev/inspect_traces.py --limit 5
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f dev/docker-compose.yml down -v
