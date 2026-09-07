@@ -23,6 +23,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "httpx>=0.28",
     "psycopg[binary]>=3.2",
+    "llama-index-llms-openai>=0.8.1",
 ]
 
 [project.optional-dependencies]

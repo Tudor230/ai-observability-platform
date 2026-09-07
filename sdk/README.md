@@ -87,6 +87,12 @@ cd .. && OPENAI_API_KEY=sk-... uv run python examples/checkout_agent.py \
 
 See [`examples/README.md`](examples/README.md) for provider setup.
 
+A richer RAG variant — `examples/rag_checkout_agent.py` — layers RETRIEVER +
+AGENT (LLM/TOOL) + compose + validation spans under one workflow root for the
+MVP demo (`RETRIEVER`/`AGENT`/`LLM`/`TOOL`/`CHAIN` kinds). The LlamaIndex
+counterpart — `examples/rag_order_support_llamaindex.py` — runs a deep
+retrieve → tool → synthesize → validate flow (`RETRIEVER`/`TOOL`/`LLM`/`CHAIN`).
+
 ## What the SDK emits
 
 * Workflow roots as OpenInference `CHAIN` with `sdk.*` business attributes;

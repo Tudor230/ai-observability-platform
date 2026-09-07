@@ -50,3 +50,75 @@ or open the Phoenix UI at http://localhost:6006 (project `demo`).
 
 To intentionally see failure capture, pass an unreachable endpoint or invalid
 key — the workflow root will be `ERROR` with `sdk.error.*` attributes.
+
+---
+
+# Demo: rich RAG checkout-support agent
+
+`rag_checkout_agent.py` is a richer, layered RAG demo for the MVP showcase. It
+runs the same real LLM stack but produces a trace spanning **five span kinds**
+under one workflow root:
+
+```
+CHAIN  checkout_rag          (workflow root, sdk.* business attrs)
+├─ CHAIN retrieve_context
+│  └─ RETRIEVER lookup_docs  (in-memory knowledge base -> retrieval.documents.*)
+├─ CHAIN generate_answer
+│  └─ AGENT checkout_agent
+│     ├─ LLM                 (tool-calling step)
+│     ├─ TOOL lookup_order   (real order lookup)
+│     └─ LLM                 (final answer, fed the tool result)
+├─ CHAIN compose_answer
+└─ CHAIN validate_response
+   ├─ CHAIN check_answer_non_empty
+   ├─ CHAIN check_mentions_order_id
+   └─ CHAIN check_delivery_eta
+```
+
+Run it exactly like `checkout_agent.py` (same provider config above):
+
+```bash
+cd sdk
+OPENAI_API_KEY=sk-... uv run python examples/rag_checkout_agent.py "Where is my order ORD-1234?"
+OPENAI_API_KEY=sk-... uv run python examples/rag_checkout_agent.py "What is the return policy?" --capture-prompts
+```
+
+The retriever is an in-memory `BaseRetriever` over a canned policy/FAQ
+knowledge base, so the demo stays offline-runnable against any OpenAI-compatible
+endpoint while still emitting real `RETRIEVER` + `retrieval.documents.*` spans.
+
+---
+
+# Demo: rich RAG order-support agent (LlamaIndex)
+
+`rag_order_support_llamaindex.py` is the LlamaIndex counterpart for the MVP
+showcase: a layered RAG order-support flow (retrieve -> tool -> synthesize ->
+compose -> validate) producing a deep trace — **CHAIN / RETRIEVER / TOOL / LLM**
+kinds under one workflow root:
+
+```
+CHAIN  order-support          (workflow root, sdk.* business attrs)
+├─ CHAIN retrieve_context
+│  └─ RETRIEVER PolicyRetriever.retrieve -> _retrieve
+├─ CHAIN lookup_order_status
+│  └─ TOOL  lookup_order      (FunctionTool call)
+├─ CHAIN synthesize
+│  └─ CHAIN RetrieverQueryEngine.query -> _query
+│     ├─ RETRIEVER PolicyRetriever.retrieve -> _retrieve
+│     └─ CHAIN CompactAndRefine.synthesize
+│        └─ LLM  OpenAI.predict -> OpenAI.chat (tokens)
+├─ CHAIN compose_answer
+└─ CHAIN validate_response
+   ├─ CHAIN check_answer_non_empty
+   ├─ CHAIN check_mentions_order_id
+   └─ CHAIN check_delivery_eta
+```
+
+Uses `llama_index.llms.openai.OpenAI` against the same provider config as the
+LangChain demos (`OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL`):
+
+```bash
+cd sdk
+OPENAI_API_KEY=sk-... uv run python examples/rag_order_support_llamaindex.py \
+    "Where is my order ORD-1234?" --capture-prompts
+```
