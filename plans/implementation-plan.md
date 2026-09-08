@@ -45,23 +45,23 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 
 | Component | Status | Owner |
 |---|---|---|
-| **SDK** (Python; config, trace model, failure/usage capture, LangChain+LlamaIndex instrumentation, export reliability, mock workflows) | Planned in detail | `plans/sdk.md` |
-| **Project registration & API keys** (teams register project → get API key; SDK sends key + project id as OTLP headers) | Rough — to be planned | backend plan |
-| **Backend: trace processing** (validate, normalize, enrich with business context, build workflow-level info) | Rough — to be planned | backend plan |
-| **Backend: failure classification** (consume `sdk.error.*` + exception events + span status → failure tree: LLM/tool/retrieval/validation/timeout/rate-limit/invalid-output/business-logic) | Rough — to be planned | backend plan |
-| **Backend: cost engine** (Phoenix pricing + attribution by client/project/workflow/agent/team) | Rough — to be planned | backend plan |
-| **Backend: analytics & alerts** (consumption, error rate, budgets; cost/token/latency thresholds) | Rough — to be planned | backend plan |
-| **Phoenix deployment** (self-hosted, containerized) | Rough — to be planned | backend plan |
-| **Dashboard** (engineering / manager / executive views) | Rough — to be planned | frontend plan |
+| **SDK** (Python; config, trace model, failure/usage capture, LangChain+LlamaIndex instrumentation, export reliability, mock workflows) | **Implemented** | `plans/sdk.md` → `sdk/` |
+| **Project registration & API keys** (teams register project → get API key; SDK sends key + project id as OTLP headers) | **Implemented** | `plans/backend.md` §4 → `backend/src/aiobs_backend/api/routes/projects.py` |
+| **Backend: trace processing** (validate, normalize, enrich with business context, build workflow-level info) | **Implemented** | `plans/backend.md` §6 → `backend/src/aiobs_backend/ingest/pipeline.py` |
+| **Backend: failure classification** (consume `sdk.error.*` + exception events + span status → failure tree) | **Implemented** | `plans/backend.md` §7 → `backend/src/aiobs_backend/classify.py` |
+| **Backend: cost engine** (Phoenix pricing + attribution by client/project/workflow/agent/team) | **Implemented** | `plans/backend.md` §8 → `backend/src/aiobs_backend/cost.py` |
+| **Backend: analytics & alerts** (consumption, error rate, budgets; cost thresholds) | **Implemented** (budget rules) | `plans/backend.md` §9–10 → `backend/src/aiobs_backend/analytics.py`, `alerts.py` |
+| **Phoenix deployment** (self-hosted, containerized) | `sdk/dev/docker-compose.yml` | backend plan |
+| **Dashboard** (engineering / manager / executive views) | **Implemented** | `plans/frontend.md` → `frontend/` |
 
 ## 6. Phased roadmap
 
-| Phase | Scope | Exit criteria |
+| Phase | Scope | Status |
 |---|---|---|
-| **1 — SDK** | Everything in `plans/sdk.md`; mock-workflow harness passes in CI | SDK captures deterministic traces per mock scenarios; token counts asserted |
-| **2 — Backend** | Trace processing, failure classification, cost engine, API keys/registration, Phoenix deployment | Mock traces classify correctly; cost matches pricing model (KPI 2 in `docs/05`) |
-| **3 — Dashboard** | Engineering view first, then manager, then executive | Trace explorer, cost views, failure views |
-| **4 — Alerts & budgets** | Consumption/cost/latency/error-rate thresholds | Predefined abnormal scenario triggers expected alert (`docs/05` validation) |
+| **1 — SDK** | Everything in `plans/sdk.md`; mock-workflow harness passes in CI | **Implemented** (`sdk/`, CI in `.github/workflows/sdk.yml`) |
+| **2 — Backend** | Trace processing, failure classification, cost engine, API keys/registration, Phoenix deployment | **Implemented** (`backend/`, plan in `plans/backend.md`, CI in `.github/workflows/backend.yml`) |
+| **3 — Dashboard** | Engineering view first, then manager, then executive | **Implemented** (`frontend/`, plan in `plans/frontend.md`, CI in `.github/workflows/frontend.yml`) |
+| **4 — Alerts & budgets** | Consumption/cost/latency/error-rate thresholds | Budget-based alerts implemented (backend); rule catalog extensible |
 
 ## 7. Cross-cutting decisions
 

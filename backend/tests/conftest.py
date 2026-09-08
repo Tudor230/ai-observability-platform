@@ -15,7 +15,7 @@ os.environ.setdefault("AIOBS_ADMIN_API_KEY", "admin")
 
 TEST_DATABASE_URL = os.environ.get(
     "AIOBS_TEST_DATABASE_URL",
-    "postgresql+psycopg://postgres:postgres@localhost:55432/aiobs_test",
+    "postgresql+psycopg://postgres:postgres@127.0.0.1:55432/aiobs_test",
 )
 
 from datetime import datetime, timezone  # noqa: E402

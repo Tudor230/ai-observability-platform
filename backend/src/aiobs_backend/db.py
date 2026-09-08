@@ -25,6 +25,7 @@ def get_engine():
             get_settings().database_url,
             pool_pre_ping=True,
             future=True,
+            connect_args={"connect_timeout": get_settings().db_connect_timeout_s},
         )
     return _engine
 

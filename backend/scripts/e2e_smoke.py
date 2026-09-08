@@ -17,7 +17,7 @@ from aiobs_backend.security import hash_api_key  # noqa: E402
 
 DSN = os.environ.get(
     "AIOBS_E2E_DATABASE_URL",
-    "postgresql+psycopg://postgres:postgres@localhost:55432/aiobs",
+    "postgresql+psycopg://postgres:postgres@127.0.0.1:55432/aiobs",
 )
 
 
