@@ -240,7 +240,9 @@ class Budget(Base):
     )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
-    period: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD (period start)
+    period: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )  # period start
     name: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
 
@@ -248,7 +250,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    rule_id: Mapped[str] = mapped_column(String(40), index=True)
+    rule_id: Mapped[str] = mapped_column(String(120), index=True)
     severity: Mapped[str] = mapped_column(String(20), default="warning")
     message: Mapped[str] = mapped_column(Text)
     dimension: Mapped[str] = mapped_column(String(40))
