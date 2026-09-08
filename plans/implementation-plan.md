@@ -73,7 +73,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 
 ## 8. Deferred items
 
-- Plain OpenAI/Anthropic client auto-instrumentation; LangGraph first-class support; memory/reranker tracing; CrewAI and other frameworks.
+- Plain OpenAI/Anthropic client auto-instrumentation; LangChain memory/reranker tracing; CrewAI and other frameworks.
 - Automated evaluation beyond mock workflows (LLM-as-judge style).
 - Rate sampling; SDK packaging/naming decisions (PyPI, import name).
 - Exact per-attempt retry counts (httpx event-hook client).

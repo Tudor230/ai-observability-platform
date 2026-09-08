@@ -14,6 +14,12 @@ from typing import Optional
 
 from opentelemetry.sdk.trace import TracerProvider
 
+from ._langgraph import (
+    _already_instrumented_langgraph,
+    instrument_langgraph,
+    uninstrument_langgraph,
+)
+
 logger = logging.getLogger(__name__)
 
 _langchain_instrumentor: Optional[object] = None
@@ -47,6 +53,19 @@ def _already_instrumented_llamaindex() -> bool:
 def instrument_frameworks(provider: TracerProvider) -> None:
     _instrument_langchain(provider)
     _instrument_llamaindex(provider)
+    _instrument_langgraph()
+
+
+def _instrument_langgraph() -> None:
+    """LangGraph boundary + HITL lifecycle interception (no OTel wiring —
+    the LangChain instrumentor owns LangGraph node spans)."""
+    if _already_instrumented_langgraph():
+        logger.warning(
+            "LangGraph is already instrumented; "
+            "skipping to avoid double HITL capture."
+        )
+        return
+    instrument_langgraph()
 
 
 def _instrument_langchain(provider: TracerProvider) -> None:
@@ -104,3 +123,4 @@ def uninstrument_frameworks() -> None:
         except Exception:
             logger.exception("Failed to uninstrument LlamaIndex")
         _llamaindex_instrumentor = None
+    uninstrument_langgraph()

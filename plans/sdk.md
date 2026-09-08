@@ -16,9 +16,10 @@ Teams register an AI project, get an API key, install the SDK, and automatically
 
 - Python only.
 - Reuses OpenInference instrumentors for LangChain and LlamaIndex; no custom tracing of frameworks.
+- LangGraph traces via the LangChain instrumentor, with automatic human-in-the-loop (HITL) capture from the SDK (`sdk.hitl.*`).
 - Manual workflow boundary API (no auto-detection).
 - Prompt/response capture opt-in.
-- No sampling, no gRPC, no LangGraph first-class support.
+- No sampling, no gRPC.
 
 ## 3. Architecture
 
@@ -122,6 +123,7 @@ The SDK records **raw material**; the backend holds the authoritative failure ta
 - SDK adds namespaced attributes on the failing span: `sdk.error.type` (exception class), `sdk.error.message`.
 - The span kind identifies the failing layer (LLM/TOOL/RETRIEVER/CHAIN).
 - **Classification hints**: best-effort `sdk.error.kind` where cheaply detectable at capture (timeouts, rate limits, invalid JSON on output). Backend may trust or override.
+- **Control-flow exceptions are not failures**: `GraphInterrupt`/`GraphBubbleUp`/`Command`/`ParentCommand` exception events are ignored by `is_failed()` — a LangGraph interrupt pauses, it does not fail (see §7.3).
 - **Root propagation**: workflow root gets `ERROR` status when any descendant failed, plus `sdk.error.kind` of the first/primary failure — "workflow #123: FAILED" visible at a glance.
 
 ### 6.2 Token usage & provider accuracy
@@ -148,7 +150,8 @@ The SDK records **raw material**; the backend holds the authoritative failure ta
 
 - Reuse `openinference-instrumentation-langchain` (v0.1.73+) with our TracerProvider.
 - **v1 coverage**: LLM calls, agents (AGENT via run-name heuristic), tools, retrievers, prompt templates.
-- **Not covered in v1**: memory; rerankers (surface only as plain CHAIN spans — deferred); **LangGraph** (only partial CHAIN coverage today; interrupt/resume unhandled) — documented limitation.
+- **LangGraph**: traced by the same instrumentor (LangGraph is built on `langchain-core`) — each graph run and node is a CHAIN/AGENT span carrying LangGraph's `metadata.langgraph_node`/`langgraph_step`, nested under the workflow root. Interrupts are not errors: since instrumentor `>=0.1.67`, `GraphInterrupt` matches `IGNORED_EXCEPTION_PATTERNS` so interrupted node spans get status OK. Human-in-the-loop payloads (the `interrupt()` value and the `Command(resume=...)` value) are captured automatically by the SDK — see §7.3.
+- **Not covered in v1**: memory; rerankers (surface only as plain CHAIN spans — deferred).
 - Spans nest under the manual workflow root via context propagation. A small documented **reclassification hook** corrects AGENT spans the heuristic misfires on.
 - Streaming: rely on the instrumentor's streaming paths (token accumulation, status on stream error); sync + async.
 
@@ -158,6 +161,28 @@ The SDK records **raw material**; the backend holds the authoritative failure ta
 - **v1 coverage**: full sweep — LLM, query engines/chains (CHAIN), retrievers (RETRIEVER), embeddings (EMBEDDING), agents (AGENT via `AGENT_STEP`), tools (TOOL via `FUNCTION_CALL`), rerankers (RERANKER).
 - Same nesting, same reclassification hook, same double-instrumentation warning.
 - Both frameworks can mix under one workflow root.
+
+### 7.3 LangGraph human-in-the-loop (auto-capture)
+
+Phoenix has no dedicated HITL view: an interrupted run is a normal trace ending at the interrupting node (status OK), resuming is a separate trace, and the two group under a Phoenix **session** only when `session.id` equals the LangGraph thread id. The interrupt payload (the value passed to `interrupt()`) and the resume value (`Command(resume=...)`) exist **only** in the LangGraph runtime — no instrumentor writes them to a span. The SDK captures them automatically (`_langgraph.py`):
+
+- **Boundary patch**: wrapt-wraps `Pregel.invoke/ainvoke/stream/astream` (strict pass-through — same return, same exceptions). Reads the resume value from a `Command` input and the interrupt payload from `result["__interrupt__"]` / stream marker chunks; thread id from `config.configurable.thread_id`.
+- **Lifecycle hook**: patches `langgraph.callbacks` + `langgraph.pregel.main` `get_sync/async_graph_callback_manager_for_config` to inject an SDK `GraphCallbackHandler` (`langgraph >= 1.1.9`) whose `on_interrupt`/`on_resume` record the typed payloads and checkpoint id.
+- **Delivery**: capture writes `sdk.hitl.*` into a bounded, lock-guarded registry in `_state` keyed by OTel `trace_id`; the enrichment layer stamps them on the workflow root at export (first-writer wins, so the two mechanisms dedup; existing root attributes are never overwritten). `sdk.hitl.node` is derived at export from the interrupting node's `metadata.langgraph_node`.
+- **Interrupts are not failures**: `_errors.is_failed` ignores control-flow exception events (`GraphInterrupt`, `GraphBubbleUp`, `Command`, `ParentCommand`) — a paused-for-approval workflow keeps status OK and gets no `sdk.error.*`.
+
+Attributes (`sdk.hitl.*`, always captured, outside payload redaction):
+
+| Attribute | Meaning |
+|---|---|
+| `sdk.hitl.thread_id` | LangGraph `thread_id` from the run config |
+| `sdk.hitl.interrupted` | `"true"` when the run paused on an interrupt, else `"false"` |
+| `sdk.hitl.interrupt_payload` | JSON list of `interrupt()` payload values |
+| `sdk.hitl.resume_value` | JSON value passed via `Command(resume=...)` |
+| `sdk.hitl.node` | Name of the interrupting LangGraph node |
+| `sdk.hitl.checkpoint_id` | Checkpoint id recorded by the lifecycle resume event |
+
+Correlation: set `workflow(workflow_id=thread_id)` so `session.id` groups the interrupt and resume traces into one Phoenix session.
 
 ## 8. Export reliability
 
@@ -195,6 +220,10 @@ Validates that capture and (later) classification actually work. Runs through th
 | High latency | Controlled fake sleep; latency visible |
 | Rate limit | 429-style error; rate-limit hint |
 | Retry-then-success | `sdk.retry.count > 0` asserted |
+| LangGraph basic | Node CHAIN spans nest under the workflow root with `metadata.langgraph_node` |
+| LangGraph interrupt | `interrupt()` pauses: root OK, `sdk.hitl.*` stamped, no `sdk.error.*` |
+| LangGraph resume | `Command(resume=...)` continues the same thread: `sdk.hitl.resume_value`, same `session.id` |
+| LangGraph stream | Streaming interrupt captured via the lifecycle hook |
 
 ### 9.3 Fixed cost
 
@@ -207,7 +236,7 @@ Fake providers return fixed token counts → token/cost math is deterministic. v
 - Async/streaming support specifics beyond instrumentor behavior
 - Redaction mechanics for opt-in prompt capture
 - Exact per-attempt retry counts (opt-in httpx event-hook client)
-- LangGraph first-class support; LangChain memory and reranker tracing
+- LangChain memory and reranker tracing
 - Post-v1 frameworks (CrewAI, ...); non-Python SDKs
 - Rate sampling
 - Automated evaluation beyond mock workflows (LLM-as-judge style)
@@ -232,5 +261,15 @@ Every decision above was resolved on the wayfinder map `.scratch/sdk/`:
 | [06 — LlamaIndex instrumentation scope](../.scratch/sdk/issues/06-llamaindex-instrumentation.md) | Reuse instrumentor; full coverage; nesting + reclassification hook |
 | [07 — Mock workflows design](../.scratch/sdk/issues/07-mock-workflows.md) | Harness form, failure catalog, token assertions, CI gate |
 | [09 — Retry observability research](../.scratch/sdk/issues/09-retry-observability.md) | What's observable; SpanProcessor inference mechanism |
+
+LangGraph effort (`.scratch/langgraph/`):
+
+| Ticket | Decision |
+|---|---|
+| [01 — LangGraph instrumentation](../.scratch/langgraph/issues/01-langgraph-instrumentation.md) | LangGraph traces via the LangChain instrumentor; interrupts get OK status; payload/resume values not captured by any instrumentor |
+| [02 — LangGraph HITL capture](../.scratch/langgraph/issues/02-langgraph-hitl-capture.md) | Auto-interception: Pregel boundary patch + `GraphCallbackHandler` lifecycle hook; `sdk.hitl.*` scheme; control-flow filtering; registry + root stamping |
+| [03 — LangGraph unit tests](../.scratch/langgraph/issues/03-langgraph-unit-tests.md) | Thorough `_langgraph.py` coverage: helpers, registry, boundary/lifecycle, control-flow, enrichment |
+| [04 — LangGraph mock scenarios](../.scratch/langgraph/issues/04-langgraph-mock-scenarios.md) | `langgraph>=1.1.9` dev dep; `lg_basic`/`lg_hitl_interrupt`/`lg_hitl_resume`/`lg_hitl_stream` |
+| [05 — Assemble the LangGraph plan](../.scratch/langgraph/issues/05-assemble-langgraph-plan.md) | plan/sdk.md + implementation-plan updates |
 
 Research findings: `.scratch/sdk/research/01-openinference-coverage.md`, `.scratch/sdk/research/09-retry-observability.md`.

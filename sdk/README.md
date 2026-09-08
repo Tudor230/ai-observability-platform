@@ -65,13 +65,14 @@ Deterministic scenarios through the real SDK + instrumentors with framework
 fake models (fixed responses, fixed token counts, scripted failures):
 
 ```bash
-uv run pytest                          # 59 tests, offline (in-memory export)
-uv run aiobs-mock                      # pass/fail CLI report (14 scenarios)
+uv run pytest                          # 97 tests, offline (in-memory export)
+uv run aiobs-mock                      # pass/fail CLI report (18 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid
-JSON, retrieval failure, high latency, rate limit, retry-then-success.
+JSON, retrieval failure, high latency, rate limit, retry-then-success — plus
+LangGraph: basic node tracing, interrupt, resume, and streaming interrupt.
 
 ## Real demo (not mocked)
 
@@ -93,6 +94,12 @@ MVP demo (`RETRIEVER`/`AGENT`/`LLM`/`TOOL`/`CHAIN` kinds). The LlamaIndex
 counterpart — `examples/rag_order_support_llamaindex.py` — runs a deep
 retrieve → tool → synthesize → validate flow (`RETRIEVER`/`TOOL`/`LLM`/`CHAIN`).
 
+A LangGraph human-in-the-loop demo — `examples/langgraph_refund_approval.py` —
+builds a `StateGraph` (LLM routing, `@tool` nodes, an `interrupt()` approval
+node) and shows the HITL capture: the interrupt and resume runs export as two
+traces grouped under one Phoenix session with `sdk.hitl.*` attributes. It runs
+offline with `--mock` (no API key needed). See `examples/README.md`.
+
 ## What the SDK emits
 
 * Workflow roots as OpenInference `CHAIN` with `sdk.*` business attributes;
@@ -105,8 +112,15 @@ retrieve → tool → synthesize → validate flow (`RETRIEVER`/`TOOL`/`LLM`/`CH
 * Token counts validated/backfilled (deterministic character estimate by
   default; optional tiktoken via `AI_OBSERVABILITY_BACKFILL_TIKTOKEN=1`);
   provider normalization for models the LangChain instrumentor misses.
+* **LangGraph**: traced via the LangChain instrumentor (nodes as CHAIN/AGENT
+  with `metadata.langgraph_node`). Human-in-the-loop is captured automatically
+  (`sdk.hitl.*` on the workflow root): interrupt payload, resume value, thread
+  id, interrupting node, checkpoint id. Interrupts are not errors — a
+  paused-for-approval workflow stays OK with no `sdk.error.*`. For Phoenix
+  session grouping, pass the LangGraph `thread_id` as `workflow_id`.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
-  override via `workflow(..., capture_prompts=True)`.
+  override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
+  captured (it is operational data, not prompt payload).
 
 The SDK records raw material — the backend (next phase) holds the
 authoritative failure taxonomy and cost engine.

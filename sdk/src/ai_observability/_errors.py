@@ -29,22 +29,57 @@ _KIND_INVALID_OUTPUT = "invalid_output"
 _KIND_TOOL_ERROR = "tool_error"
 _KIND_PROVIDER_ERROR = "provider_error"
 
+# LangGraph/LangChain control-flow exceptions used to pause/resume agent
+# execution (interrupts, graph-level Commands). They are expected behavior,
+# not failures: an interrupted-for-approval workflow is paused, not broken.
+_CONTROL_FLOW_EXCEPTION_TYPES = frozenset(
+    {
+        "GraphInterrupt",
+        "GraphBubbleUp",
+        "Command",
+        "ParentCommand",
+    }
+)
+
 
 def has_exception_event(span: ReadableSpan) -> bool:
     return any(event.name == EXCEPTION_EVENT_NAME for event in span.events)
 
 
+def _is_control_flow_event(event) -> bool:
+    exc_type = (event.attributes or {}).get(EXCEPTION_TYPE)
+    if not isinstance(exc_type, str):
+        return False
+    return any(name in exc_type for name in _CONTROL_FLOW_EXCEPTION_TYPES)
+
+
+def _is_real_exception_event(event) -> bool:
+    return event.name == EXCEPTION_EVENT_NAME and not _is_control_flow_event(event)
+
+
 def is_failed(span: ReadableSpan) -> bool:
+    """True when the span carries a real failure.
+
+    Control-flow exceptions (``GraphInterrupt`` & co) are excluded: they only
+    pause execution. An ERROR status with no exception event still counts as a
+    failure (the instrumentor can set ERROR status without recording an event).
+    """
     from opentelemetry.trace.status import StatusCode
 
-    if span.status and span.status.status_code == StatusCode.ERROR:
-        return True
-    return has_exception_event(span)
+    is_error_status = span.status is not None and span.status.status_code == StatusCode.ERROR
+    has_real_event = any(_is_real_exception_event(event) for event in span.events)
+    if is_error_status:
+        if has_real_event:
+            return True
+        if not has_exception_event(span):
+            return True
+        return False
+    return has_real_event
 
 
 def exception_type_message(span: ReadableSpan) -> tuple[Optional[str], Optional[str]]:
     for event in span.events:
-        if event.name != EXCEPTION_EVENT_NAME:
+        if not _is_real_exception_event(event):
             continue
         attrs = dict(event.attributes or {})
         exc_type = attrs.get(EXCEPTION_TYPE)

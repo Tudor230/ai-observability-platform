@@ -122,3 +122,50 @@ cd sdk
 OPENAI_API_KEY=sk-... uv run python examples/rag_order_support_llamaindex.py \
     "Where is my order ORD-1234?" --capture-prompts
 ```
+
+---
+
+# Demo: LangGraph human-in-the-loop refund approval
+
+`langgraph_refund_approval.py` demonstrates **first-class LangGraph + HITL**
+support. It compiles a `StateGraph` with conditional routing, LLM nodes, real
+`@tool` nodes, and a `human_approval` node that calls `interrupt()` to pause
+for a decision:
+
+```
+CHAIN  refund_approval        (workflow root, sdk.hitl.*, session.id = thread_id)
+└─ CHAIN LangGraph
+   ├─ CHAIN classify            (LLM -> intent routing)
+   ├─ CHAIN check_policy        (TOOL lookup_policy)
+   ├─ CHAIN draft_refund        (LLM -> proposal)
+   ├─ CHAIN human_approval      ◀── interrupt(): the graph pauses here
+   └─ (resume) CHAIN finalize   (TOOL create_refund + LLM resolution)
+```
+
+The graph runs twice: the **interrupt run** exports a trace ending at
+`human_approval` (status OK, `sdk.hitl.interrupted=true`,
+`sdk.hitl.interrupt_payload` = the question shown to the human), and the
+**resume run** exports a second trace with `sdk.hitl.resume_value` +
+`checkpoint_id`. Because `workflow_id` = the LangGraph `thread_id`, both traces
+group into one Phoenix **session** — exactly how the HITL is meant to be
+viewed.
+
+Runs **fully offline** with a scripted fake model (fixed responses + usage) —
+no API key needed:
+
+```bash
+cd sdk
+uv run python examples/langgraph_refund_approval.py --mock --capture-prompts --auto-approve
+# interactive: drop --auto-approve to decide y/N at the prompt
+```
+
+Or against a real OpenAI-compatible endpoint (same provider config as above):
+
+```bash
+OPENAI_API_KEY=sk-... uv run python examples/langgraph_refund_approval.py \
+    --request-id ORD-1234 --capture-prompts
+```
+
+Then open http://localhost:6006 → Traces → project `demo` and follow the two
+traces under the `ORD-1234` session, or inspect via
+`uv run python dev/inspect_traces.py`.

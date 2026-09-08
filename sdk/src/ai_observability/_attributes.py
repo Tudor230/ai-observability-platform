@@ -25,6 +25,12 @@ SDK_ERROR_MESSAGE = "sdk.error.message"
 SDK_ERROR_KIND = "sdk.error.kind"
 SDK_RETRY_OF = "sdk.retry.of"
 SDK_RETRY_COUNT = "sdk.retry.count"
+SDK_HITL_THREAD_ID = "sdk.hitl.thread_id"
+SDK_HITL_INTERRUPTED = "sdk.hitl.interrupted"
+SDK_HITL_INTERRUPT_PAYLOAD = "sdk.hitl.interrupt_payload"
+SDK_HITL_RESUME_VALUE = "sdk.hitl.resume_value"
+SDK_HITL_NODE = "sdk.hitl.node"
+SDK_HITL_CHECKPOINT_ID = "sdk.hitl.checkpoint_id"
 
 # --- OpenInference attribute names we rely on ---------------------------------
 

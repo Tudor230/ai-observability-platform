@@ -2,8 +2,9 @@
 
 Instrumentor- and SDK-created spans are immutable once ended, yet the SDK
 must retroactively stamp ``sdk.error.*``/``sdk.retry.*`` attributes, fill
-providers and token counts, propagate failures to the workflow root, and
-enforce prompt-capture redaction. All of that happens here: a decorator
+providers and token counts, propagate failures to the workflow root, enforce
+prompt-capture redaction, and merge pending ``sdk.hitl.*`` attributes recorded
+during LangGraph interception. All of that happens here: a decorator
 ``SpanExporter`` between the BatchSpanProcessor and the OTLP exporter that
 deep-copies each trace's spans and stamps the copies before serialization.
 
@@ -13,6 +14,7 @@ authoritative failure taxonomy and cost engine.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from collections.abc import Sequence
@@ -23,13 +25,17 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace.status import Status, StatusCode
 
 from ._attributes import (
+    METADATA,
     OPENINFERENCE_SPAN_KIND,
     SDK_CAPTURE_PROMPTS,
     SDK_ERROR_KIND,
+    SDK_HITL_INTERRUPTED,
+    SDK_HITL_NODE,
 )
 from ._config import Config
 from ._errors import enrich_error_attributes, is_failed
 from ._retries import enrich_retry_attributes, infer_retries
+from ._state import get_state
 from ._usage import backfill_token_counts, normalize_provider
 
 logger = logging.getLogger(__name__)
@@ -70,6 +76,34 @@ def _strip_payload(attributes: dict) -> dict:
     from ._attributes import is_payload_attribute
 
     return {k: v for k, v in attributes.items() if not is_payload_attribute(k)}
+
+
+def _interrupting_node(spans: Sequence[ReadableSpan]) -> Optional[str]:
+    """Name of the LangGraph node that interrupted, if derivable.
+
+    Interrupted CHAIN spans carry ``metadata.langgraph_node``; the interrupting
+    node is the last one that ran before the graph paused.
+    """
+    latest: tuple[int, str] | None = None
+    for span in spans:
+        attrs = span.attributes or {}
+        if attrs.get(OPENINFERENCE_SPAN_KIND) != "CHAIN":
+            continue
+        raw = attrs.get(METADATA)
+        if not isinstance(raw, str):
+            continue
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            continue
+        node = parsed.get("langgraph_node")
+        if node is None:
+            continue
+        if isinstance(node, (list, tuple)):
+            node = ".".join(str(part) for part in node)
+        if latest is None or (span.start_time or 0) > latest[0]:
+            latest = ((span.start_time or 0), str(node))
+    return latest[1] if latest is not None else None
 
 
 def _copy_span(span: ReadableSpan, attributes: dict, status=None) -> ReadableSpan:
@@ -220,11 +254,36 @@ class EnrichingExporter(SpanExporter):
         if root is not None and root.context is not None:
             root_copy = processed.get(root.context.span_id)
             if root_copy is not None:
+                root_copy = self._apply_hitl(root_copy, list(processed.values()))
                 processed[root.context.span_id] = self._propagate_root_failure(
                     root_copy, list(processed.values())
                 )
 
         return [processed[s.context.span_id] for s in spans if s.context is not None]
+
+    @staticmethod
+    def _apply_hitl(root: ReadableSpan, spans: Sequence[ReadableSpan]) -> ReadableSpan:
+        """Merge pending sdk.hitl.* attributes recorded for this trace onto the
+        workflow root (boundary/lifecycle capture consumed once, first-writer
+        wins so existing root attributes are never overwritten).
+
+        ``sdk.hitl.node`` is derived, when missing, from the interrupting
+        LangGraph node: the CHAIN span carrying a ``metadata.langgraph_node``
+        that ran last (an interrupt pauses the graph, so nothing runs after it).
+        """
+        if root.context is None:
+            return root
+        pending = get_state().hitl.take(root.context.trace_id)
+        attrs = dict(root.attributes or {})
+        for key, value in pending.items():
+            attrs.setdefault(key, value)
+        if attrs.get(SDK_HITL_INTERRUPTED) == "true" and SDK_HITL_NODE not in attrs:
+            node = _interrupting_node(spans)
+            if node is not None:
+                attrs[SDK_HITL_NODE] = node
+        if not pending and SDK_HITL_NODE not in attrs:
+            return root
+        return _copy_span(root, attrs)
 
     @staticmethod
     def _propagate_root_failure(root: ReadableSpan, spans: Sequence[ReadableSpan]) -> ReadableSpan:
