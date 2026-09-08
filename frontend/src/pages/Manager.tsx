@@ -1,0 +1,128 @@
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Cell,
+} from "recharts";
+import { useCosts, useWorkflows, useClients, useAlerts, useMetrics } from "../api/hooks";
+import { useFilters } from "../state/FiltersContext";
+import { formatMoney } from "../lib/format";
+
+const BAR_COLORS = ["#4f8cff", "#2ecc71", "#f5b041", "#e74c3c", "#9b59b6", "#1abc9c"];
+
+export default function Manager() {
+  const { filters } = useFilters();
+  const { data: costByWf } = useCosts("workflow", filters);
+  const { data: costByClient } = useCosts("client", filters);
+  const { data: workflows } = useWorkflows(filters);
+  const { data: clients } = useClients(filters);
+  const { data: alerts } = useAlerts();
+  const { data: trends } = useMetrics("total");
+
+  return (
+    <div className="grid" style={{ gap: 16 }}>
+      <div className="grid grid-2">
+        <Chart title="Cost by workflow" rows={(costByWf?.items ?? []).map((i) => ({ name: i.key, cost: i.total_cost ?? 0 }))} />
+        <Chart title="Cost by client" rows={(costByClient?.items ?? []).map((i) => ({ name: i.key, cost: i.total_cost ?? 0 }))} />
+      </div>
+
+      <div className="grid grid-2">
+        <div className="panel">
+          <h3>Workflows</h3>
+          <table>
+            <thead>
+              <tr><th>Workflow</th><th>Exec</th><th>Err</th><th>Cost</th></tr>
+            </thead>
+            <tbody>
+              {(workflows?.items ?? []).map((w) => (
+                <tr key={w.name}>
+                  <td>{w.name}</td>
+                  <td>{w.executions}</td>
+                  <td className={w.error_rate ? "error" : ""}>{w.error_rate}</td>
+                  <td>{formatMoney(w.total_cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="panel">
+          <h3>Clients</h3>
+          <table>
+            <thead>
+              <tr><th>Client</th><th>Exec</th><th>Cost</th><th>Tokens</th></tr>
+            </thead>
+            <tbody>
+              {(clients?.items ?? []).map((c) => (
+                <tr key={c.client_id}>
+                  <td>{c.client_id}</td>
+                  <td>{c.executions}</td>
+                  <td>{formatMoney(c.total_cost)}</td>
+                  <td>{c.total_tokens}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h3>Open alerts ({alerts?.total ?? 0})</h3>
+        {(alerts?.items ?? []).map((a) => (
+          <div key={a.id} className={`row alert-${a.severity}`} style={{ padding: "8px 4px", borderBottom: "1px solid var(--border)" }}>
+            <span className="badge">{a.severity}</span>
+            <span>{a.message}</span>
+            <span className="spacer" />
+            <span className="muted">{a.triggered_at ? new Date(a.triggered_at).toLocaleString() : ""}</span>
+          </div>
+        ))}
+        {!alerts?.items?.length && <p className="muted">No open alerts.</p>}
+      </div>
+
+      <TrendChart data={trends?.items ?? []} />
+    </div>
+  );
+}
+
+function Chart({ title, rows }: { title: string; rows: { name?: string; cost: number }[] }) {
+  return (
+    <div className="panel">
+      <h3>{title}</h3>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={rows}>
+          <CartesianGrid stroke="#2a2f3a" strokeDasharray="3 3" />
+          <XAxis dataKey="name" stroke="#9aa3b2" interval={0} />
+          <YAxis stroke="#9aa3b2" />
+          <Tooltip contentStyle={{ background: "#171a21", border: "1px solid #2a2f3a" }} />
+          <Bar dataKey="cost" radius={[4, 4, 0, 0]}>
+            {rows.map((_, i) => (
+              <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TrendChart({ data }: { data: { day: string; total_cost: number }[] }) {
+  const series = data.map((m) => ({ day: m.day.slice(5), cost: m.total_cost }));
+  return (
+    <div className="panel">
+      <h3>Consumption trend (cost)</h3>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={series}>
+          <CartesianGrid stroke="#2a2f3a" strokeDasharray="3 3" />
+          <XAxis dataKey="day" stroke="#9aa3b2" />
+          <YAxis stroke="#9aa3b2" />
+          <Tooltip contentStyle={{ background: "#171a21", border: "1px solid #2a2f3a" }} />
+          <Bar dataKey="cost" fill="#4f8cff" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
