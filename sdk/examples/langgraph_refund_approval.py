@@ -36,7 +36,8 @@ Usage:
         --request-id ORD-1234 --capture-prompts
 
     Then open http://localhost:6006 (Phoenix) -> Traces -> the "refund_approval"
-    project, and follow the two traces (interrupt + resume) under one session.
+    project: the interrupt and resume runs share ONE trace (deterministic trace
+    id from workflow_id = thread_id), with sdk.hitl.* on each run's root.
 """
 
 from __future__ import annotations
@@ -358,7 +359,8 @@ def main() -> int:
 
     print(f"\n>>> decision: {'APPROVED' if approved else 'DENIED'}")
     print("resolution:", final.get("resolution"))
-    print("\nTwo traces exported (interrupt + resume) grouped under one session.")
+    print("\nThe interrupt and resume runs share ONE trace (deterministic trace-id")
+    print("from workflow_id = thread_id), grouped under the session.")
     print("Inspect with:")
     print("  uv run python dev/inspect_traces.py")
     print("  # or open http://localhost:6006 -> Traces -> project 'demo'")

@@ -164,11 +164,12 @@ The SDK records **raw material**; the backend holds the authoritative failure ta
 
 ### 7.3 LangGraph human-in-the-loop (auto-capture)
 
-Phoenix has no dedicated HITL view: an interrupted run is a normal trace ending at the interrupting node (status OK), resuming is a separate trace, and the two group under a Phoenix **session** only when `session.id` equals the LangGraph thread id. The interrupt payload (the value passed to `interrupt()`) and the resume value (`Command(resume=...)`) exist **only** in the LangGraph runtime — no instrumentor writes them to a span. The SDK captures them automatically (`_langgraph.py`):
+An interrupted run and its resume run are separate executions (separate requests), but the SDK renders them as **ONE trace**: the workflow root's trace id is derived deterministically from `workflow_id` (the app sets `workflow(workflow_id=thread_id)`, which is mandatory for a LangGraph thread anyway), so both runs recompute the same trace id and join the same trace — no shared store, works across processes (Langfuse-style). The interrupt payload (the value passed to `interrupt()`) and the resume value (`Command(resume=...)`) exist **only** in the LangGraph runtime — no instrumentor writes them to a span. The SDK captures them automatically (`_langgraph.py`):
 
 - **Boundary patch**: wrapt-wraps `Pregel.invoke/ainvoke/stream/astream` (strict pass-through — same return, same exceptions). Reads the resume value from a `Command` input and the interrupt payload from `result["__interrupt__"]` / stream marker chunks; thread id from `config.configurable.thread_id`.
 - **Lifecycle hook**: patches `langgraph.callbacks` + `langgraph.pregel.main` `get_sync/async_graph_callback_manager_for_config` to inject an SDK `GraphCallbackHandler` (`langgraph >= 1.1.9`) whose `on_interrupt`/`on_resume` record the typed payloads and checkpoint id.
-- **Delivery**: capture writes `sdk.hitl.*` into a bounded, lock-guarded registry in `_state` keyed by OTel `trace_id`; the enrichment layer stamps them on the workflow root at export (first-writer wins, so the two mechanisms dedup; existing root attributes are never overwritten). `sdk.hitl.node` is derived at export from the interrupting node's `metadata.langgraph_node`.
+- **Delivery**: capture writes `sdk.hitl.*` into a bounded, lock-guarded registry in `_state` keyed by `(trace_id, root_span_id)` (compound — a continued trace has two roots sharing one trace id); the enrichment layer stamps them on each workflow root at export (first-writer wins, so the two mechanisms dedup; existing root attributes are never overwritten). `sdk.hitl.node` is derived at export from the interrupting node's `metadata.langgraph_node`. The enricher handles multi-root traces, scoping failure propagation to each root's own subtree.
+- **Trace-id derivation**: `_ids.py` hashes `workflow_id` into a deterministic 128-bit trace id; `Workflow.__enter__` starts the root under a synthetic remote parent (arbitrary span id, only for trace-id inheritance) when the workflow is a true root — nesting is never hijacked. Without a `workflow_id` the trace id stays random (two separate traces).
 - **Interrupts are not failures**: `_errors.is_failed` ignores control-flow exception events (`GraphInterrupt`, `GraphBubbleUp`, `Command`, `ParentCommand`) — a paused-for-approval workflow keeps status OK and gets no `sdk.error.*`.
 
 Attributes (`sdk.hitl.*`, always captured, outside payload redaction):
@@ -177,12 +178,13 @@ Attributes (`sdk.hitl.*`, always captured, outside payload redaction):
 |---|---|
 | `sdk.hitl.thread_id` | LangGraph `thread_id` from the run config |
 | `sdk.hitl.interrupted` | `"true"` when the run paused on an interrupt, else `"false"` |
+| `sdk.hitl.resumed` | `"true"` on the run that resumed a thread (carries `resume_value`) |
 | `sdk.hitl.interrupt_payload` | JSON list of `interrupt()` payload values |
 | `sdk.hitl.resume_value` | JSON value passed via `Command(resume=...)` |
 | `sdk.hitl.node` | Name of the interrupting LangGraph node |
 | `sdk.hitl.checkpoint_id` | Checkpoint id recorded by the lifecycle resume event |
 
-Correlation: set `workflow(workflow_id=thread_id)` so `session.id` groups the interrupt and resume traces into one Phoenix session.
+Correlation: set `workflow(workflow_id=thread_id)` so the interrupt and resume runs share one deterministic trace id (and `session.id`). The enricher warns when an interrupt trace has no `session.id`.
 
 ## 8. Export reliability
 
@@ -222,7 +224,7 @@ Validates that capture and (later) classification actually work. Runs through th
 | Retry-then-success | `sdk.retry.count > 0` asserted |
 | LangGraph basic | Node CHAIN spans nest under the workflow root with `metadata.langgraph_node` |
 | LangGraph interrupt | `interrupt()` pauses: root OK, `sdk.hitl.*` stamped, no `sdk.error.*` |
-| LangGraph resume | `Command(resume=...)` continues the same thread: `sdk.hitl.resume_value`, same `session.id` |
+| LangGraph resume | `Command(resume=...)` continues the same thread AND trace: `sdk.hitl.resume_value`, one trace |
 | LangGraph stream | Streaming interrupt captured via the lifecycle hook |
 
 ### 9.3 Fixed cost
@@ -271,5 +273,6 @@ LangGraph effort (`.scratch/langgraph/`):
 | [03 — LangGraph unit tests](../.scratch/langgraph/issues/03-langgraph-unit-tests.md) | Thorough `_langgraph.py` coverage: helpers, registry, boundary/lifecycle, control-flow, enrichment |
 | [04 — LangGraph mock scenarios](../.scratch/langgraph/issues/04-langgraph-mock-scenarios.md) | `langgraph>=1.1.9` dev dep; `lg_basic`/`lg_hitl_interrupt`/`lg_hitl_resume`/`lg_hitl_stream` |
 | [05 — Assemble the LangGraph plan](../.scratch/langgraph/issues/05-assemble-langgraph-plan.md) | plan/sdk.md + implementation-plan updates |
+| [06 — Trace-id continuation](../.scratch/langgraph/issues/06-trace-continuation.md) | Langfuse-style deterministic trace id from `workflow_id`; interrupt + resume join ONE trace (no store); compound registry keys; multi-root enricher |
 
 Research findings: `.scratch/sdk/research/01-openinference-coverage.md`, `.scratch/sdk/research/09-retry-observability.md`.

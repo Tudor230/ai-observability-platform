@@ -23,6 +23,7 @@ from ai_observability._attributes import (
     SDK_HITL_INTERRUPTED,
     SDK_HITL_NODE,
     SDK_HITL_RESUME_VALUE,
+    SDK_HITL_RESUMED,
     SDK_HITL_THREAD_ID,
 )
 from ai_observability._config import Config
@@ -115,38 +116,46 @@ def test_extract_thread_id_forms():
 
 def test_registry_record_and_take():
     registry = HITLRegistry()
-    registry.record(1, a="1", b="2")
-    assert registry.take(1) == {"a": "1", "b": "2"}
-    assert registry.take(1) == {}
+    registry.record((1, 1), a="1", b="2")
+    assert registry.take((1, 1)) == {"a": "1", "b": "2"}
+    assert registry.take((1, 1)) == {}
+
+
+def test_registry_keys_scoped_by_span_id():
+    registry = HITLRegistry()
+    registry.record((1, 1), run="interrupt")
+    registry.record((1, 2), run="resume")
+    assert registry.take((1, 1)) == {"run": "interrupt"}
+    assert registry.take((1, 2)) == {"run": "resume"}
 
 
 def test_registry_first_writer_wins():
     registry = HITLRegistry()
-    registry.record(1, a="first")
-    registry.record(1, a="second", b="x")
-    assert registry.take(1) == {"a": "first", "b": "x"}
+    registry.record((1, 1), a="first")
+    registry.record((1, 1), a="second", b="x")
+    assert registry.take((1, 1)) == {"a": "first", "b": "x"}
 
 
 def test_registry_ignores_none():
     registry = HITLRegistry()
-    registry.record(1, a="1", b=None)
-    assert registry.take(1) == {"a": "1"}
+    registry.record((1, 1), a="1", b=None)
+    assert registry.take((1, 1)) == {"a": "1"}
 
 
 def test_registry_record_without_attrs_is_noop():
     registry = HITLRegistry()
-    registry.record(1)
-    assert registry.take(1) == {}
+    registry.record((1, 1))
+    assert registry.take((1, 1)) == {}
 
 
 def test_registry_bounded_evicts_oldest():
     registry = HITLRegistry(max_entries=2)
-    registry.record(1, a="1")
-    registry.record(2, a="2")
-    registry.record(3, a="3")
-    assert registry.take(1) == {}
-    assert registry.take(2) == {"a": "2"}
-    assert registry.take(3) == {"a": "3"}
+    registry.record((1, 1), a="1")
+    registry.record((2, 1), a="2")
+    registry.record((3, 1), a="3")
+    assert registry.take((1, 1)) == {}
+    assert registry.take((2, 1)) == {"a": "2"}
+    assert registry.take((3, 1)) == {"a": "3"}
 
 
 # --- control-flow exception filtering -----------------------------------------
@@ -194,7 +203,7 @@ def test_mixed_control_flow_and_real_event_is_failed():
 
 def test_enrich_stamps_hitl_and_derives_node():
     get_state().hitl.record(
-        TRACE,
+        (TRACE, 2),
         **{
             SDK_HITL_INTERRUPTED: "true",
             SDK_HITL_INTERRUPT_PAYLOAD: json.dumps([INTERRUPT_PAYLOAD]),
@@ -215,7 +224,9 @@ def test_enrich_stamps_hitl_and_derives_node():
 
 
 def test_enrich_does_not_overwrite_existing_root_hitl():
-    get_state().hitl.record(TRACE, **{SDK_HITL_INTERRUPT_PAYLOAD: "from-registry"})
+    get_state().hitl.record(
+        (TRACE, 2), **{SDK_HITL_INTERRUPT_PAYLOAD: "from-registry"}
+    )
     root = make_span(
         2, TRACE, None, name="wf", kind="CHAIN",
         attributes={SDK_HITL_INTERRUPT_PAYLOAD: "already-on-root"},
@@ -232,7 +243,7 @@ def test_enrich_no_hitl_when_nothing_recorded():
 
 
 def test_enrich_interrupt_is_not_an_error():
-    get_state().hitl.record(TRACE, **{SDK_HITL_INTERRUPTED: "true"})
+    get_state().hitl.record((TRACE, 2), **{SDK_HITL_INTERRUPTED: "true"})
     node = make_span(
         1, TRACE, 99, name="human_review", kind="CHAIN",
         status_code=StatusCode.OK,
@@ -286,9 +297,36 @@ def test_invoke_resume_records_resume_value(tail_exporter):
     attrs = dict(root.attributes)
     assert root.status.status_code == StatusCode.OK
     assert attrs[SDK_HITL_INTERRUPTED] == "false"
+    assert attrs[SDK_HITL_RESUMED] == "true"
     assert json.loads(attrs[SDK_HITL_RESUME_VALUE]) is True
     assert attrs[SDK_HITL_THREAD_ID] == "thread-1"
     assert SDK_HITL_CHECKPOINT_ID in attrs
+
+
+def test_interrupt_and_resume_share_one_trace(tail_exporter):
+    """The interrupt run and its resume run render as ONE trace (Langfuse-style
+    deterministic trace-id continuation via the shared workflow_id/thread_id)."""
+    from langgraph.types import Command
+
+    graph = _build_approval_graph()
+    config = {"configurable": {"thread_id": "thread-1"}}
+    with ai_observability.workflow(name="approval", workflow_id="thread-1"):
+        graph.invoke({"messages": []}, config=config)
+    interrupt_root = _root(_finished(tail_exporter))
+    tail_exporter.clear()
+
+    with ai_observability.workflow(name="approval", workflow_id="thread-1"):
+        graph.invoke(Command(resume=True), config=config)
+    resume_root = _root(_finished(tail_exporter))
+
+    assert dict(interrupt_root.attributes)[SDK_HITL_INTERRUPTED] == "true"
+    assert dict(resume_root.attributes)[SDK_HITL_RESUMED] == "true"
+    assert resume_root.context.trace_id == interrupt_root.context.trace_id
+    assert resume_root.context.span_id != interrupt_root.context.span_id
+    # The resume root continues the same trace under a synthetic remote parent.
+    assert resume_root.parent is not None and resume_root.parent.is_remote
+    assert resume_root.parent.trace_id == interrupt_root.context.trace_id
+    assert SDK_HITL_CHECKPOINT_ID in dict(resume_root.attributes)
 
 
 def test_stream_interrupt_records_hitl(tail_exporter):
@@ -441,6 +479,6 @@ def test_lifecycle_handler_records_interrupt(tail_exporter):
     )
     with tracer.start_as_current_span("root") as span:
         handler.on_interrupt(event)
-    pending = get_state().hitl.take(span.context.trace_id)
+    pending = get_state().hitl.take((span.context.trace_id, span.context.span_id))
     assert pending[SDK_HITL_INTERRUPTED] == "true"
     assert json.loads(pending[SDK_HITL_INTERRUPT_PAYLOAD]) == [INTERRUPT_PAYLOAD]

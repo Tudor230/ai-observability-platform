@@ -31,6 +31,7 @@ from ._attributes import (
     SDK_ERROR_KIND,
     SDK_HITL_INTERRUPTED,
     SDK_HITL_NODE,
+    SESSION_ID,
 )
 from ._config import Config
 from ._errors import enrich_error_attributes, is_failed
@@ -214,7 +215,6 @@ class EnrichingExporter(SpanExporter):
         for span in spans:
             if span.context is not None:
                 by_id[span.context.span_id] = span
-        root = self._find_root(spans)
 
         retry_counts = infer_retries(list(spans))
 
@@ -251,13 +251,23 @@ class EnrichingExporter(SpanExporter):
 
             processed[span.context.span_id] = _copy_span(span, attrs)
 
-        if root is not None and root.context is not None:
+        # A trace may have several roots: trace-id continuation (a LangGraph
+        # HITL interrupt and its resume share one trace id) lands multiple
+        # workflow roots in one export batch. Each root is enriched and its
+        # failure status is scoped to its own descendants.
+        all_processed = list(processed.values())
+        for root in spans:
+            if root.context is None:
+                continue
+            if root.parent is not None and not root.parent.is_remote:
+                continue
             root_copy = processed.get(root.context.span_id)
-            if root_copy is not None:
-                root_copy = self._apply_hitl(root_copy, list(processed.values()))
-                processed[root.context.span_id] = self._propagate_root_failure(
-                    root_copy, list(processed.values())
-                )
+            if root_copy is None:
+                continue
+            root_copy = self._apply_hitl(root_copy, all_processed)
+            processed[root.context.span_id] = self._propagate_root_failure(
+                root_copy, all_processed
+            )
 
         return [processed[s.context.span_id] for s in spans if s.context is not None]
 
@@ -273,7 +283,9 @@ class EnrichingExporter(SpanExporter):
         """
         if root.context is None:
             return root
-        pending = get_state().hitl.take(root.context.trace_id)
+        pending = get_state().hitl.take(
+            (root.context.trace_id, root.context.span_id)
+        )
         attrs = dict(root.attributes or {})
         for key, value in pending.items():
             attrs.setdefault(key, value)
@@ -281,6 +293,12 @@ class EnrichingExporter(SpanExporter):
             node = _interrupting_node(spans)
             if node is not None:
                 attrs[SDK_HITL_NODE] = node
+        if attrs.get(SDK_HITL_INTERRUPTED) == "true" and SESSION_ID not in attrs:
+            logger.warning(
+                "LangGraph HITL interrupt traced without a workflow_id: set "
+                "workflow(..., workflow_id=<thread_id>) so the interrupt and "
+                "resume runs group into one trace"
+            )
         if not pending and SDK_HITL_NODE not in attrs:
             return root
         return _copy_span(root, attrs)
@@ -289,10 +307,38 @@ class EnrichingExporter(SpanExporter):
     def _propagate_root_failure(root: ReadableSpan, spans: Sequence[ReadableSpan]) -> ReadableSpan:
         """Set the workflow root to ERROR when any descendant failed.
 
-        Also stamps ``sdk.error.kind`` with the primary (earliest) failure's
-        classification hint, when the root does not already carry one.
+        Scoped to the root's own subtree, so sibling roots in a continued trace
+        (a HITL interrupt run next to its resume run) do not inherit each
+        other's failures. Also stamps ``sdk.error.kind`` with the primary
+        (earliest) failure's classification hint, when the root does not
+        already carry one.
         """
-        failed = [s for s in spans if s is not root and is_failed(s)]
+        by_id: dict[int, ReadableSpan] = {}
+        for span in spans:
+            if span.context is not None:
+                by_id[span.context.span_id] = span
+        roots = [
+            s for s in spans
+            if s.context is not None
+            and (s.parent is None or s.parent.is_remote)
+        ]
+        if len(roots) <= 1:
+            # Single-root trace: every other span belongs to this root.
+            descendant_ids = {
+                s.context.span_id for s in spans if s.context is not None
+            }
+            descendant_ids.discard(root.context.span_id)
+        else:
+            # Continued trace (HITL interrupt + resume): scope to this root's
+            # own subtree so sibling roots don't inherit each other's failures.
+            descendant_ids = _descendant_span_ids(root, by_id)
+        failed = [
+            s for s in spans
+            if s is not root
+            and s.context is not None
+            and s.context.span_id in descendant_ids
+            and is_failed(s)
+        ]
         if not failed:
             return root
         attrs = dict(root.attributes or {})
@@ -305,3 +351,39 @@ class EnrichingExporter(SpanExporter):
             if isinstance(kind, str):
                 attrs[SDK_ERROR_KIND] = kind
         return _copy_span(root, attrs, status)
+
+
+def _descendant_span_ids(root: ReadableSpan, by_id: dict[int, ReadableSpan]) -> set[int]:
+    """Span ids strictly below ``root`` in the span tree (non-remote links).
+
+    Children are spans whose parent points at the current span; remote parents
+    are boundaries (they are roots of their own subtree), so traversal stops.
+    """
+    if root.context is None:
+        return set()
+    found: set[int] = set()
+    stack: list[ReadableSpan] = []
+    for span in by_id.values():
+        parent = span.parent
+        if (
+            span.context is not None
+            and parent is not None
+            and not parent.is_remote
+            and parent.span_id == root.context.span_id
+        ):
+            stack.append(span)
+    while stack:
+        current = stack.pop()
+        if current.context is None or current.context.span_id in found:
+            continue
+        found.add(current.context.span_id)
+        for span in by_id.values():
+            parent = span.parent
+            if (
+                span.context is not None
+                and parent is not None
+                and not parent.is_remote
+                and parent.span_id == current.context.span_id
+            ):
+                stack.append(span)
+    return found

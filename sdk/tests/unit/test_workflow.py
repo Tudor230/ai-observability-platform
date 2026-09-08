@@ -88,6 +88,44 @@ def test_workflow_nesting(tail_exporter):
     assert dict(inner.attributes)[SESSION_ID] == "i-1"
 
 
+def test_workflow_deterministic_trace_continuation(tail_exporter):
+    """Two root workflows sharing a workflow_id join ONE trace (Langfuse-style
+    deterministic trace-id continuation), even across separate executions."""
+    from ai_observability._ids import trace_id_from_seed
+
+    with ai_observability.workflow(name="wf", workflow_id="thread-1"):
+        pass
+    first = _finished(tail_exporter)[0]
+    tail_exporter.clear()
+
+    with ai_observability.workflow(name="wf", workflow_id="thread-1"):
+        pass
+    second = _finished(tail_exporter)[0]
+
+    assert first.context.trace_id == trace_id_from_seed("thread-1")
+    assert second.context.trace_id == trace_id_from_seed("thread-1")
+    assert first.context.trace_id == second.context.trace_id
+    assert first.context.span_id != second.context.span_id
+
+
+def test_workflow_distinct_ids_distinct_traces(tail_exporter):
+    with ai_observability.workflow(name="wf", workflow_id="a"):
+        pass
+    with ai_observability.workflow(name="wf", workflow_id="b"):
+        pass
+    spans = _finished(tail_exporter)
+    assert len({s.context.trace_id for s in spans}) == 2
+
+
+def test_workflow_without_id_stays_random(tail_exporter):
+    with ai_observability.workflow(name="wf"):
+        pass
+    with ai_observability.workflow(name="wf"):
+        pass
+    spans = _finished(tail_exporter)
+    assert len({s.context.trace_id for s in spans}) == 2
+
+
 def test_capture_prompts_override_stamp(tail_exporter):
     with ai_observability.workflow(name="w", capture_prompts=True):
         pass

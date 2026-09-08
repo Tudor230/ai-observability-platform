@@ -142,13 +142,14 @@ CHAIN  refund_approval        (workflow root, sdk.hitl.*, session.id = thread_id
    └─ (resume) CHAIN finalize   (TOOL create_refund + LLM resolution)
 ```
 
-The graph runs twice: the **interrupt run** exports a trace ending at
-`human_approval` (status OK, `sdk.hitl.interrupted=true`,
-`sdk.hitl.interrupt_payload` = the question shown to the human), and the
-**resume run** exports a second trace with `sdk.hitl.resume_value` +
-`checkpoint_id`. Because `workflow_id` = the LangGraph `thread_id`, both traces
-group into one Phoenix **session** — exactly how the HITL is meant to be
-viewed.
+The graph runs twice — the **interrupt run** (pauses at `human_approval`, status
+OK, `sdk.hitl.interrupted=true`, `sdk.hitl.interrupt_payload` = the question
+shown to the human) and the **resume run** (`sdk.hitl.resumed=true`,
+`sdk.hitl.resume_value`, `checkpoint_id`). Because `workflow_id` = the LangGraph
+`thread_id`, both runs derive the **same deterministic trace id** (Langfuse-style
+trace continuation) and render as **one trace** in Phoenix — with both runs'
+roots as entry points, plus `session.id = thread_id`. No store is involved, so
+this also works when the resume happens in a different process.
 
 Runs **fully offline** with a scripted fake model (fixed responses + usage) —
 no API key needed:
@@ -166,6 +167,6 @@ OPENAI_API_KEY=sk-... uv run python examples/langgraph_refund_approval.py \
     --request-id ORD-1234 --capture-prompts
 ```
 
-Then open http://localhost:6006 → Traces → project `demo` and follow the two
-traces under the `ORD-1234` session, or inspect via
-`uv run python dev/inspect_traces.py`.
+Then open http://localhost:6006 → Traces → project `demo`: the `ORD-1234`
+session shows one trace containing both runs (interrupt + resume), or inspect
+via `uv run python dev/inspect_traces.py`.

@@ -39,6 +39,10 @@ def list_traces(conn, limit: int) -> list[dict]:
             FROM spans s
             JOIN traces t ON t.id = s.trace_rowid
             WHERE s.parent_id IS NULL
+               OR NOT EXISTS (
+                    SELECT 1 FROM spans s2 JOIN traces t2 ON t2.id = s2.trace_rowid
+                    WHERE t2.trace_id = t.trace_id AND s2.span_id = s.parent_id
+               )
             ORDER BY s.start_time DESC
             LIMIT %s
             """,
@@ -93,7 +97,12 @@ def render_trace_tree(spans: list[dict]) -> list[str]:
             lines.append(_line_for(span, depth))
             walk(span["span_id"], depth + 1)
 
-    for root in children.get(None, []):
+    # Roots are spans whose parent is absent — either a true root (NULL) or a
+    # continued trace whose synthetic remote parent does not exist (trace-id
+    # continuation: a HITL interrupt run and its resume run share one trace).
+    for root in spans:
+        if root["parent_id"] is not None and root["parent_id"] in by_id:
+            continue
         lines.append(_line_for(root, 0))
         walk(root["span_id"], 1)
     return lines

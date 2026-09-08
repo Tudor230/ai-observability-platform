@@ -20,9 +20,11 @@ Two mechanisms (ticket 02):
   ``on_interrupt``/``on_resume`` record the typed payloads plus checkpoint id
   and (best-effort) the interrupting node name.
 
-Records go into ``state.hitl`` keyed by the current OTel ``trace_id``; the
-enrichment layer consumes them with ``take`` when the workflow root completes.
-First writer wins, so the boundary patch and the lifecycle hook dedup.
+Records go into ``state.hitl`` keyed by the current OTel ``(trace_id,
+root_span_id)``; the enrichment layer consumes them with ``take`` when each
+workflow root completes. First writer wins, so the boundary patch and the
+lifecycle hook dedup. The compound key lets an interrupt run and its resume run
+share one ``trace_id`` (see ``_ids``) while each stamps its own root.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from ._attributes import (
     SDK_HITL_INTERRUPT_PAYLOAD,
     SDK_HITL_INTERRUPTED,
     SDK_HITL_RESUME_VALUE,
+    SDK_HITL_RESUMED,
     SDK_HITL_THREAD_ID,
 )
 from ._state import get_state
@@ -115,11 +118,11 @@ def _already_instrumented_langgraph() -> bool:
 
 
 def _record_hitl(**attrs: str) -> None:
-    """Record pending sdk.hitl.* attributes for the current trace."""
+    """Record pending sdk.hitl.* attributes for the current execution."""
     ctx = trace_api.get_current_span().get_span_context()
     if not ctx.is_valid:
         return
-    get_state().hitl.record(ctx.trace_id, **attrs)
+    get_state().hitl.record((ctx.trace_id, ctx.span_id), **attrs)
 
 
 class _Recorder:
@@ -149,6 +152,7 @@ class _Recorder:
         self._resume_emitted = True
         attrs = {
             SDK_HITL_INTERRUPTED: _FALSE,
+            SDK_HITL_RESUMED: _TRUE,
             SDK_HITL_RESUME_VALUE: self._resume_value,
         }
         self._with_thread(attrs)

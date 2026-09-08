@@ -96,9 +96,10 @@ retrieve → tool → synthesize → validate flow (`RETRIEVER`/`TOOL`/`LLM`/`CH
 
 A LangGraph human-in-the-loop demo — `examples/langgraph_refund_approval.py` —
 builds a `StateGraph` (LLM routing, `@tool` nodes, an `interrupt()` approval
-node) and shows the HITL capture: the interrupt and resume runs export as two
-traces grouped under one Phoenix session with `sdk.hitl.*` attributes. It runs
-offline with `--mock` (no API key needed). See `examples/README.md`.
+node) and shows the HITL capture: the interrupt and resume runs join **one
+trace** (deterministic trace id from `workflow_id` = thread id) with
+`sdk.hitl.*` attributes. It runs offline with `--mock` (no API key needed).
+See `examples/README.md`.
 
 ## What the SDK emits
 

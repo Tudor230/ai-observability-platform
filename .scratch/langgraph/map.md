@@ -22,6 +22,7 @@ First-class LangGraph support in the SDK (`sdk/`) with automatic human-in-the-lo
 - [Unit tests](issues/03-langgraph-unit-tests.md): thorough `tests/unit/test_langgraph.py` covering interception helpers, registry behavior, boundary-patch mechanics (real langgraph), lifecycle hook, control-flow failure filtering, and enrichment HITL stamping; guard tests in `test_instrumentation.py`.
 - [Mock scenarios](issues/04-langgraph-mock-scenarios.md): `langgraph>=1.1.9` dev dep; scenarios `lg_basic`, `lg_hitl_interrupt`, `lg_hitl_resume`, `lg_hitl_stream`; wire into `runner.py` + `mock_workflows/__init__.py`.
 - [Assemble the plan](issues/05-assemble-langgraph-plan.md): update `plans/sdk.md` (scope, §7.1, new HITL section, §10, decision index) and `plans/implementation-plan.md` (deferred items).
+- [Trace-id continuation](issues/06-trace-continuation.md): Langfuse-style deterministic trace id derived from `workflow_id` (= thread id) — no store; interrupt + resume join ONE trace via a synthetic remote parent; `HITLRegistry` keyed `(trace_id, root_span_id)`; enricher handles multi-root continued traces with per-root failure propagation.
 
 ## Not yet specified
 

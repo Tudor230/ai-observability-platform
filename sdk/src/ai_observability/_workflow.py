@@ -65,7 +65,9 @@ class Workflow:
 
     def __enter__(self) -> "Workflow":
         span = get_state().get_tracer().start_span(
-            self._name, kind=SpanKind.INTERNAL
+            self._name,
+            kind=SpanKind.INTERNAL,
+            context=self._continued_context(),
         )
         span.set_attributes(self._build_attributes())
         self._span = span
@@ -77,6 +79,24 @@ class Workflow:
         )
         self._token.__enter__()
         return self
+
+    def _continued_context(self) -> Optional[Any]:
+        """Synthetic parent for deterministic trace-id continuation.
+
+        When ``workflow_id`` is set and this workflow is a true root (no active
+        parent span), start under a derived trace id so every execution of the
+        same ``workflow_id`` (e.g. a LangGraph thread's interrupt and resume)
+        joins the same trace. When nested inside another span, normal parenting
+        wins — we never hijack an enclosing trace.
+        """
+        if not self._workflow_id:
+            return None
+        current = trace_api.get_current_span().get_span_context()
+        if current.is_valid:
+            return None
+        from ._ids import parent_context_for_trace
+
+        return parent_context_for_trace(self._workflow_id)
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         if self._span is None:

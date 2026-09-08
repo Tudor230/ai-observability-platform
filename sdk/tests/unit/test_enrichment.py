@@ -178,7 +178,7 @@ def test_message_from_status_description_when_no_event():
 
 def test_root_becomes_error_with_primary_kind():
     llm = make_span(
-        1, TRACE, None, name="llm", kind="LLM", status_code=StatusCode.ERROR,
+        1, TRACE, 2, name="llm", kind="LLM", status_code=StatusCode.ERROR,
         events=[exception_event("RateLimitError", "429")], start_time=1000,
     )
     root = make_span(2, TRACE, None, name="wf", kind="CHAIN", status_code=StatusCode.OK)
@@ -198,7 +198,7 @@ def test_root_untouched_when_no_failure():
 
 def test_root_error_without_kind_still_propagates_status():
     llm = make_span(
-        1, TRACE, None, name="llm", kind="LLM", status_code=StatusCode.ERROR,
+        1, TRACE, 2, name="llm", kind="LLM", status_code=StatusCode.ERROR,
         events=[exception_event("ValueError", "boom")],
     )
     root = make_span(2, TRACE, None, name="wf", kind="CHAIN")
@@ -208,6 +208,27 @@ def test_root_error_without_kind_still_propagates_status():
     # LLM-layer errors classify as provider_error; the root carries the
     # primary failure's kind.
     assert dict(root_out.attributes)[SDK_ERROR_KIND] == "provider_error"
+
+
+def test_continued_trace_failure_scoped_to_own_root():
+    """In a continued trace (HITL interrupt + resume share one trace id), a
+    failed resume descendant must NOT flip the already-completed interrupt
+    root. Both roots render in one trace, each with its own status."""
+    interrupt_root = make_span(2, TRACE, None, name="approval", kind="CHAIN")
+    resume_root = make_span(
+        3, TRACE, 0xBEEF, name="approval", kind="CHAIN",
+        status_code=StatusCode.OK, parent_remote=True,
+    )
+    resume_llm = make_span(
+        4, TRACE, 3, name="llm", kind="LLM", status_code=StatusCode.ERROR,
+        events=[exception_event("TimeoutError", "x")],
+    )
+    out = enrich([interrupt_root, resume_root, resume_llm], CFG_OFF)
+    interrupt = next(s for s in out if s.context.span_id == 2)
+    resume = next(s for s in out if s.context.span_id == 3)
+    assert interrupt.status.status_code == StatusCode.OK
+    assert resume.status.status_code == StatusCode.ERROR
+    assert dict(resume.attributes)[SDK_ERROR_KIND] == "timeout"
 
 
 # --- retries ------------------------------------------------------------------

@@ -24,6 +24,7 @@ def make_span(
     events: Optional[list[Event]] = None,
     start_time: int = 1_000_000_000,
     end_time: int = 1_000_010_000,
+    parent_remote: bool = False,
 ) -> ReadableSpan:
     context = SpanContext(
         trace_id=trace_id,
@@ -35,7 +36,7 @@ def make_span(
         SpanContext(
             trace_id=trace_id,
             span_id=parent_id,
-            is_remote=False,
+            is_remote=parent_remote,
             trace_flags=TraceFlags(1),
         )
         if parent_id is not None

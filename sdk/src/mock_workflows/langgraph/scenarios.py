@@ -144,7 +144,12 @@ def assert_hitl_resume(spans) -> list[str]:
     roots = [s for s in spans if s.parent is None or s.parent.is_remote]
     checks.require(
         len(roots) == 2,
-        f"expected 2 traces (interrupt + resume), got {len(roots)}",
+        f"expected 2 roots (interrupt + resume), got {len(roots)}",
+    )
+    checks.require(
+        len({r.context.trace_id for r in roots}) == 1,
+        "interrupt and resume must continue the SAME trace (deterministic "
+        "trace-id from workflow_id/thread_id)",
     )
     resume = next(
         (r for r in roots if (r.attributes or {}).get("sdk.hitl.resume_value") is not None),
@@ -155,6 +160,7 @@ def assert_hitl_resume(spans) -> list[str]:
         return checks.failures
     checks.status_ok(resume)
     checks.attr_eq(resume, "sdk.hitl.interrupted", "false")
+    checks.attr_eq(resume, "sdk.hitl.resumed", "true")
     checks.attr_eq(resume, "sdk.hitl.thread_id", "thread-1")
     checks.attr_eq(resume, "session.id", "thread-1")
     checks.require(
@@ -209,7 +215,7 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         id="lg_hitl_resume",
         framework="langgraph",
-        description="Command(resume=True) continues the same thread: sdk.hitl.resume_value, same session",
+        description="Command(resume=True) continues the same thread AND the same trace: sdk.hitl.resume_value, one trace",
         run=run_hitl_resume,
         assert_trace=assert_hitl_resume,
     ),

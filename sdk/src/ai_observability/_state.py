@@ -19,34 +19,37 @@ _MAX_PENDING_HITL_TRACES = 1000
 class HITLRegistry:
     """Bounded, lock-guarded store of pending human-in-the-loop attributes.
 
-    Keyed by OTel ``trace_id``: LangGraph interception (the boundary patch and
-    the lifecycle hook) records ``sdk.hitl.*`` values here while the workflow
-    root span is still open; the enrichment layer consumes them with ``take``
-    when the trace completes. First writer wins per key; on overflow the oldest
-    entries are evicted (never blocks, never unbounded).
+    Keyed by ``(trace_id, root_span_id)``: LangGraph interception (the boundary
+    patch and the lifecycle hook) records ``sdk.hitl.*`` values here while the
+    workflow root span is still open; the enrichment layer consumes them with
+    ``take`` when the trace completes. The compound key lets an interrupt run
+    and its resume run coexist under the SAME trace id (trace-id continuation):
+    each execution has its own root span and takes only its own attributes.
+    First writer wins per key; on overflow the oldest entries are evicted
+    (never blocks, never unbounded).
     """
 
     def __init__(self, max_entries: int = _MAX_PENDING_HITL_TRACES) -> None:
         self._lock = threading.Lock()
         self._max_entries = max_entries
-        self._by_trace: dict[int, dict[str, str]] = {}
+        self._by_trace: dict[tuple[int, int], dict[str, str]] = {}
 
-    def record(self, trace_id: int, **attrs: str) -> None:
+    def record(self, key: tuple[int, int], **attrs: str) -> None:
         if not attrs:
             return
         with self._lock:
-            entry = self._by_trace.setdefault(trace_id, {})
-            for key, value in attrs.items():
+            entry = self._by_trace.setdefault(key, {})
+            for key_attr, value in attrs.items():
                 if value is not None:
-                    entry.setdefault(key, value)
+                    entry.setdefault(key_attr, value)
             overflow = len(self._by_trace) - self._max_entries
             if overflow > 0:
                 for stale in list(self._by_trace)[:overflow]:
                     self._by_trace.pop(stale)
 
-    def take(self, trace_id: int) -> dict[str, str]:
+    def take(self, key: tuple[int, int]) -> dict[str, str]:
         with self._lock:
-            return self._by_trace.pop(trace_id, {})
+            return self._by_trace.pop(key, {})
 
     def clear(self) -> None:
         with self._lock:
