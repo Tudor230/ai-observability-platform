@@ -70,6 +70,14 @@ uv run aiobs-mock                      # pass/fail CLI report (18 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
+Point the suite straight at the platform backend's OTLP ingest (it authenticates
+with the project API key and the `x-project-name` header):
+
+```bash
+uv run aiobs-mock --endpoint http://localhost:8000 \
+    --api-key <project-api-key> --project-id proj-1
+```
+
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid
 JSON, retrieval failure, high latency, rate limit, retry-then-success — plus
 LangGraph: basic node tracing, interrupt, resume, and streaming interrupt.

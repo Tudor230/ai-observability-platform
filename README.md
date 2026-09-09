@@ -50,7 +50,7 @@ uv run aiobs-mock --endpoint http://localhost:8000 --api-key <key> --project-id 
 ```bash
 cd backend
 uv sync --group dev
-docker compose -f dev/docker-compose.yml up -d --wait   # Postgres on :55432
+docker compose up -d postgres                    # Postgres on :55432 (creates aiobs + aiobs_test)
 AIOBS_TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:55432/aiobs_test uv run pytest
 uv run python scripts/e2e_smoke.py                      # seed + ingest + API check
 uv run python scripts/kpi_gate.py                       # docs/05 KPI validation (needs sdk deps)
