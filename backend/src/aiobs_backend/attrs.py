@@ -1,45 +1,49 @@
-"""Helpers for reading flat, dot-namespaced OpenInference/OTel attributes."""
+"""Helpers for reading flat, dot-namespaced OpenInference/OTel attributes.
+
+Attribute names come from ``aiobs_contracts`` (the single source of truth shared
+with the SDK); only reading helpers live here.
+"""
 from __future__ import annotations
 
 import json
 
+import aiobs_contracts as c
+
 from .ingest.otlp import RawSpan
 
-OI_KIND = "openinference.span.kind"
-SESSION_ID = "session.id"
-USER_ID = "user.id"
-METADATA = "metadata"
+OI_KIND = c.OI_SPAN_KIND
+SESSION_ID = c.SESSION_ID
+USER_ID = c.USER_ID
+METADATA = c.METADATA
 
-SDK_CLIENT_ID = "sdk.client_id"
-SDK_PROJECT_ID = "sdk.project_id"
-SDK_WORKFLOW_ID = "sdk.workflow_id"
-SDK_WORKFLOW_VERSION = "sdk.workflow.version"
-SDK_ERROR_TYPE = "sdk.error.type"
-SDK_ERROR_MESSAGE = "sdk.error.message"
-SDK_ERROR_KIND = "sdk.error.kind"
-SDK_RETRY_COUNT = "sdk.retry.count"
-SDK_RETRY_OF = "sdk.retry.of"
+SDK_CLIENT_ID = c.SDK_CLIENT_ID
+SDK_PROJECT_ID = c.SDK_PROJECT_ID
+SDK_WORKFLOW_ID = c.SDK_WORKFLOW_ID
+SDK_WORKFLOW_VERSION = c.SDK_WORKFLOW_VERSION
+SDK_ERROR_TYPE = c.SDK_ERROR_TYPE
+SDK_ERROR_MESSAGE = c.SDK_ERROR_MESSAGE
+SDK_ERROR_KIND = c.SDK_ERROR_KIND
+SDK_RETRY_COUNT = c.SDK_RETRY_COUNT
+SDK_RETRY_OF = c.SDK_RETRY_OF
 
-LLM_MODEL = "llm.model_name"
-LLM_PROVIDER = "llm.provider"
-LLM_PROMPT_TOKENS = "llm.token_count.prompt"
-LLM_COMPLETION_TOKENS = "llm.token_count.completion"
-LLM_TOTAL_TOKENS = "llm.token_count.total"
-TOOL_NAME = "tool.name"
+LLM_MODEL = c.LLM_MODEL_NAME
+LLM_PROVIDER = c.LLM_PROVIDER
+LLM_PROMPT_TOKENS = c.LLM_TOKEN_COUNT_PROMPT
+LLM_COMPLETION_TOKENS = c.LLM_TOKEN_COUNT_COMPLETION
+LLM_TOTAL_TOKENS = c.LLM_TOKEN_COUNT_TOTAL
+TOOL_NAME = c.TOOL_NAME
 
-EXCEPTION_TYPE = "exception.type"
-EXCEPTION_MESSAGE = "exception.message"
+EXCEPTION_TYPE = c.EXCEPTION_TYPE
+EXCEPTION_MESSAGE = c.EXCEPTION_MESSAGE
 
-KIND_LLM = "LLM"
-KIND_CHAIN = "CHAIN"
-KIND_AGENT = "AGENT"
-KIND_TOOL = "TOOL"
-KIND_RETRIEVER = "RETRIEVER"
-KIND_EMBEDDING = "EMBEDDING"
-KIND_RERANKER = "RERANKER"
-KIND_UNKNOWN = "UNKNOWN"
-
-BILLABLE_KINDS = {KIND_LLM}
+KIND_LLM = c.KIND_LLM
+KIND_CHAIN = c.KIND_CHAIN
+KIND_AGENT = c.KIND_AGENT
+KIND_TOOL = c.KIND_TOOL
+KIND_RETRIEVER = c.KIND_RETRIEVER
+KIND_EMBEDDING = c.KIND_EMBEDDING
+KIND_RERANKER = c.KIND_RERANKER
+KIND_UNKNOWN = c.KIND_UNKNOWN
 
 
 def get(attrs: dict[str, object], key: str, default=None):
@@ -96,12 +100,12 @@ def metadata_dict(span: RawSpan) -> dict | None:
 def exception_events(span: RawSpan) -> list[dict]:
     out = []
     for event in span.events:
-        if event.get("name") == "exception":
+        if event.get("name") == c.EXCEPTION_EVENT_NAME:
             attrs = event.get("attributes", {})
             out.append(
                 {
-                    "type": as_str(attrs, EXCEPTION_TYPE),
-                    "message": as_str(attrs, EXCEPTION_MESSAGE),
+                    "type": as_str(attrs, c.EXCEPTION_TYPE),
+                    "message": as_str(attrs, c.EXCEPTION_MESSAGE),
                 }
             )
     return out
@@ -114,7 +118,7 @@ def retry_count(attrs: dict[str, object]) -> int:
 def retrieval_doc_count(span: RawSpan) -> int | None:
     """Count indexed retrieval.document entries (flattened keys like retrieval.documents.0.document.id)."""
     indexes = set()
-    prefix = "retrieval.documents."
+    prefix = f"{c.RETRIEVAL_DOCUMENTS}."
     for key in span.attributes:
         if key.startswith(prefix):
             rest = key[len(prefix) :]

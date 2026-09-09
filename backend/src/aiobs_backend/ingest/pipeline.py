@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import aiobs_contracts as c
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,32 +26,10 @@ from ..models import (
 )
 from .otlp import RawSpan
 
-_PAYLOAD_PREFIXES = (
-    "llm.input_messages.",
-    "llm.output_messages.",
-    "llm.prompts.",
-    "llm.choices.",
-    "retrieval.documents.",
-    "reranker.",
-    "document.content.",
-)
-_PAYLOAD_EXACT = {
-    "input.value",
-    "input.mime_type",
-    "output.value",
-    "output.mime_type",
-    "tool.parameters",
-    "document.content",
-}
-
 
 def trim_attributes(attributes: dict[str, object]) -> dict[str, object]:
     """Drop captured payloads from the stored attribute snapshot (privacy + size)."""
-    return {
-        k: v
-        for k, v in attributes.items()
-        if k not in _PAYLOAD_EXACT and not k.startswith(_PAYLOAD_PREFIXES)
-    }
+    return {k: v for k, v in attributes.items() if not c.is_payload_attribute(k)}
 
 
 def _duration_ms(start: datetime | None, end: datetime | None) -> float | None:

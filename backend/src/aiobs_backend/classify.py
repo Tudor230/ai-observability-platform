@@ -1,36 +1,22 @@
 """Authoritative failure classification (plans/backend.md §7).
 
-The backend owns the taxonomy; the SDK's `sdk.error.kind` is a hint that is
-trusted when present and refined/derived from raw material otherwise.
+The backend owns the taxonomy (``aiobs_contracts.ERROR_KINDS``). The SDK's
+``sdk.error.kind`` is a hint: it is trusted when present, but refined when the
+raw material clearly indicates a more specific kind (rate limit / timeout /
+invalid output / validation).
 """
 from __future__ import annotations
 
-import re
+import aiobs_contracts as c
 
 from . import attrs
 from .ingest.otlp import RawSpan
 
-VALID_KINDS = {
-    "rate_limit",
-    "timeout",
-    "invalid_output",
-    "tool_error",
-    "provider_error",
-    "retrieval_error",
-    "validation_error",
-    "business_logic",
-}
-
-_HINT_RATE_LIMIT = re.compile(r"ratelimit|rate.?limit|throttl|429")
-_HINT_TIMEOUT = re.compile(r"timeout|timed.?out|deadline")
-_HINT_INVALID = re.compile(
-    r"jsondecodeerror|outputparser|expecting value|json\.decode|parse.?error"
-    r"|invalid json|validation error"
-)
+VALID_KINDS = c.ERROR_KINDS
+_SDK_HINTS = c.SDK_HINTS
 
 
-def _classify_hint(kind: str) -> str | None:
-    """Normalize an SDK hint into the authoritative taxonomy."""
+def _normalize_hint(kind: str | None) -> str | None:
     if kind in VALID_KINDS:
         return kind
     return None
@@ -53,47 +39,52 @@ def classify_span(span: RawSpan) -> tuple[str | None, str | None, str | None]:
 
     error_message = error_message or span.status_message
     oi_kind = attrs.span_kind(span)
-    hint = _classify_hint(attrs.as_str(span.attributes, attrs.SDK_ERROR_KIND))
+    hint = _normalize_hint(attrs.as_str(span.attributes, attrs.SDK_ERROR_KIND))
 
-    if hint:
-        kind = hint
-    else:
-        kind = _derive_kind(oi_kind, error_type, error_message)
+    kind = _authoritative_kind(hint, oi_kind, error_type, error_message)
 
     if kind is None and span.status_code == "error" and oi_kind in {
         attrs.KIND_CHAIN,
         attrs.KIND_AGENT,
     }:
         # An upper-layer failure with no lower-layer classification.
-        kind = "business_logic"
+        kind = c.KIND_BUSINESS_LOGIC
 
     return kind, error_type, error_message
 
 
-def _derive_kind(oi_kind: str, error_type: str | None, error_message: str | None) -> str | None:
-    combined = " ".join(
-        part.lower() for part in (error_type, error_message) if part
-    )
-    if not combined and oi_kind in {attrs.KIND_LLM, attrs.KIND_TOOL, attrs.KIND_RETRIEVER}:
-        # Raw ERROR with no text: attribute to the layer.
-        return {
-            attrs.KIND_LLM: "provider_error",
-            attrs.KIND_TOOL: "tool_error",
-            attrs.KIND_RETRIEVER: "retrieval_error",
-        }[oi_kind]
-    if _HINT_RATE_LIMIT.search(combined):
-        return "rate_limit"
-    if _HINT_TIMEOUT.search(combined):
-        return "timeout"
-    if _HINT_INVALID.search(combined):
-        return "invalid_output"
-    if oi_kind == attrs.KIND_TOOL:
-        return "tool_error"
-    if oi_kind == attrs.KIND_RETRIEVER:
-        return "retrieval_error"
-    if oi_kind == attrs.KIND_LLM:
-        return "provider_error"
+def _authoritative_kind(
+    hint: str | None, oi_kind: str, error_type: str | None, error_message: str | None
+) -> str | None:
+    """Combine the SDK hint with the backend's own reading of the raw material.
+
+    Trust the hint, but override it when the raw text clearly indicates a more
+    specific kind (the backend is authoritative).
+    """
+    raw_hint = c.match_hint(f"{error_type or ''} {error_message or ''}")
+
+    if raw_hint is not None:
+        if hint is None or raw_hint in _specific_kinds() or _more_specific(raw_hint, hint):
+            return raw_hint
+        return hint
+
+    if hint is not None:
+        return hint
+
+    # No hint and no textual signal: attribute to the failing layer.
+    if oi_kind in c.LAYER_ERROR_KIND:
+        return c.LAYER_ERROR_KIND[oi_kind]
     return None
+
+
+def _specific_kinds() -> set[str]:
+    return {c.KIND_RATE_LIMIT, c.KIND_TIMEOUT, c.KIND_INVALID_OUTPUT, c.KIND_VALIDATION_ERROR}
+
+
+def _more_specific(raw_hint: str, hint: str) -> bool:
+    """Rate limit / timeout / invalid output beat generic layer hints."""
+    specific = {c.KIND_RATE_LIMIT, c.KIND_TIMEOUT, c.KIND_INVALID_OUTPUT}
+    return raw_hint in specific and hint in {c.KIND_TOOL_ERROR, c.KIND_PROVIDER_ERROR, c.KIND_RETRIEVAL_ERROR}
 
 
 def is_failed(span: RawSpan) -> bool:

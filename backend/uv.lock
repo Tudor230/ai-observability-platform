@@ -7,6 +7,7 @@ name = "ai-observability-backend"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiobs-contracts" },
     { name = "fastapi" },
     { name = "opentelemetry-proto" },
     { name = "psycopg", extra = ["binary"] },
@@ -23,6 +24,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiobs-contracts", editable = "../shared/aiobs_contracts" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "opentelemetry-proto", specifier = ">=1.30" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
@@ -36,6 +38,11 @@ dev = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "pytest", specifier = ">=8.0" },
 ]
+
+[[package]]
+name = "aiobs-contracts"
+version = "0.1.0"
+source = { editable = "../shared/aiobs_contracts" }
 
 [[package]]
 name = "annotated-doc"
