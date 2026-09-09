@@ -33,8 +33,8 @@ services:
 
   backend:
     build:
-      context: backend
-      dockerfile: dev/Dockerfile
+      context: .
+      dockerfile: backend/dev/Dockerfile
     environment:
       AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aiobs
       AIOBS_ADMIN_API_KEY: admin
