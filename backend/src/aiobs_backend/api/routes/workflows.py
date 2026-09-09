@@ -7,7 +7,7 @@ from statistics import fmean
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from ..deps import get_db
+from ..deps import get_db, get_project_scope
 from ..queries import default_range, fetch_exec_rows, parse_dt
 from ..serialize import money
 
@@ -22,11 +22,12 @@ def list_workflows(
     days: int = Query(default=90, ge=1, le=3650),
     project_id: str | None = Query(default=None),
     client_id: str | None = Query(default=None),
+    project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
     rows = fetch_exec_rows(
-        session, start=start_dt, end=end_dt, project_id=project_id, client_id=client_id
+        session, start=start_dt, end=end_dt, project_id=project_id or project_scope, client_id=client_id
     )
     agg: dict[str, dict] = {}
     for ex, *_ in rows:

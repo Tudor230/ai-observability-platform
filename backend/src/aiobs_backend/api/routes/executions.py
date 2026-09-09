@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Execution, Span
-from ..deps import get_db
+from ..deps import get_db, get_project_scope
 from ..queries import fetch_exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
@@ -24,12 +24,13 @@ def list_executions(
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
     stmt = fetch_exec_rows(
         session,
         start=parse_dt(start),
         end=parse_dt(end, end_of_day=True),
-        project_id=project_id,
+        project_id=project_id or project_scope,
         client_id=client_id,
         workflow=workflow,
         status=status,

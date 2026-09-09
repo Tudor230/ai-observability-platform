@@ -170,6 +170,45 @@ def test_metrics_rollup(client, session_factory, project):
     assert m["total_cost"] > 0
 
 
+def test_project_mismatch_skipped(client, session_factory, project):
+    now = _now()
+    root = build_span(
+        name="checkout", oi_kind="CHAIN", span_id=1, trace_id=300,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.project_id": "other-proj", "sdk.client_id": "client-42"},
+    )
+    resp = client.post("/api/v1/traces", content=build_request([root]), headers=_headers())
+    assert resp.status_code == 200
+    assert resp.json()["traces"][0]["skipped"] == "project_mismatch"
+    with session_factory() as session:
+        assert session.execute(select(Execution)).first() is None
+
+
+def test_project_scope_header(client, session_factory, project):
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    with session_factory() as session:
+        from helpers import seed_project
+
+        seed_project(session, project_id="proj-2", api_key="k2", name="P2")
+        session.commit()
+    now = _now()
+    root2 = build_span(
+        name="other", oi_kind="CHAIN", span_id=1, trace_id=400,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.project_id": "proj-2", "sdk.client_id": "client-7"},
+    )
+    client.post(
+        "/api/v1/traces",
+        content=build_request([root2]),
+        headers={"x-project-name": "proj-2", "authorization": "Bearer k2"},
+    )
+    scoped = client.get("/api/v1/executions", headers={"x-project-name": "proj-1"}).json()
+    assert scoped["total"] == 1
+    assert all(i["project_id"] == "proj-1" for i in scoped["items"])
+    unscoped = client.get("/api/v1/executions").json()
+    assert unscoped["total"] == 2
+
+
 def test_budget_alert(client, session_factory, project):
     client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
     admin = {"x-admin-key": "admin"}

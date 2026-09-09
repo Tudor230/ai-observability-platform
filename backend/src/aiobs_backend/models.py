@@ -222,6 +222,9 @@ class DailyMetric(Base):
     tool_calls: Mapped[int] = mapped_column(Integer, default=0)
     total_cost: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
     avg_duration_ms: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    p50_duration_ms: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    p95_duration_ms: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    p99_duration_ms: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
     __table_args__ = (
         Index("ix_daily_dim", "day", "dimension", "dimension_key"),

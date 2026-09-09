@@ -46,6 +46,9 @@ def get_metrics(
             "tool_calls": m.tool_calls,
             "total_cost": float(m.total_cost or 0),
             "avg_duration_ms": float(m.avg_duration_ms or 0),
+            "p50_duration_ms": float(m.p50_duration_ms or 0),
+            "p95_duration_ms": float(m.p95_duration_ms or 0),
+            "p99_duration_ms": float(m.p99_duration_ms or 0),
         }
         for m in rows
     ]

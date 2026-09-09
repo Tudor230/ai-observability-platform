@@ -6,6 +6,7 @@ Dimension keys are **external** identifiers: project `project_id`, client
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from math import ceil, floor
 from statistics import fmean
 
 from sqlalchemy import select
@@ -14,6 +15,19 @@ from sqlalchemy.orm import Session
 from .models import Client, DailyMetric, Execution, Project
 
 DIMENSIONS = ("total", "project", "client", "workflow")
+
+
+def _percentile(sorted_values: list[float], pct: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    k = (len(sorted_values) - 1) * pct
+    lo = floor(k)
+    hi = ceil(k)
+    if lo == hi:
+        return sorted_values[lo]
+    return sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * (k - lo)
 
 
 def _day_key(dt: datetime) -> str:
@@ -61,6 +75,7 @@ def rollup_metrics(session: Session, days: list[str] | None = None) -> dict[str,
         tools = sum(e.tool_calls for e in group)
         durations = [e.duration_ms for e in group if e.duration_ms is not None]
         avg_ms = fmean(durations) if durations else 0.0
+        ordered = sorted(durations)
         session.add(
             DailyMetric(
                 day=day,
@@ -76,6 +91,9 @@ def rollup_metrics(session: Session, days: list[str] | None = None) -> dict[str,
                 tool_calls=tools,
                 total_cost=round(total_cost, 6),
                 avg_duration_ms=round(avg_ms, 2),
+                p50_duration_ms=round(_percentile(ordered, 0.5), 2),
+                p95_duration_ms=round(_percentile(ordered, 0.95), 2),
+                p99_duration_ms=round(_percentile(ordered, 0.99), 2),
             )
         )
         key = f"{day}:{dim}:{dim_key}"

@@ -141,6 +141,15 @@ def process_trace(
         return {"trace_id": trace_id, "skipped": "no root span"}
 
     root_a = root.raw.attributes
+    # Ingest validation: the authenticated project must match the root's identity.
+    root_project = attrs.as_str(root_a, attrs.SDK_PROJECT_ID)
+    if root_project and root_project != project.project_id:
+        return {
+            "trace_id": trace_id,
+            "skipped": "project_mismatch",
+            "detail": f"root sdk.project_id={root_project!r} != {project.project_id!r}",
+        }
+
     client_key = attrs.as_str(root_a, attrs.SDK_CLIENT_ID)
     client = _upsert_client(session, client_key) if client_key else None
     wf_name = root.raw.name or root.oi_kind

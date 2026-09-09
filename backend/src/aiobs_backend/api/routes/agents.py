@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...models import Execution, Span
-from ..deps import get_db
+from ...models import Execution, Project, Span
+from ..deps import get_db, get_project_scope
 from ..queries import default_range, parse_dt
 from ..serialize import money
 
@@ -21,14 +21,21 @@ def list_agents(
     start: str | None = Query(default=None),
     end: str | None = Query(default=None),
     days: int = Query(default=90, ge=1, le=3650),
+    project_id: str | None = Query(default=None),
+    project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
-    rows = session.execute(
+    stmt = (
         select(Span, Execution)
         .join(Execution, Execution.id == Span.execution_id)
+        .join(Project, Project.id == Execution.project_id)
         .where(Span.kind == "AGENT", Span.started_at >= start_dt, Span.started_at < end_dt)
-    ).all()
+    )
+    scope = project_id or project_scope
+    if scope:
+        stmt = stmt.where(Project.project_id == scope)
+    rows = session.execute(stmt).all()
     agg: dict[str, dict] = {}
     for span, ex in rows:
         name = span.name or "unknown"

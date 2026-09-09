@@ -1,6 +1,7 @@
 """FastAPI application factory and CLI entry point."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,25 @@ from .config import get_settings
 logger = logging.getLogger("aiobs_backend")
 
 
+async def _background_loop() -> None:
+    """Periodically recompute analytics and evaluate alerts (plans §9-10)."""
+    from .alerts import evaluate_alerts
+    from .analytics import rollup_recent
+    from .db import session_scope
+
+    interval = max(1, get_settings().alert_interval_s)
+    while True:
+        try:
+            with session_scope() as session:
+                rollup_recent(session)
+                created = evaluate_alerts(session)
+                if created:
+                    logger.info("background: %s alert(s) created", len(created))
+        except Exception:  # never let the background loop die
+            logger.exception("background rollup/alerts failed")
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     from . import db, seed
@@ -23,7 +43,9 @@ async def _lifespan(app: FastAPI):
     if get_settings().seed_pricing:
         added = seed.seed_pricing()
         logger.info("seeded %s pricing rows", added)
+    task = asyncio.create_task(_background_loop())
     yield
+    task.cancel()
 
 
 def create_app() -> FastAPI:

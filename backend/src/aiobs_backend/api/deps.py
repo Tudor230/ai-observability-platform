@@ -48,3 +48,12 @@ def get_project_from_headers(
     if not verify_api_key(key, project.api_key_hash):
         raise HTTPException(status_code=401, detail="invalid API key")
     return project
+
+
+def get_project_scope(x_project_name: str | None = Header(default=None)) -> str | None:
+    """Optional project scope for read endpoints (``x-project-name`` header).
+
+    When present, responses are restricted to that project. No auth is required
+    for reads in v1 (docs scope, plans §11.2).
+    """
+    return x_project_name
