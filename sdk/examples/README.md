@@ -2,10 +2,36 @@
 
 `checkout_agent.py` runs a checkout-support agent with **real LLM calls**
 (LangChain `ChatOpenAI` over HTTP) inside an `ai_observability.workflow()`
-boundary, with a tool call (`lookup_order`), a chained validation step
+boundary, with a tool call (`lookup_order`), and a chained validation step
 (`validate_response` → `check_answer_non_empty` /
 `check_mentions_order_id` / `check_delivery_eta` nested spans), and exports
 the full trace to the dev stack (Phoenix + Postgres).
+
+The agent code (order db, `lookup_order` tool, agent loop, validation checks)
+is duplicated verbatim in `init_only_agent.py` — the two demos are identical
+except for SDK usage: `checkout_agent.py` wraps the run in `workflow()` +
+`span()` boundaries.
+
+`workflow()` and `span()` each work as a **context manager or a decorator**
+with the same parameters:
+
+```python
+with workflow(name="checkout-support", client_id="client-42",
+              workflow_id="ord-abc123", version="v1",
+              context={"channel": "web"}):
+    ...
+
+@span(name="check_answer_non_empty")          # sync or async
+def check_answer_non_empty(answer):
+    ...
+    return answer
+```
+
+The `@span` decorator auto-captures the function's `input.value` (its arguments
+as a name → value mapping, from the function signature) and `output.value`
+(return) on its span, and records exceptions as span errors (propagated to the
+workflow root). Input/output visibility follows the `capture_prompts` policy:
+run with `--capture-prompts` to see them.
 
 Works with **any OpenAI-compatible chat endpoint**: OpenAI, DeepSeek, Groq,
 Ollama, LM Studio, vLLM, ...
@@ -50,6 +76,36 @@ or open the Phoenix UI at http://localhost:6006 (project `demo`).
 
 To intentionally see failure capture, pass an unreachable endpoint or invalid
 key — the workflow root will be `ERROR` with `sdk.error.*` attributes.
+
+---
+
+# Demo: minimal tracing (init-only, no annotations)
+
+`init_only_agent.py` showcases the **minimum you get from the SDK**: a single
+`init()` call and plain LangChain code — no `with workflow(...)`, no
+`with span(...)`. The agent code is the same as `checkout_agent.py` (duplicated
+verbatim); only the SDK usage differs. The instrumentor
+alone emits the framework spans:
+
+```
+AGENT checkout_agent        (root — a RunnableLambda run)
+├─ LLM                      (tool-calling step)
+├─ TOOL lookup_order        (order lookup)
+└─ LLM                      (final answer, fed the tool result)
+```
+
+Because there is no workflow boundary, each agent run is its own trace in
+Phoenix and there are no `sdk.*` business attributes on a root. Adding
+`with workflow(name=..., workflow_id=..., ...)` layers a CHAIN root over these
+spans and enables `sdk.client_id` / `sdk.workflow_id` / `session.id` / error
+propagation — see `checkout_agent.py`.
+
+Same provider config as `checkout_agent.py`:
+
+```bash
+cd sdk
+OPENAI_API_KEY=sk-... uv run python examples/init_only_agent.py "Where is my order ORD-1234?"
+```
 
 ---
 

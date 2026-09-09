@@ -8,10 +8,14 @@ import pytest
 
 import ai_observability
 from ai_observability._attributes import (
+    INPUT_VALUE,
     METADATA,
     OPENINFERENCE_SPAN_KIND,
+    OUTPUT_VALUE,
     SDK_CLIENT_ID,
     SDK_CAPTURE_PROMPTS,
+    SDK_ERROR_MESSAGE,
+    SDK_ERROR_TYPE,
     SDK_PROJECT_ID,
     SDK_WORKFLOW_ID,
     SDK_WORKFLOW_VERSION,
@@ -73,6 +77,34 @@ async def test_workflow_decorator_async(tail_exporter):
     spans = _finished(tail_exporter)
     assert len(spans) == 1
     assert spans[0].name == "async-decorated"
+
+
+def test_workflow_decorator_full_parameters(tail_exporter):
+    """The @workflow decorator honors the same parameters as with workflow(...)."""
+    @ai_observability.workflow(
+        name="decorated",
+        client_id="c1",
+        workflow_id="w9",
+        version="v2",
+        context={"channel": "web"},
+        user_id="user-7",
+        capture_prompts=True,
+    )
+    def run():
+        return 42
+
+    assert run() == 42
+    spans = _finished(tail_exporter)
+    assert len(spans) == 1
+    attrs = dict(spans[0].attributes)
+    assert attrs[SDK_CLIENT_ID] == "c1"
+    assert attrs[SDK_PROJECT_ID] == "proj-1"
+    assert attrs[SDK_WORKFLOW_ID] == "w9"
+    assert attrs[SESSION_ID] == "w9"
+    assert attrs[SDK_WORKFLOW_VERSION] == "v2"
+    assert attrs["user.id"] == "user-7"
+    assert json.loads(attrs[METADATA]) == {"channel": "web"}
+    assert attrs[SDK_CAPTURE_PROMPTS] == "true"
 
 
 def test_workflow_nesting(tail_exporter):
@@ -169,6 +201,70 @@ def test_span_helper_records_exception(tail_exporter):
     spans = _finished(tail_exporter)
     step = spans[0]
     assert step.status.status_code == StatusCode.ERROR
+
+
+def test_span_decorator_parameters_match_context_manager(tail_exporter):
+    """@span(name=..., context=...) behaves like with span(...), plus it
+    captures input.value/output.value (visible with capture_prompts on)."""
+    @ai_observability.span(name="check", context={"checks": 3})
+    def validate(answer):
+        return answer
+
+    with ai_observability.workflow(name="wf", workflow_id="w-1", capture_prompts=True):
+        result = validate("ok")
+
+    assert result == "ok"
+    spans = _finished(tail_exporter)
+    check = next(s for s in spans if s.name == "check")
+    root = next(s for s in spans if s.name == "wf")
+    attrs = dict(check.attributes)
+    assert check.parent.span_id == root.context.span_id
+    assert attrs[OPENINFERENCE_SPAN_KIND] == "CHAIN"
+    assert json.loads(attrs[METADATA]) == {"checks": 3}
+    assert json.loads(attrs[INPUT_VALUE]) == {"answer": "ok"}
+    assert json.loads(attrs[OUTPUT_VALUE]) == "ok"
+    assert check.status.status_code == StatusCode.OK
+
+
+def test_span_decorator_captures_input_even_on_error(tail_exporter):
+    """A failing decorated function keeps its captured input, records the
+    exception as a span error, and propagates the failure to the workflow root."""
+    @ai_observability.span(name="check")
+    def validate(answer):
+        raise RuntimeError("nope")
+
+    with ai_observability.workflow(name="wf", workflow_id="w-1", capture_prompts=True):
+        with pytest.raises(RuntimeError):
+            validate("bad")
+
+    spans = _finished(tail_exporter)
+    check = next(s for s in spans if s.name == "check")
+    root = next(s for s in spans if s.name == "wf")
+    attrs = dict(check.attributes)
+    assert check.status.status_code == StatusCode.ERROR
+    assert any(e.name == "exception" for e in check.events)
+    assert json.loads(attrs[INPUT_VALUE]) == {"answer": "bad"}
+    assert attrs[SDK_ERROR_TYPE] == "RuntimeError"
+    assert "nope" in attrs[SDK_ERROR_MESSAGE]
+    assert root.status.status_code == StatusCode.ERROR
+
+
+@pytest.mark.asyncio
+async def test_span_decorator_async(tail_exporter):
+    @ai_observability.span(name="acheck")
+    async def validate(answer):
+        return f"v:{answer}"
+
+    with ai_observability.workflow(name="wf", workflow_id="w-1", capture_prompts=True):
+        result = await validate("ok")
+
+    assert result == "v:ok"
+    spans = _finished(tail_exporter)
+    check = next(s for s in spans if s.name == "acheck")
+    attrs = dict(check.attributes)
+    assert attrs[OPENINFERENCE_SPAN_KIND] == "CHAIN"
+    assert json.loads(attrs[INPUT_VALUE]) == {"answer": "ok"}
+    assert json.loads(attrs[OUTPUT_VALUE]) == "v:ok"
 
 
 def test_uninitialized_sdk_is_noop():

@@ -4,9 +4,14 @@ Public surface:
 
     init(...)                 configure + auto-instrument frameworks
     workflow(...)             context manager / decorator (sync + async)
-    span(name, context=...)   manual CHAIN span under the active workflow
+    span(name, context=...)   manual CHAIN span / decorator (sync + async)
     flush()                   force-export pending spans
     shutdown()                flush + tear down the pipeline
+
+``workflow`` and ``span`` accept the same parameters in both forms (context
+manager and decorator) and can be used interchangeably. The ``span`` decorator
+captures the decorated function's ``input.value`` / ``output.value`` and
+records exceptions as span errors.
 
 Env vars (12-factor, explicit init() args override):
     AI_OBSERVABILITY_API_KEY, AI_OBSERVABILITY_ENDPOINT,

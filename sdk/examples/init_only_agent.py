@@ -1,23 +1,19 @@
 #!/usr/bin/env python
-"""Full-tracing demo for the ai_observability SDK: `init()` + annotations.
+"""Minimal-tracing demo for the ai_observability SDK: `init()` only.
 
-The agent code is identical to ``init_only_agent.py`` — the only difference is
-SDK usage. This script adds a ``workflow()`` root (carrying ``sdk.*`` business
-attributes + ``session.id``) and ``@span()`` decorators on the validation
-checks (which auto-capture each function's input/output and errors), so the
-framework spans nest under a CHAIN root:
+The ONLY SDK usage is ``init(...)`` (and ``flush()`` at shutdown) — no
+``with workflow(...)``, no ``with span(...)``. Every span in the trace is
+produced by the SDK's automatic LangChain instrumentation:
 
-    CHAIN  checkout-support     (workflow root, sdk.* business attrs)
-    ├─ AGENT checkout_agent
-    │  ├─ LLM                  (tool-calling step)
-    │  ├─ TOOL lookup_order    (order lookup)
-    │  └─ LLM                  (final answer, fed the tool result)
-    └─ CHAIN validate_response
-       ├─ CHAIN check_answer_non_empty   (input.value / output.value captured)
-       ├─ CHAIN check_mentions_order_id
-       └─ CHAIN check_delivery_eta
+    AGENT checkout_agent        (root — a RunnableLambda run)
+    ├─ LLM                      (tool-calling step)
+    ├─ TOOL lookup_order        (order lookup)
+    └─ LLM                      (final answer, fed the tool result)
 
-Input/output on those check spans is visible only with ``--capture-prompts``.
+Because there is no workflow boundary, the framework spans are their own roots:
+each run is its own trace in Phoenix and there are no ``sdk.*`` business
+attributes. ``checkout_agent.py`` runs the same code wrapped in
+``workflow()``/``span()`` boundaries.
 
 Configuration (env vars, 12-factor):
     OPENAI_API_KEY       required by the provider client
@@ -28,7 +24,7 @@ Configuration (env vars, 12-factor):
 
 Usage:
     cd sdk
-    OPENAI_API_KEY=sk-... uv run python examples/checkout_agent.py "ORD-1234"
+    OPENAI_API_KEY=sk-... uv run python examples/init_only_agent.py "ORD-1234"
 
     # inspect the trace in Postgres afterwards:
     uv run python dev/inspect_traces.py
@@ -41,14 +37,13 @@ import argparse
 import os
 import re
 import sys
-import uuid
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
-from ai_observability import flush, init, span, workflow
+from ai_observability import flush, init
 
 # --- pretend order database (swap for a real API) -----------------------------
 
@@ -103,21 +98,18 @@ def build_agent(model: ChatOpenAI) -> RunnableLambda:
     return RunnableLambda(agent_loop).with_config({"run_name": "checkout_agent"})
 
 
-@span(name="check_answer_non_empty")
 def check_answer_non_empty(answer) -> str:
     if not answer or not str(answer).strip():
         raise RuntimeError("empty agent response")
     return answer
 
 
-@span(name="check_mentions_order_id")
 def check_mentions_order_id(answer, order_id: str) -> str:
     if order_id not in str(answer):
         raise RuntimeError(f"answer does not reference order {order_id}")
     return answer
 
 
-@span(name="check_delivery_eta")
 def check_delivery_eta(answer) -> str:
     if not re.search(r"\d{4}-\d{2}-\d{2}", str(answer)):
         raise RuntimeError("answer does not include a delivery ETA")
@@ -133,7 +125,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the checkout-support demo.")
     parser.add_argument("query", nargs="?", default="Where is my order ORD-1234?")
     parser.add_argument("--order-id", default=None, help="order id used for lookups and validation (defaults to the order id found in the query)")
-    parser.add_argument("--workflow-id", default=None, help="pin the workflow_id (defaults to a random one per run)")
     parser.add_argument("--client-id", default="client-42")
     parser.add_argument("--project-id", default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID", "demo"))
     parser.add_argument("--capture-prompts", action="store_true", default=False)
@@ -164,24 +155,14 @@ def main() -> int:
     )
 
     order_id = args.order_id or order_id_from_query(args.query)
-    workflow_id = args.workflow_id or f"ord-{uuid.uuid4().hex[:8]}"
-    with workflow(
-        name="checkout-support",
-        client_id=args.client_id,
-        workflow_id=workflow_id,
-        version="v1",
-        context={"channel": "web", "ticket_id": "INC-12345"},
-        capture_prompts=True if args.capture_prompts else None,
-    ):
-        answer = build_agent(model).invoke(args.query)
-        with span("validate_response", context={"checks": 3}):
-            check_answer_non_empty(answer)
-            check_mentions_order_id(answer, order_id)
-            check_delivery_eta(answer)
+
+    answer = build_agent(model).invoke(args.query)
+    check_answer_non_empty(answer)
+    check_mentions_order_id(answer, order_id)
+    check_delivery_eta(answer)
 
     flush(timeout_millis=5_000)
 
-    print(f"\nworkflow_id: {workflow_id}")
     print("\n--- agent answer ---")
     print(answer)
     print("\nTrace exported. Inspect with:")
