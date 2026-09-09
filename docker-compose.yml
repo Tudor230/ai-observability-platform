@@ -1,0 +1,55 @@
+# Full platform stack: Postgres + Phoenix + backend API + dashboard.
+#   docker compose up -d --build
+#   Phoenix UI:   http://localhost:6006
+#   Backend API:  http://localhost:8000  (docs at /docs)
+#   Dashboard:    http://localhost:8080
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "55432:5432" # avoid colliding with a host Postgres on 5432
+    volumes:
+      - ./dev/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    environment:
+      PHOENIX_SQL_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/phoenix
+    ports:
+      - "6006:6006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: backend
+      dockerfile: dev/Dockerfile
+    environment:
+      AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aiobs
+      AIOBS_ADMIN_API_KEY: admin
+      AIOBS_SEED_PRICING: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: dev/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
