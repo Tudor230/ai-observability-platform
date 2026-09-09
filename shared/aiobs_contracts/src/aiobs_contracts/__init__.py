@@ -156,7 +156,7 @@ def is_payload_attribute(key: str) -> bool:
 _HINT_RATE_LIMIT = re.compile(r"ratelimit|rate.?limit|throttl|429")
 _HINT_TIMEOUT = re.compile(r"timeout|timed.?out|deadline")
 _HINT_INVALID_OUTPUT = re.compile(
-    r"jsondecodeerror|outputparser|expecting value|json.?decode|parse.?error|invalid json|validation error"
+    r"jsondecodeerror|outputparser|expecting value|json.?decode|parse.?error|invalid json"
 )
 _HINT_VALIDATION = re.compile(
     r"validation failed|validation error|pydantic|schema validation|assertion failed|assert "

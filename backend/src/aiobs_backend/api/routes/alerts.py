@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Alert
@@ -27,9 +27,12 @@ def list_alerts(
     rows = session.execute(
         stmt.order_by(Alert.triggered_at.desc()).limit(limit).offset(offset)
     ).scalars().all()
-    total = session.execute(select(Alert.id)).first() and len(
-        session.execute(stmt).scalars().all()
-    )
+    count_stmt = select(func.count()).select_from(Alert)
+    if status:
+        count_stmt = count_stmt.where(Alert.status == status)
+    if severity:
+        count_stmt = count_stmt.where(Alert.severity == severity)
+    total = session.execute(count_stmt).scalar_one()
     items = [
         {
             "id": a.id,
