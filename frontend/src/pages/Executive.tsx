@@ -2,6 +2,7 @@ import { useOverview, useCosts, useMetrics } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { KpiCard } from "../components/KpiCard";
 import { formatMoney, formatTokens } from "../lib/format";
+import { buildForecast } from "../lib/forecast";
 import {
   ResponsiveContainer,
   LineChart,
@@ -20,7 +21,7 @@ export default function Executive() {
   const { data: ts } = useMetrics("total");
 
   const series = (ts?.items ?? []).map((m) => ({
-    day: m.day.slice(5),
+    day: m.day,
     cost: m.total_cost,
     tokens: m.total_tokens,
   }));
@@ -111,35 +112,4 @@ export default function Executive() {
       </div>
     </div>
   );
-}
-
-function buildForecast(history: { day: string; cost: number }[], days: number) {
-  const points = history.map((p, i) => [i, p.cost] as const).filter(([, v]) => v > 0);
-  if (points.length < 3) return [];
-  const n = points.length;
-  const meanX = points.reduce((s, [x]) => s + x, 0) / n;
-  const meanY = points.reduce((s, [, y]) => s + y, 0) / n;
-  let num = 0;
-  let den = 0;
-  for (const [x, y] of points) {
-    num += (x - meanX) * (y - meanY);
-    den += (x - meanX) ** 2;
-  }
-  const slope = den ? num / den : 0;
-  const intercept = meanY - slope * meanX;
-  const last = history.length - 1;
-  const lastDay = history[last].day;
-  return Array.from({ length: days }, (_, i) => {
-    const x = last + 1 + i;
-    const value = Math.max(0, slope * x + intercept);
-    return { day: dayOffset(lastDay, i + 1), cost: value };
-  });
-}
-
-function dayOffset(day: string, offset: number) {
-  const d = new Date(`20${day.slice(0, 2)}-${day.slice(2, 4)}-${day.slice(4, 6)}`);
-  d.setDate(d.getDate() + offset);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${String(d.getFullYear()).slice(2)}-${mm}-${dd}`;
 }
