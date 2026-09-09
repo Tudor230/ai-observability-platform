@@ -342,15 +342,16 @@ Reuse the SDK's deterministic mock-workflow harness to validate the backend:
 
 ## 15. Decision index
 
-Planned wayfinder effort under `.scratch/backend/` (map + `issues/NN-<slug>.md`, per
-`docs/agents/issue-tracker.md`). Placeholder tickets to resolve before/while building:
+Resolved during implementation on the wayfinder map `.scratch/backend/` (per
+`docs/agents/issue-tracker.md`):
 
-| Ticket | Decision to resolve |
+| Ticket | Decision |
 |---|---|
-| 01 — Ingest path | Direct OTLP receive vs read-back from Phoenix/Postgres; idempotency |
-| 02 — Failure taxonomy | Exact rule precedence + override of SDK hints; classification algorithm |
-| 03 — Cost engine | Pricing table shape, effective-date semantics, unpriced-model behavior |
-| 04 — Analytics & aggregation | Bucketing, incremental rollups, latency percentiles |
-| 05 — Alerts & budgets | Rule DSL, evaluation cadence, budget semantics |
-| 06 — API surface | Endpoint/resource shape, auth/scoping, pagination |
-| 07 — Deployment & CI | Compose additions, K8s layout, CI jobs + e2e validation |
+| [01 — Ingest path](../.scratch/backend/issues/01-ingest-path.md) | Direct OTLP HTTP receive (`/v1/traces` + `/api/v1/traces`); Phoenix stays the canonical trace store, not a read dependency; idempotent per-trace recompute |
+| [02 — Failure taxonomy](../.scratch/backend/issues/02-failure-taxonomy.md) | Authoritative taxonomy in `aiobs_contracts`; trust + refine SDK hints; span-level kinds, execution root carries primary failure |
+| [03 — Cost engine](../.scratch/backend/issues/03-cost-engine.md) | Mirror Phoenix pricing; exact → prefix → provider default → unpriced (`NULL`); cache/reasoning tokens priced |
+| [04 — Analytics & alerts](../.scratch/backend/issues/04-analytics-alerts.md) | Daily rollup (total/project/client/workflow) with p50/p95/p99; budget-based alert rules; background scheduler + on-demand admin endpoints |
+| [05 — API surface](../.scratch/backend/issues/05-api-surface.md) | `/api/v1` reads with optional `x-project-name` scope; admin-key for mutating endpoints; SDK-header auth for ingest |
+| [06 — Shared contracts](../.scratch/backend/issues/06-shared-contracts.md) | `shared/aiobs_contracts` as the SDK↔backend single source of truth |
+
+Also recorded as [ADR-0001](../docs/adr/0001-backend-ingest-otlp-direct.md).

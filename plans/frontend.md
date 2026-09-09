@@ -139,14 +139,13 @@ Consumes: `overview`, `costs`, `metrics`.
 
 ## 12. Decision index
 
-Planned wayfinder effort under `.scratch/frontend/` (map + `issues/NN-<slug>.md`, per
-`docs/agents/issue-tracker.md`). Placeholder tickets:
+Resolved during implementation on the wayfinder map `.scratch/frontend/` (per
+`docs/agents/issue-tracker.md`):
 
-| Ticket | Decision to resolve |
+| Ticket | Decision |
 |---|---|
-| 01 — Stack & scaffold | Vite + React + TS, component library choice, styling/tokens |
-| 02 — Routing & shell | Role-scoped routes, global filter state, layout |
-| 03 — API client | OpenAPI codegen, query hooks, loading/error conventions |
-| 04 — Engineering view | Trace/span/failure tree rendering, drill-down UX |
-| 05 — Manager & executive views | Chart lib, budget/alerts UX, forecast approach |
-| 06 — Testing & CI | Vitest/Playwright setup, `frontend.yml` workflow, e2e against stack |
+| [01 — Stack & scaffold](../.scratch/frontend/issues/01-stack-scaffold.md) | React 18 + Vite + TypeScript, TanStack Query, React Router, Recharts, dark tokens |
+| [02 — Routing & shell](../.scratch/frontend/issues/02-routing-shell.md) | AppShell + role switcher (Engineer/SDM/Finance) + global filters context |
+| [03 — API client](../.scratch/frontend/issues/03-api-client.md) | Typed fetch client + query hooks; dev + nginx `/api` proxies |
+| [04 — Views](../.scratch/frontend/issues/04-views.md) | Overview / Engineering (span+failure tree) / Manager (cost, budget, alerts) / Executive (unit economics + forecast) |
+| [05 — Code-splitting](../.scratch/frontend/issues/05-code-splitting.md) | Lazy pages + vendor/charts chunks |
