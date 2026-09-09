@@ -67,6 +67,27 @@ body {
   font-weight: 600;
 }
 
+.roles {
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.role {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.role.active {
+  color: var(--text);
+  background: var(--accent);
+}
+
 .filterbar {
   display: flex;
   gap: 16px;

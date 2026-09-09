@@ -1,4 +1,4 @@
-import type { Filters, Overview, Execution, Span, FailureTree, AggregateRow, DayMetric, Alert } from "./types";
+import type { Filters, Overview, Execution, Span, FailureTree, AggregateRow, DayMetric, Alert, BudgetStatus } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
@@ -42,4 +42,5 @@ export const api = {
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
   metrics: (dimension: string, key?: string) => get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key })}`),
   alerts: () => get<List<Alert>>(`/alerts?status=open`),
+  budgetStatus: () => get<List<BudgetStatus>>(`/budgets/status`),
 };

@@ -69,3 +69,7 @@ export function useMetrics(dimension: string, key?: string) {
 export function useAlerts() {
   return useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts() });
 }
+
+export function useBudgetStatus() {
+  return useQuery({ queryKey: ["budgets", "status"], queryFn: () => api.budgetStatus() });
+}

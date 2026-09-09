@@ -48,6 +48,7 @@ export default function Overview() {
             <KpiCard label="LLM calls" value={data?.llm_calls ?? 0} />
             <KpiCard label="Tool calls" value={data?.tool_calls ?? 0} />
             <KpiCard label="Avg duration" value={formatMs(data?.avg_duration_ms)} />
+            <KpiCard label="P95 latency" value={formatMs(data?.p95_duration_ms)} />
             <KpiCard label="Open alerts" value={data?.open_alerts ?? 0} tone="warn" />
           </div>
 

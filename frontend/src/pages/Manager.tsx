@@ -8,7 +8,7 @@ import {
   CartesianGrid,
   Cell,
 } from "recharts";
-import { useCosts, useWorkflows, useClients, useAlerts, useMetrics } from "../api/hooks";
+import { useCosts, useWorkflows, useClients, useAlerts, useMetrics, useBudgetStatus } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { formatMoney } from "../lib/format";
 
@@ -22,6 +22,7 @@ export default function Manager() {
   const { data: clients } = useClients(filters);
   const { data: alerts } = useAlerts();
   const { data: trends } = useMetrics("total");
+  const { data: budgets } = useBudgetStatus();
 
   return (
     <div className="grid" style={{ gap: 16 }}>
@@ -81,6 +82,36 @@ export default function Manager() {
           </div>
         ))}
         {!alerts?.items?.length && <p className="muted">No open alerts.</p>}
+      </div>
+
+      <div className="panel">
+        <h3>Budgets ({budgets?.total ?? 0})</h3>
+        {(budgets?.items ?? []).map((b) => {
+          const pct = Math.min(100, Math.round(b.utilization * 100));
+          const over = b.utilization >= 1;
+          return (
+            <div key={b.id} style={{ padding: "8px 4px", borderBottom: "1px solid var(--border)" }}>
+              <div className="row">
+                <span>{b.name ?? `Budget ${b.period}`}</span>
+                <span className="spacer" />
+                <span className="muted">
+                  {formatMoney(b.spend)} / {formatMoney(b.amount)} · {pct}%
+                </span>
+              </div>
+              <div style={{ background: "var(--panel-2)", borderRadius: 6, height: 8, marginTop: 6 }}>
+                <div
+                  style={{
+                    width: `${pct}%`,
+                    height: 8,
+                    borderRadius: 6,
+                    background: over ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--ok)",
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {!budgets?.items?.length && <p className="muted">No budgets configured.</p>}
       </div>
 
       <TrendChart data={trends?.items ?? []} />

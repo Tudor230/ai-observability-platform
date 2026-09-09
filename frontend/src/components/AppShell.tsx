@@ -30,6 +30,7 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+        <RoleSwitcher />
         <span className="alerts-badge" title="open alerts">
           ⚠ {open}
         </span>
@@ -44,11 +45,33 @@ export function AppShell() {
   );
 }
 
+const roles = [
+  { to: "/engineering", label: "Engineer" },
+  { to: "/manager", label: "SDM" },
+  { to: "/executive", label: "Finance" },
+];
+
+function RoleSwitcher() {
+  return (
+    <span className="roles">
+      {roles.map((r) => (
+        <NavLink
+          key={r.to}
+          to={r.to}
+          className={({ isActive }) => (isActive ? "role active" : "role")}
+        >
+          {r.label}
+        </NavLink>
+      ))}
+    </span>
+  );
+}
+
 function FilterBar({
   filters,
   onChange,
 }: {
-  filters: { days: number; client_id?: string; workflow?: string };
+  filters: { days: number; project_id?: string; client_id?: string; workflow?: string };
   onChange: (f: typeof filters) => void;
 }) {
   return (
@@ -65,6 +88,14 @@ function FilterBar({
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        Project
+        <input
+          value={filters.project_id ?? ""}
+          placeholder="project id"
+          onChange={(e) => onChange({ ...filters, project_id: e.target.value || undefined })}
+        />
       </label>
       <label>
         Client

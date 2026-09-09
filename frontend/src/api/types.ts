@@ -7,6 +7,9 @@ export interface Overview {
   llm_calls: number;
   tool_calls: number;
   avg_duration_ms: number;
+  p50_duration_ms: number;
+  p95_duration_ms: number;
+  p99_duration_ms: number;
   deltas: {
     total_cost_pct: number | null;
     executions_pct: number | null;
@@ -118,6 +121,19 @@ export interface DayMetric {
   tool_calls: number;
   total_cost: number;
   avg_duration_ms: number;
+  p50_duration_ms: number;
+  p95_duration_ms: number;
+  p99_duration_ms: number;
+}
+
+export interface BudgetStatus {
+  id: string;
+  name: string | null;
+  amount: number;
+  spend: number;
+  utilization: number;
+  period: string;
+  workflow_name: string | null;
 }
 
 export interface Alert {

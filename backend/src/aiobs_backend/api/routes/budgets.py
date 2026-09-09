@@ -1,4 +1,4 @@
-"""Budgets (admin): CRUD. Accepts external project/client identifiers."""
+"""Budgets: admin CRUD + a read-only status view for the dashboard."""
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ...alerts import budget_spend
 from ...models import Budget, Client, Project
 from ..deps import get_admin_key, get_db
 
-router = APIRouter(tags=["budgets"], dependencies=[Depends(get_admin_key)])
+router = APIRouter(tags=["budgets"])
 
 
 class BudgetIn(BaseModel):
@@ -43,7 +44,7 @@ def _resolve_ids(session: Session, project: str | None, client: str | None):
     return project_id, client_id
 
 
-@router.get("/budgets")
+@router.get("/budgets", dependencies=[Depends(get_admin_key)])
 def list_budgets(session: Session = Depends(get_db)) -> dict:
     rows = session.execute(select(Budget).order_by(Budget.period.desc())).scalars().all()
     items = []
@@ -62,7 +63,7 @@ def list_budgets(session: Session = Depends(get_db)) -> dict:
     return {"items": items, "total": len(items)}
 
 
-@router.post("/budgets")
+@router.post("/budgets", dependencies=[Depends(get_admin_key)])
 def create_budget(body: BudgetIn, session: Session = Depends(get_db)) -> dict:
     project_id, client_id = _resolve_ids(session, body.project, body.client)
     period = datetime.combine(body.period, time.min, tzinfo=timezone.utc)
@@ -79,7 +80,7 @@ def create_budget(body: BudgetIn, session: Session = Depends(get_db)) -> dict:
     return {"id": budget.id, "amount": float(budget.amount), "period": budget.period.isoformat()}
 
 
-@router.delete("/budgets/{budget_id}")
+@router.delete("/budgets/{budget_id}", dependencies=[Depends(get_admin_key)])
 def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
     budget = session.execute(
         select(Budget).where(Budget.id == budget_id)
@@ -88,3 +89,25 @@ def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
         raise HTTPException(status_code=404, detail="budget not found")
     session.delete(budget)
     return {"deleted": budget_id}
+
+
+@router.get("/budgets/status")
+def budget_status(session: Session = Depends(get_db)) -> dict:
+    """Read-only budget utilization for dashboards (no admin key needed)."""
+    rows = session.execute(select(Budget).order_by(Budget.period.desc())).scalars().all()
+    items = []
+    for b in rows:
+        spend = budget_spend(session, b)
+        amount = float(b.amount or 0)
+        items.append(
+            {
+                "id": b.id,
+                "name": b.name,
+                "amount": amount,
+                "spend": round(spend, 6),
+                "utilization": round(spend / amount, 4) if amount else 0.0,
+                "period": b.period.isoformat(),
+                "workflow_name": b.workflow_name,
+            }
+        )
+    return {"items": items, "total": len(items)}
