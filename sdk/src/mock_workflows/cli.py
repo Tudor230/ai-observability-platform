@@ -41,6 +41,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="OTLP endpoint to also export to (default: AI_OBSERVABILITY_ENDPOINT env).",
     )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key sent as the authorization header (for the platform backend ingest).",
+    )
+    parser.add_argument(
+        "--project-id",
+        default="proj-1",
+        help="Project id sent as the x-project-name header.",
+    )
     args = parser.parse_args(argv)
 
     tail = InMemorySpanExporter()
@@ -49,7 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     config = resolve_config(
         {
             "endpoint": explicit_endpoint,
-            "project_id": "proj-1",
+            "api_key": args.api_key,
+            "project_id": args.project_id,
             "capture_prompts": False,
         }
     )
@@ -57,7 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         sinks.append(build_otlp_exporter(config))
     init(
         endpoint=explicit_endpoint,
-        project_id="proj-1",
+        api_key=args.api_key,
+        project_id=args.project_id,
         capture_prompts=False,
         _final_exporter=sinks,
     )

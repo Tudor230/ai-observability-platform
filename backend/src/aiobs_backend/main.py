@@ -39,6 +39,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(api)
+    # Standard OTLP HTTP path for SDK exporters: POST /v1/traces
+    from .api.routes.ingest import otlp_router
+
+    app.include_router(otlp_router)
 
     @app.get("/health")
     def health() -> dict:
