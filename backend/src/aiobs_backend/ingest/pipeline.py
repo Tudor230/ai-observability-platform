@@ -51,6 +51,9 @@ class DerivedSpan:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
     tool_name: str | None = None
     retrieval_docs: int | None = None
     retry: int = 0
@@ -71,6 +74,9 @@ def derive(raw: RawSpan) -> DerivedSpan:
     d.total_tokens = attrs.as_int(a, attrs.LLM_TOTAL_TOKENS)
     if not d.total_tokens:
         d.total_tokens = d.input_tokens + d.output_tokens
+    d.cache_read_tokens = attrs.as_int(a, attrs.LLM_CACHE_READ_TOKENS)
+    d.cache_write_tokens = attrs.as_int(a, attrs.LLM_CACHE_WRITE_TOKENS)
+    d.reasoning_tokens = attrs.as_int(a, attrs.LLM_REASONING_TOKENS)
     d.tool_name = attrs.as_str(a, attrs.TOOL_NAME)
     d.retrieval_docs = attrs.retrieval_doc_count(raw)
     d.retry = attrs.retry_count(a)
@@ -171,6 +177,7 @@ def process_trace(
     span_rows: list[Span] = []
     cost_rows: list[CostRecord] = []
     total_cost = 0.0
+    priced_calls = 0
     llm_calls = tool_calls = retrieval_calls = agent_calls = error_count = retries = 0
     input_tokens = output_tokens = total_tokens = 0
 
@@ -200,9 +207,15 @@ def process_trace(
             pricing = resolver.resolve(d.provider, d.model)
             if pricing is not None:
                 span_cost = compute_llm_cost(
-                    pricing, d.input_tokens, d.output_tokens
+                    pricing,
+                    d.input_tokens,
+                    d.output_tokens,
+                    cache_read_tokens=d.cache_read_tokens,
+                    cache_write_tokens=d.cache_write_tokens,
+                    reasoning_tokens=d.reasoning_tokens,
                 )
                 total_cost += span_cost
+                priced_calls += 1
                 cost_rows.append(
                     CostRecord(
                         execution_id=execution.id,
@@ -264,7 +277,7 @@ def process_trace(
     execution.agent_calls = agent_calls
     execution.error_count = error_count
     execution.retry_count = retries
-    execution.total_cost = round(total_cost, 6)
+    execution.total_cost = round(total_cost, 6) if priced_calls else None
     execution.duration_ms = execution.duration_ms or _duration_ms(started, ended)
     touch_agents(session, derived)
     session.flush()

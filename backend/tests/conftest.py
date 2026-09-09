@@ -40,11 +40,11 @@ def session_factory(engine):
 
 def _seed_pricing(session):
     now = datetime.now(timezone.utc)
-    for provider, model, inp, outp in (
-        ("openai", "gpt-4o-mini", 0.15, 0.60),
-        ("openai", "gpt-4o", 2.50, 10.00),
-        ("anthropic", "claude", 3.00, 15.00),
-        ("deepseek", "deepseek-chat", 0.27, 1.10),
+    for provider, model, inp, outp, cr, cw, rz in (
+        ("openai", "gpt-4o-mini", 0.15, 0.60, 0.075, 0.15, None),
+        ("openai", "gpt-4o", 2.50, 10.00, 1.25, 2.50, None),
+        ("anthropic", "claude", 3.00, 15.00, 0.30, 3.00, 15.00),
+        ("deepseek", "deepseek-chat", 0.27, 1.10, None, None, None),
     ):
         session.add(
             Pricing(
@@ -53,6 +53,9 @@ def _seed_pricing(session):
                 model_match="exact",
                 input_price_per_1m=inp,
                 output_price_per_1m=outp,
+                cache_read_price_per_1m=cr,
+                cache_write_price_per_1m=cw,
+                reasoning_price_per_1m=rz,
                 effective_from=now,
             )
         )

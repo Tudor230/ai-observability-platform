@@ -17,7 +17,7 @@ router = APIRouter(tags=["pricing"], dependencies=[Depends(get_admin_key)])
 class PricingIn(BaseModel):
     provider: str
     model: str
-    model_match: str = Field(default="exact", pattern="^(exact|prefix)$")
+    model_match: str = Field(default="exact", pattern="^(exact|prefix|default)$")
     input_price_per_1m: float = Field(ge=0)
     output_price_per_1m: float = Field(ge=0)
     cache_read_price_per_1m: float | None = None

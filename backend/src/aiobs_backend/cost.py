@@ -38,6 +38,7 @@ class PricingResolver:
         )
         if not rows:
             return None
+        # Fallback chain: exact model → model prefix → provider default → unpriced.
         exact = next(
             (p for p in rows if p.model_match == "exact" and p.model == model), None
         )
@@ -49,7 +50,7 @@ class PricingResolver:
         )
         if prefix:
             return prefix
-        return None
+        return next((p for p in rows if p.model_match == "default"), None)
 
 
 def compute_llm_cost(
