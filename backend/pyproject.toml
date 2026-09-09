@@ -21,6 +21,7 @@ aiobs-contracts = { path = "../shared/aiobs_contracts", editable = true }
 dev = [
     "pytest>=8.0",
     "httpx>=0.28",
+    "alembic>=1.19.2",
 ]
 
 [project.scripts]
