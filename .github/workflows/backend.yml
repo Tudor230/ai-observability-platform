@@ -75,7 +75,7 @@ jobs:
           --health-timeout 2s
           --health-retries 20
     env:
-      AIOBS_KPI_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      AIOBS_KPI_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
       AIOBS_KPI_PORT: 8000
     steps:
       - uses: actions/checkout@v4

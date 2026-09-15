@@ -107,6 +107,10 @@ def _wait_health() -> None:
 def main() -> int:
     _assert_disposable(DB_URL)
     os.environ["AIOBS_DATABASE_URL"] = DB_URL
+    # Threshold tuned so today's mock-suite error rate (~47%) deterministically
+    # crosses it: the gate tests the alert machinery (docs/05 §5.4), not the
+    # production thresholds (which default to 50%). Overridable via env.
+    os.environ.setdefault("AIOBS_ALERT_ERROR_RATE", "0.3")
     from sqlalchemy import select
 
     from aiobs_backend import db, seed
