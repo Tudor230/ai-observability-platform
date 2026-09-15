@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     db_connect_timeout_s: int = 10
     # API keys / admin bootstrap
     admin_api_key: str | None = None
+    # Read access (F06): when set, read endpoints require `x-api-key` (or the admin key)
+    read_api_key: str | None = None
+    # Ingest body cap (F21)
+    max_ingest_bytes: int = 10 * 1024 * 1024
     # Pricing seed
     seed_pricing: bool = True
     # Alert evaluation cadence (seconds) for the CLI/background loop

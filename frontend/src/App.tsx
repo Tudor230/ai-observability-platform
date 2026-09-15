@@ -1,7 +1,8 @@
-import { lazy, Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { lazy, Suspense, type ReactNode } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { FiltersProvider } from "./state/FiltersContext";
+import { RoleProvider, useRole, type Role } from "./state/RoleContext";
 
 const Overview = lazy(() => import("./pages/Overview"));
 const Engineering = lazy(() => import("./pages/Engineering"));
@@ -13,20 +14,56 @@ function Loading() {
   return <p className="muted">Loading…</p>;
 }
 
+function RequireRole({ allow, children }: { allow: Role[]; children: ReactNode }) {
+  const { role } = useRole();
+  if (!allow.includes(role)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
-    <FiltersProvider>
-      <Suspense fallback={<Loading />}>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route index element={<Overview />} />
-            <Route path="engineering" element={<Engineering />} />
-            <Route path="engineering/:id" element={<ExecutionDetail />} />
-            <Route path="manager" element={<Manager />} />
-            <Route path="executive" element={<Executive />} />
-          </Route>
-        </Routes>
-      </Suspense>
-    </FiltersProvider>
+    <RoleProvider>
+      <FiltersProvider>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route index element={<Overview />} />
+              <Route
+                path="engineering"
+                element={
+                  <RequireRole allow={["all", "engineer"]}>
+                    <Engineering />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="engineering/:id"
+                element={
+                  <RequireRole allow={["all", "engineer"]}>
+                    <ExecutionDetail />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="manager"
+                element={
+                  <RequireRole allow={["all", "manager"]}>
+                    <Manager />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="executive"
+                element={
+                  <RequireRole allow={["all", "executive"]}>
+                    <Executive />
+                  </RequireRole>
+                }
+              />
+            </Route>
+          </Routes>
+        </Suspense>
+      </FiltersProvider>
+    </RoleProvider>
   );
 }

@@ -8,11 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Client, CostRecord, Execution, Project
-from ..deps import get_db, get_project_scope
+from ..deps import get_db, get_project_scope, require_read_access
 from ..queries import default_range, fetch_exec_rows, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["costs"])
+router = APIRouter(tags=["costs"], dependencies=[Depends(require_read_access)])
 
 DIMENSIONS = {"project", "client", "workflow", "model"}
 

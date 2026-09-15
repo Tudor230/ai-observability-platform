@@ -429,3 +429,66 @@ def test_executions_days_filter(client, project):
     assert client.get("/api/v1/executions?days=30").json()["total"] == 2
 
 
+# ---------------------------------------------------------------------------
+# Ingest hardening (F21)
+# ---------------------------------------------------------------------------
+
+
+def _single_root(trace_id: int, project_id: str = "proj-1"):
+    now = _now()
+    return [
+        build_span(
+            name="wf", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
+            start=now, end=now + timedelta(seconds=1),
+            attrs={"sdk.project_id": project_id, "sdk.client_id": "client-42"},
+        )
+    ]
+
+
+def test_malformed_otlp_body_is_400(client, project):
+    resp = client.post("/api/v1/traces", content=b"definitely-not-protobuf", headers=_headers())
+    assert resp.status_code == 400, resp.text
+    assert "invalid OTLP payload" in resp.json()["detail"]
+
+
+def test_oversized_body_is_rejected(client, project, monkeypatch):
+    from aiobs_backend.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "max_ingest_bytes", 32)
+    try:
+        resp = client.post(
+            "/api/v1/traces", content=build_request(_happy_trace()), headers=_headers()
+        )
+        assert resp.status_code == 413
+    finally:
+        get_settings.cache_clear()
+
+
+def test_one_bad_trace_does_not_roll_back_the_batch(
+    client, session_factory, project, monkeypatch
+):
+    from aiobs_backend.ingest import pipeline
+
+    original = pipeline.process_trace
+
+    def flaky(session, proj, raw_spans):
+        if raw_spans[0].trace_id == "0000000000000000000000000000044d":  # 1101
+            raise RuntimeError("boom")
+        return original(session, proj, raw_spans)
+
+    monkeypatch.setattr(pipeline, "process_trace", flaky)
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request(_single_root(1100) + _single_root(1101)),
+        headers=_headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    summaries = resp.json()["traces"]
+    assert summaries[0]["status"] == "ok"
+    assert summaries[1]["skipped"] == "processing_error"
+    with session_factory() as session:
+        assert len(session.execute(select(Execution)).scalars().all()) == 1
+
+
+

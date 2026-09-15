@@ -7,11 +7,11 @@ from statistics import fmean
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from ..deps import get_db, get_project_scope
+from ..deps import get_db, get_project_scope, require_read_access
 from ..queries import default_range, fetch_exec_rows, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["workflows"])
+router = APIRouter(tags=["workflows"], dependencies=[Depends(require_read_access)])
 
 
 @router.get("/workflows")

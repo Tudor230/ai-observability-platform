@@ -642,7 +642,7 @@ mock scenarios, KPI harness) is the right skeleton to build the fixes on.
 ## 7. Implementation status (post-audit)
 
 Work in `feat/backend-frontend-plans` (uncommitted at time of writing).
-Verification: **43 backend tests pass** (was 17), the **hardened KPI gate passes 14/14**
+Verification: **56 backend tests pass** (was 17), the **hardened KPI gate passes 14/14**
 with measured KPI values, and each fix was re-verified against the live Docker stack.
 
 ### Fixed (with tests)
@@ -654,30 +654,36 @@ with measured KPI values, and each fix was re-verified against the live Docker s
 | F03 | `kpi_gate.py` refuses non-disposable DBs (defaults to `aiobs_test`; `AIOBS_KPI_ALLOW_RESET=1` override) + guard tests |
 | F04 | Threshold alert rules: error rate, daily tokens, tool calls/execution, p95 latency, cost vs 7-day moving average (+ 5 tests; KPI gate now asserts a non-budget alert) |
 | F05 | KPI gate measures docs/05: span coverage (100.0%), cost error (0.0000%), client/workflow attribution, 5 failure kinds, alert scenario |
+| F07 | `x-project-name` is validated against registered projects; detail/spans/failures and metrics honor the scope (404 outside it) (+ tests) |
 | F08 | `effective_from` gates pricing resolution; pricing API accepts it (+ 3 history tests) |
 | F09 | Budgets have `period_type` (day/week/month) and windowed spend/reset; utilization never clamped in the API (+ 5 tests) |
 | F10 | `PATCH /alerts/{id}` requires the admin key (+ test, live 401 verified) |
 | F17 | Postgres data persists in a named volume; all services `restart: unless-stopped` |
+| F18 | `POST /projects/{id}/disable|enable` revokes/restores keys; disabled projects 403 on ingest (+ tests, live-verified) |
+| F21 | Malformed OTLP → 400, oversized bodies → 413, per-trace savepoints keep the rest of the batch (+ 3 tests) |
+| F22 | `shared/**` changes now trigger the backend and SDK workflows |
+| F24 | Manager has an agent-efficiency panel; the failure tree is rendered hierarchically |
 | F28 | Execution root cause prefers the most specific failing descendant (+ test) |
+| F29 | Cache pricing never fabricates rates and cannot go negative; missing cache prices stay unpriced (+ 5 tests) |
 | F31 | Naive API timestamps are interpreted as UTC |
 
 ### Partially fixed
 
 | ID | Done | Remaining |
 |---|---|---|
+| F06 | Read auth dependency: when `AIOBS_READ_API_KEY` is set, every read endpoint requires `x-api-key` (or the admin key) + tests | Not enforced by default (demo); no per-user identities |
 | F11 | `/executions` uses SQL `ORDER BY started_at DESC, id` + SQL count/limit/offset | workflows/clients/agents/costs still aggregate in Python |
 | F12 | `unpriced_calls` + `cost_complete` surfaced on executions | `Decimal` end-to-end; aggregates still fold NULL to 0 |
 | F15 | `days` supported by `/executions` and `/metrics`; dashboard trends/forecast/metrics now filtered | alerts/budget panels are intentionally global |
-| F20 | 17 → 43 tests covering every P0 | lint/typecheck/coverage, Alembic in deploy/CI |
+| F16 | Role selector gates nav links and routes (persisted in localStorage), documented as presentation-level | No server-side RBAC (needs F06 + identities) |
+| F20 | 17 → 56 tests covering every P0 | lint/typecheck/coverage, Alembic in deploy/CI |
 | F23 | Budget % displayed unclamped, `formatPct` for error rate, direction-aware deltas | error banners, forecast labeling/anchor |
 | F32 | Invalid `dimension` returns 422 | budget response keys, rollup summary, percentile de-dup |
 
 ### Not started (next waves)
 
-F06/F07 (read auth + scope enforcement), F13/F14 (SDK fail-loud exports, SpanProcessor
-enrichment), F16 (RBAC/roles), F18 (key revocation), F19 (JSONB + metadata redaction),
-F21 (malformed OTLP/rate limits), F22 (contract CI), F24 (missing UI panels),
-F25 (team/service attribution, `/agents` double count), F26/F27 (rollup uniqueness,
-concurrency), F29/F30 (cache pricing, price deletion), F33–F41 (retention, K8s, alert
-delivery, CI hardening, docs drift).
+F13/F14 (SDK fail-loud exports, SpanProcessor enrichment), F19 (JSONB + metadata
+redaction), F25 (team/service attribution, `/agents` double count), F26/F27 (rollup
+uniqueness, concurrency), F30 (price deletion), F33–F41 (retention, K8s, alert delivery,
+CI hardening, docs drift).
 

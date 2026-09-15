@@ -5,6 +5,7 @@ Idempotent per trace_id: re-processing a trace fully recomputes its rows.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -25,6 +26,8 @@ from ..models import (
     Workflow,
 )
 from .otlp import RawSpan
+
+logger = logging.getLogger(__name__)
 
 
 def trim_attributes(attributes: dict[str, object]) -> dict[str, object]:
@@ -143,13 +146,28 @@ def _now() -> datetime:
 def process_trace_batch(
     session: Session, project: Project, raw_spans: list[RawSpan]
 ) -> list[dict]:
-    """Persist all traces in one OTLP batch. Returns per-trace summaries."""
+    """Persist all traces in one OTLP batch. Returns per-trace summaries.
+
+    Each trace runs in its own savepoint so one bad trace cannot roll back the
+    whole request (F21); failures are reported per trace.
+    """
     grouped: dict[str, list[RawSpan]] = {}
     for raw in raw_spans:
         grouped.setdefault(raw.trace_id, []).append(raw)
     results = []
     for trace_id, spans in grouped.items():
-        results.append(process_trace(session, project, spans))
+        try:
+            with session.begin_nested():
+                results.append(process_trace(session, project, spans))
+        except Exception as exc:  # noqa: BLE001 - report, keep the rest of the batch
+            logger.exception("trace %s failed to process", trace_id)
+            results.append(
+                {
+                    "trace_id": trace_id,
+                    "skipped": "processing_error",
+                    "detail": str(exc),
+                }
+            )
     return results
 
 
@@ -265,6 +283,7 @@ def process_trace(
                     cache_write_tokens=d.cache_write_tokens,
                     reasoning_tokens=d.reasoning_tokens,
                 )
+            if span_cost is not None:
                 total_cost += span_cost
                 priced_calls += 1
                 cost_rows.append(
@@ -379,6 +398,7 @@ def _merge_partial_batch(
                     cache_write_tokens=d.cache_write_tokens,
                     reasoning_tokens=d.reasoning_tokens,
                 )
+            if span_cost is not None:
                 session.add(
                     CostRecord(
                         execution_id=execution.id,

@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from google.protobuf.message import DecodeError
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
@@ -13,6 +14,10 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Span as OtlpSpan
 # OTel StatusCode enum
 _STATUS_OK = 1
 _STATUS_ERROR = 2
+
+
+class InvalidOtlpPayload(ValueError):
+    """Raised when an ingest body is not a valid OTLP trace export."""
 
 
 @dataclass
@@ -84,9 +89,16 @@ def _span_from_otlp(span: OtlpSpan) -> RawSpan:
 
 
 def decode_trace_export(body: bytes) -> list[RawSpan]:
-    """Parse an OTLP HTTP protobuf body into raw spans."""
+    """Parse an OTLP HTTP protobuf body into raw spans (F21).
+
+    Malformed bodies raise :class:`InvalidOtlpPayload` so the API can answer
+    400 instead of a 500.
+    """
     request = ExportTraceServiceRequest()
-    request.ParseFromString(body)
+    try:
+        request.ParseFromString(body)
+    except DecodeError as exc:
+        raise InvalidOtlpPayload(str(exc)) from exc
     raw: list[RawSpan] = []
     for resource_spans in request.resource_spans:
         for scope_spans in resource_spans.scope_spans:

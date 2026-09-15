@@ -2,9 +2,9 @@ name: sdk
 
 on:
   push:
-    paths: ["sdk/**", "docker-compose.yml", "dev/**", ".github/workflows/sdk.yml"]
+    paths: ["sdk/**", "shared/**", "docker-compose.yml", "dev/**", ".github/workflows/sdk.yml"]
   pull_request:
-    paths: ["sdk/**", "docker-compose.yml", "dev/**", ".github/workflows/sdk.yml"]
+    paths: ["sdk/**", "shared/**", "docker-compose.yml", "dev/**", ".github/workflows/sdk.yml"]
 
 defaults:
   run:

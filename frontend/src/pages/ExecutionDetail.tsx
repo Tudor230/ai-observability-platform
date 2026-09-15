@@ -86,16 +86,24 @@ function SpanTree({ spans }: { spans: Span[] }) {
 
 function FailureTree({ nodes }: { nodes: FailureNode[] }) {
   if (!nodes.length) return <p className="muted">No failures.</p>;
-  return (
-    <div className="tree">
-      {nodes.map((n) => (
-        <div key={n.span_id} className="tree-row error">
+  const byId = new Map(nodes.map((n) => [n.span_id, n]));
+  const children = new Map<string | null, FailureNode[]>();
+  for (const n of nodes) {
+    const parent = n.parent_id && byId.has(n.parent_id) ? n.parent_id : null;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent)!.push(n);
+  }
+  const render = (id: string | null, depth: number): React.ReactNode =>
+    (children.get(id) ?? []).map((n) => (
+      <div key={n.span_id}>
+        <div className="tree-row error" style={{ paddingLeft: depth * 18 }}>
           <span className="badge badge-kind">{n.kind}</span>{" "}
           <span>{n.name ?? n.span_id}</span>
           {n.error_kind && <span className="error"> · {n.error_kind}</span>}
           {n.error_message && <span className="muted"> — {n.error_message}</span>}
         </div>
-      ))}
-    </div>
-  );
+        {render(n.span_id, depth + 1)}
+      </div>
+    ));
+  return <div className="tree">{render(null, 0)}</div>;
 }

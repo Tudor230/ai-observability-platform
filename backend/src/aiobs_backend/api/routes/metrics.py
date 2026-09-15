@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import DailyMetric
-from ..deps import get_db
+from ..deps import get_db, get_project_scope, require_read_access
 
-router = APIRouter(tags=["metrics"])
+router = APIRouter(tags=["metrics"], dependencies=[Depends(require_read_access)])
 
 DIMENSIONS = {"total", "project", "client", "workflow"}
 
@@ -23,11 +23,15 @@ def get_metrics(
     start: str | None = Query(default=None),
     end: str | None = Query(default=None),
     days: int | None = Query(default=None, ge=1, le=3650),
+    project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
     if dimension not in DIMENSIONS:
         raise HTTPException(
             status_code=422, detail=f"dimension must be one of {sorted(DIMENSIONS)}"
         )
+    if project_scope and dimension == "total" and dimension_key is None:
+        # A scoped caller asking for "total" gets that project's series (F07).
+        dimension, dimension_key = "project", project_scope
     stmt = select(DailyMetric).where(DailyMetric.dimension == dimension)
     if dimension_key is not None:
         stmt = stmt.where(DailyMetric.dimension_key == dimension_key)

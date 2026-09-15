@@ -63,19 +63,36 @@ def compute_llm_cost(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
     reasoning_tokens: int = 0,
-) -> float:
-    """Per-LLM-span USD cost. 0 if no pricing applies (caller marks it unpriced)."""
+) -> float | None:
+    """Per-LLM-span USD cost, or ``None`` when the call cannot be priced.
+
+    Missing cache prices or a missing pricing row make the call *unpriced*
+    (F29): the engine never fabricates a rate or double-discounts cache tokens.
+    The fresh-input count is clamped at zero so cache conventions that already
+    exclude cached tokens cannot produce negative cost.
+    """
     if pricing is None:
-        return 0.0
+        return None
     inp = float(pricing.input_price_per_1m or 0.0)
     outp = float(pricing.output_price_per_1m or 0.0)
-    cache_read = float(pricing.cache_read_price_per_1m) if pricing.cache_read_price_per_1m is not None else inp
-    cache_write = float(pricing.cache_write_price_per_1m) if pricing.cache_write_price_per_1m is not None else inp * 1.25
-    reasoning = float(pricing.reasoning_price_per_1m) if pricing.reasoning_price_per_1m is not None else outp
+    if cache_read_tokens and pricing.cache_read_price_per_1m is None:
+        return None
+    if cache_write_tokens and pricing.cache_write_price_per_1m is None:
+        return None
+    cache_read = float(pricing.cache_read_price_per_1m or 0.0)
+    cache_write = float(pricing.cache_write_price_per_1m or 0.0)
+    # Reasoning tokens are billed at the output rate when no specific price is set.
+    reasoning = (
+        float(pricing.reasoning_price_per_1m)
+        if pricing.reasoning_price_per_1m is not None
+        else outp
+    )
+    fresh_input = max(0, input_tokens - cache_read_tokens - cache_write_tokens)
+    fresh_output = max(0, output_tokens - reasoning_tokens)
     return (
-        (input_tokens - cache_read_tokens - cache_write_tokens) * inp
+        fresh_input * inp
         + cache_read_tokens * cache_read
         + cache_write_tokens * cache_write
-        + (output_tokens - reasoning_tokens) * outp
+        + fresh_output * outp
         + reasoning_tokens * reasoning
     ) / 1_000_000.0

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ...alerts import budget_spend, budget_window
 from ...models import Budget, Client, Project
-from ..deps import get_admin_key, get_db
+from ..deps import get_admin_key, get_db, require_read_access
 
 router = APIRouter(tags=["budgets"])
 
@@ -99,7 +99,7 @@ def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
     return {"deleted": budget_id}
 
 
-@router.get("/budgets/status")
+@router.get("/budgets/status", dependencies=[Depends(require_read_access)])
 def budget_status(session: Session = Depends(get_db)) -> dict:
     """Read-only budget utilization for dashboards (no admin key needed).
 

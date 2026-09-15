@@ -8,11 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Execution, Project, Span
-from ..deps import get_db, get_project_scope
+from ..deps import get_db, get_project_scope, require_read_access
 from ..queries import default_range, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["agents"])
+router = APIRouter(tags=["agents"], dependencies=[Depends(require_read_access)])
 
 
 @router.get("/agents")

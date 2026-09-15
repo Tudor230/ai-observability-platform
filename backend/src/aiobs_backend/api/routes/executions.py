@@ -7,12 +7,30 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Execution, Span
-from ..deps import get_db, get_project_scope
+from ...models import Client, Execution, Project, Span
+from ..deps import get_db, get_project_scope, require_read_access
 from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
-router = APIRouter(tags=["executions"])
+router = APIRouter(tags=["executions"], dependencies=[Depends(require_read_access)])
+
+
+def _scoped_execution(
+    session: Session, execution_id: str, project_scope: str | None
+) -> Execution:
+    """Load an execution, hiding rows outside the caller's project scope (F07)."""
+    row = session.execute(
+        select(Execution).where(Execution.id == execution_id)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="execution not found")
+    if project_scope:
+        project_ext = session.execute(
+            select(Project.project_id).where(Project.id == row.project_id)
+        ).scalar_one_or_none()
+        if project_ext != project_scope:
+            raise HTTPException(status_code=404, detail="execution not found")
+    return row
 
 
 @router.get("/executions")
@@ -51,14 +69,12 @@ def list_executions(
 
 
 @router.get("/executions/{execution_id}")
-def get_execution(execution_id: str, session: Session = Depends(get_db)) -> dict:
-    row = session.execute(
-        select(Execution).where(Execution.id == execution_id)
-    ).scalar_one_or_none()
-    if row is None:
-        raise HTTPException(status_code=404, detail="execution not found")
-    from ...models import Project, Client
-
+def get_execution(
+    execution_id: str,
+    session: Session = Depends(get_db),
+    project_scope: str | None = Depends(get_project_scope),
+) -> dict:
+    row = _scoped_execution(session, execution_id, project_scope)
     project_ext = session.execute(
         select(Project.project_id).where(Project.id == row.project_id)
     ).scalar_one_or_none()
@@ -71,12 +87,12 @@ def get_execution(execution_id: str, session: Session = Depends(get_db)) -> dict
 
 
 @router.get("/executions/{execution_id}/spans")
-def get_spans(execution_id: str, session: Session = Depends(get_db)) -> dict:
-    exists = session.execute(
-        select(Execution.id).where(Execution.id == execution_id)
-    ).first()
-    if exists is None:
-        raise HTTPException(status_code=404, detail="execution not found")
+def get_spans(
+    execution_id: str,
+    session: Session = Depends(get_db),
+    project_scope: str | None = Depends(get_project_scope),
+) -> dict:
+    _scoped_execution(session, execution_id, project_scope)
     spans = session.execute(
         select(Span)
         .where(Span.execution_id == execution_id)
@@ -86,13 +102,13 @@ def get_spans(execution_id: str, session: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/executions/{execution_id}/failures")
-def get_failure_tree(execution_id: str, session: Session = Depends(get_db)) -> dict:
+def get_failure_tree(
+    execution_id: str,
+    session: Session = Depends(get_db),
+    project_scope: str | None = Depends(get_project_scope),
+) -> dict:
     """Failure tree: failing spans + parent/child relationships + root cause."""
-    exists = session.execute(
-        select(Execution.id).where(Execution.id == execution_id)
-    ).first()
-    if exists is None:
-        raise HTTPException(status_code=404, detail="execution not found")
+    _scoped_execution(session, execution_id, project_scope)
     spans = session.execute(
         select(Span).where(Span.execution_id == execution_id)
     ).scalars().all()

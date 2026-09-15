@@ -9,10 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Alert, Execution
-from ..deps import get_db, get_project_scope
+from ..deps import get_db, get_project_scope, require_read_access
 from ..queries import default_range, exec_rows, parse_dt
 
-router = APIRouter(tags=["overview"])
+router = APIRouter(tags=["overview"], dependencies=[Depends(require_read_access)])
 
 
 def _percentile(values: list[float], pct: float) -> float:

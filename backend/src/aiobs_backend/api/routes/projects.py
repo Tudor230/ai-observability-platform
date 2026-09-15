@@ -1,5 +1,7 @@
-"""Projects (admin): register a project and mint API keys."""
+"""Projects (admin): register a project, mint/rotate/revoke API keys."""
 from __future__ import annotations
+
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -79,3 +81,30 @@ def rotate_key(project_id: str, session: Session = Depends(get_db)) -> KeyOut:
     project.api_key_hash = hash_api_key(key)
     session.flush()
     return KeyOut(project_id=project_id, api_key=key)
+
+
+def _set_enabled(session: Session, project_id: str, enabled: bool) -> dict:
+    project = session.execute(
+        select(Project).where(Project.project_id == project_id)
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    project.enabled = enabled
+    project.revoked_at = None if enabled else datetime.now(timezone.utc)
+    session.flush()
+    return {
+        "project_id": project.project_id,
+        "enabled": project.enabled,
+        "revoked_at": project.revoked_at.isoformat() if project.revoked_at else None,
+    }
+
+
+@router.post("/projects/{project_id}/disable")
+def disable_project(project_id: str, session: Session = Depends(get_db)) -> dict:
+    """Revoke a project's keys (F18): ingest answers 403 until re-enabled."""
+    return _set_enabled(session, project_id, enabled=False)
+
+
+@router.post("/projects/{project_id}/enable")
+def enable_project(project_id: str, session: Session = Depends(get_db)) -> dict:
+    return _set_enabled(session, project_id, enabled=True)

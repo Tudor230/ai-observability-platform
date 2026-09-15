@@ -1,6 +1,7 @@
 """Shared FastAPI dependencies: DB session and auth guards."""
 from __future__ import annotations
 
+import hmac
 from collections.abc import Iterator
 
 from fastapi import Depends, Header, HTTPException
@@ -50,10 +51,43 @@ def get_project_from_headers(
     return project
 
 
-def get_project_scope(x_project_name: str | None = Header(default=None)) -> str | None:
+def get_project_scope(
+    x_project_name: str | None = Header(default=None),
+    session: Session = Depends(get_db),
+) -> str | None:
     """Optional project scope for read endpoints (``x-project-name`` header).
 
-    When present, responses are restricted to that project. No auth is required
-    for reads in v1 (docs scope, plans §11.2).
+    When present the value is validated against registered projects, so an
+    unknown scope is rejected instead of silently returning global data (F07).
     """
+    if not x_project_name:
+        return None
+    exists = session.execute(
+        select(Project.id).where(Project.project_id == x_project_name)
+    ).first()
+    if exists is None:
+        raise HTTPException(status_code=404, detail=f"unknown project {x_project_name}")
     return x_project_name
+
+
+def require_read_access(
+    x_api_key: str | None = Header(default=None),
+    x_admin_key: str | None = Header(default=None),
+) -> None:
+    """Read authentication (F06), enforced when ``AIOBS_READ_API_KEY`` is set.
+
+    Accepts the configured read key or the admin key. Deployments that have
+    not configured a read key keep the documented demo behaviour (open reads).
+    """
+    settings = get_settings()
+    if not settings.read_api_key:
+        return
+    if (
+        x_admin_key
+        and settings.admin_api_key
+        and hmac.compare_digest(x_admin_key, settings.admin_api_key)
+    ):
+        return
+    if x_api_key and hmac.compare_digest(x_api_key, settings.read_api_key):
+        return
+    raise HTTPException(status_code=401, detail="read access requires an API key")

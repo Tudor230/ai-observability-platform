@@ -1,16 +1,18 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useFilters } from "../state/FiltersContext";
+import { useRole, type Role } from "../state/RoleContext";
 import { useAlerts } from "../api/hooks";
 
-const links = [
-  { to: "/", label: "Overview" },
-  { to: "/engineering", label: "Engineering" },
-  { to: "/manager", label: "Manager" },
-  { to: "/executive", label: "Executive" },
+const links: { to: string; label: string; allow: Role[] }[] = [
+  { to: "/", label: "Overview", allow: ["all", "engineer", "manager", "executive"] },
+  { to: "/engineering", label: "Engineering", allow: ["all", "engineer"] },
+  { to: "/manager", label: "Manager", allow: ["all", "manager"] },
+  { to: "/executive", label: "Executive", allow: ["all", "executive"] },
 ];
 
 export function AppShell() {
   const { filters, setFilters } = useFilters();
+  const { role } = useRole();
   const { data } = useAlerts();
   const open = data?.total ?? 0;
 
@@ -19,16 +21,18 @@ export function AppShell() {
       <header className="topbar">
         <span className="brand">AI Observability</span>
         <nav className="nav">
-          {links.map((l) => (
-            <NavLink
-              key={l.to}
-              to={l.to}
-              end={l.to === "/"}
-              className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
-            >
-              {l.label}
-            </NavLink>
-          ))}
+          {links
+            .filter((l) => l.allow.includes(role))
+            .map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                end={l.to === "/"}
+                className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+              >
+                {l.label}
+              </NavLink>
+            ))}
         </nav>
         <RoleSwitcher />
         <span className="alerts-badge" title="open alerts">
@@ -45,25 +49,17 @@ export function AppShell() {
   );
 }
 
-const roles = [
-  { to: "/engineering", label: "Engineer" },
-  { to: "/manager", label: "SDM" },
-  { to: "/executive", label: "Finance" },
-];
-
 function RoleSwitcher() {
+  const { role, setRole } = useRole();
   return (
-    <span className="roles">
-      {roles.map((r) => (
-        <NavLink
-          key={r.to}
-          to={r.to}
-          className={({ isActive }) => (isActive ? "role active" : "role")}
-        >
-          {r.label}
-        </NavLink>
-      ))}
-    </span>
+    <label className="roles" title="Restricts the visible views to a persona">
+      <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+        <option value="all">All views</option>
+        <option value="engineer">Engineer</option>
+        <option value="manager">SDM</option>
+        <option value="executive">Finance</option>
+      </select>
+    </label>
   );
 }
 

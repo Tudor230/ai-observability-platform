@@ -8,7 +8,7 @@ import {
   CartesianGrid,
   Cell,
 } from "recharts";
-import { useCosts, useWorkflows, useClients, useAlerts, useMetrics, useBudgetStatus } from "../api/hooks";
+import { useCosts, useWorkflows, useClients, useAgents, useAlerts, useMetrics, useBudgetStatus } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { formatMoney, formatPct } from "../lib/format";
 
@@ -20,6 +20,7 @@ export default function Manager() {
   const { data: costByClient } = useCosts("client", filters);
   const { data: workflows } = useWorkflows(filters);
   const { data: clients } = useClients(filters);
+  const { data: agents } = useAgents(filters);
   const { data: alerts } = useAlerts();
   const { data: trends } = useMetrics("total", filters);
   const { data: budgets } = useBudgetStatus();
@@ -69,6 +70,27 @@ export default function Manager() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="panel">
+        <h3>Agent efficiency</h3>
+        <table>
+          <thead>
+            <tr><th>Agent</th><th>Exec</th><th>Err</th><th>Cost</th><th>Tokens</th></tr>
+          </thead>
+          <tbody>
+            {(agents?.items ?? []).map((a) => (
+              <tr key={a.name}>
+                <td>{a.name}</td>
+                <td>{a.executions}</td>
+                <td className={a.error_rate ? "error" : ""}>{formatPct(a.error_rate)}</td>
+                <td>{formatMoney(a.total_cost)}</td>
+                <td>{a.total_tokens}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!agents?.items?.length && <p className="muted">No agent spans seen yet.</p>}
       </div>
 
       <div className="panel">
