@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import DailyMetric
-from ..deps import get_db, get_project_scope, require_read_access
+from ..deps import get_db, get_project_scope, require_role
 
-router = APIRouter(tags=["metrics"], dependencies=[Depends(require_read_access)])
+router = APIRouter(tags=["metrics"], dependencies=[Depends(require_role())])
 
 DIMENSIONS = {"total", "project", "client", "workflow", "team"}
 

@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import session_scope
-from ..models import Project
-from ..security import verify_api_key
+from ..models import Project, User
+from ..security import hash_api_key, verify_api_key
 
 
 def get_db() -> Iterator[Session]:
@@ -91,3 +91,50 @@ def require_read_access(
     if x_api_key and hmac.compare_digest(x_api_key, settings.read_api_key):
         return
     raise HTTPException(status_code=401, detail="read access requires an API key")
+
+
+def _user_from_key(session: Session, key: str | None) -> User | None:
+    if not key:
+        return None
+    return session.execute(
+        select(User).where(User.api_key_hash == hash_api_key(key))
+    ).scalar_one_or_none()
+
+
+def require_role(*roles: str):
+    """Role gate for read endpoints (RBAC identities, F06/F16).
+
+    Enforcement is active when ``AIOBS_READ_API_KEY`` is configured (the same
+    switch as read auth): the service read key and the admin key bypass role
+    checks; otherwise a user API key must match its role for the endpoint.
+    With no read key configured (demo mode) reads stay open.
+
+    Usage: ``APIRouter(dependencies=[Depends(require_role("sdm", "finance"))])``.
+    """
+
+    def dependency(
+        session: Session = Depends(get_db),
+        x_api_key: str | None = Header(default=None),
+        x_admin_key: str | None = Header(default=None),
+    ) -> None:
+        settings = get_settings()
+        if not settings.read_api_key:
+            return
+        if (
+            x_admin_key
+            and settings.admin_api_key
+            and hmac.compare_digest(x_admin_key, settings.admin_api_key)
+        ):
+            return
+        if x_api_key and hmac.compare_digest(x_api_key, settings.read_api_key):
+            return
+        user = _user_from_key(session, x_api_key)
+        if user is None or not user.enabled:
+            raise HTTPException(status_code=401, detail="invalid API key")
+        if roles and user.role != "admin" and user.role not in roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"role {user.role!r} cannot access this resource",
+            )
+
+    return dependency

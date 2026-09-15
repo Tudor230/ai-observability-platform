@@ -46,6 +46,8 @@ jobs:
       - run: uv sync --group dev
       - name: Lint (ruff)
         run: uv run ruff check .
+      - name: Type check (mypy)
+        run: uv run mypy src
       - name: Migrations apply cleanly on a fresh database
         run: |
           uv run alembic upgrade head

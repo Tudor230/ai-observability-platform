@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from aiobs_backend import models  # noqa: F401  (register tables)
 from aiobs_backend.config import get_settings
 from aiobs_backend.db import Base
-from aiobs_backend import models  # noqa: F401  (register tables)
+from alembic import context
 
 config = context.config
 if config.config_file_name is not None:

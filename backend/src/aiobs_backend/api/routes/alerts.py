@@ -6,12 +6,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Alert
-from ..deps import get_admin_key, get_db, require_read_access
+from ..deps import get_admin_key, get_db, require_role
 
 router = APIRouter(tags=["alerts"])
 
 
-@router.get("/alerts", dependencies=[Depends(require_read_access)])
+@router.get("/alerts", dependencies=[Depends(require_role())])
 def list_alerts(
     session: Session = Depends(get_db),
     status: str | None = Query(default=None),

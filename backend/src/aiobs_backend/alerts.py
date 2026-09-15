@@ -14,6 +14,7 @@ import json
 import logging
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -96,7 +97,7 @@ def budget_spend(
         q = q.where(Execution.client_id == budget.client_id)
     if budget.workflow_name:
         q = q.where(Execution.workflow_name == budget.workflow_name)
-    return float(session.execute(q).scalar_one())
+    return float(session.execute(q).scalar_one() or 0)
 
 
 def _has_open(session: Session, rule_id: str) -> bool:
@@ -115,7 +116,7 @@ def evaluate_budget(
 ) -> list[Alert]:
     now = now or _utcnow()
     spend = budget_spend(session, budget, now)
-    amount = float(budget.amount or 0)
+    amount = float(budget.amount or Decimal("0"))
     if amount <= 0:
         return []
     utilization = spend / amount
@@ -291,6 +292,7 @@ def evaluate_threshold_rules(
                 Execution.started_at < day_start,
             )
         ).scalar_one()
+        or 0
     )
     baseline_per_day = baseline_total / 7
     if (

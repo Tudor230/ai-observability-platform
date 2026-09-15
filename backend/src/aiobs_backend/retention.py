@@ -15,6 +15,10 @@ from sqlalchemy.orm import Session
 from .models import Alert, CostRecord, DailyMetric, Execution, Span
 
 
+def _rowcount(result) -> int:
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 def purge_expired(
     session: Session, retention_days: int, now: datetime | None = None
 ) -> dict:
@@ -37,20 +41,22 @@ def purge_expired(
         ).scalars()
     )
     if execution_ids:
-        result["cost_records"] = session.execute(
-            delete(CostRecord).where(CostRecord.execution_id.in_(execution_ids))
-        ).rowcount
-        result["spans"] = session.execute(
-            delete(Span).where(Span.execution_id.in_(execution_ids))
-        ).rowcount
-        result["executions"] = session.execute(
-            delete(Execution).where(Execution.id.in_(execution_ids))
-        ).rowcount
-    result["daily_metrics"] = session.execute(
-        delete(DailyMetric).where(DailyMetric.day < cutoff.date().isoformat())
-    ).rowcount
-    result["alerts"] = session.execute(
-        delete(Alert).where(Alert.triggered_at < cutoff)
-    ).rowcount
+        result["cost_records"] = _rowcount(
+            session.execute(
+                delete(CostRecord).where(CostRecord.execution_id.in_(execution_ids))
+            )
+        )
+        result["spans"] = _rowcount(
+            session.execute(delete(Span).where(Span.execution_id.in_(execution_ids)))
+        )
+        result["executions"] = _rowcount(
+            session.execute(delete(Execution).where(Execution.id.in_(execution_ids)))
+        )
+    result["daily_metrics"] = _rowcount(
+        session.execute(delete(DailyMetric).where(DailyMetric.day < cutoff.date().isoformat()))
+    )
+    result["alerts"] = _rowcount(
+        session.execute(delete(Alert).where(Alert.triggered_at < cutoff))
+    )
     session.flush()
     return result

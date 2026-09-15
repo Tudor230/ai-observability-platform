@@ -61,3 +61,13 @@ def test_daily_metric_rejects_duplicate_rows(session_factory, project):
         session.add(DailyMetric(**base))
         with pytest.raises(IntegrityError):
             session.commit()
+
+
+def test_costs_team_dimension(client, project):
+    client.post("/api/v1/traces", content=build_request(_trace(1401)), headers=_headers())
+    data = client.get("/api/v1/costs?dimension=team").json()
+    assert data["total"] == 1
+    item = data["items"][0]
+    assert item["key"] == "Test"  # seed_project's team
+    assert abs(item["total_cost"] - 0.000045) < 1e-9
+    assert item["executions"] == 1

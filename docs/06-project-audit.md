@@ -642,10 +642,11 @@ mock scenarios, KPI harness) is the right skeleton to build the fixes on.
 ## 7. Implementation status (post-audit)
 
 Work in `feat/backend-frontend-plans` (uncommitted at time of writing).
-Verification: **68 backend tests pass** (was 17, 86% coverage, ruff clean, Alembic
-migrates a fresh DB), the **SDK suite passes** (66 + 1 skipped), the **frontend suite
-passes** (14), the **hardened KPI gate passes 14/14** with measured KPI values, and
-each fix was re-verified against the live Docker stack.
+Verification: **72 backend tests pass** (was 17, 86% coverage, ruff + mypy clean,
+Alembic migrates a fresh DB), the **SDK suite passes** (67 + 1 skipped), the
+**frontend suite passes** (14 tests + ESLint + tsc), the **hardened KPI gate passes
+14/14** with measured KPI values, and each fix was re-verified against the live
+Docker stack.
 
 ### Fixed (with tests)
 
@@ -660,7 +661,10 @@ each fix was re-verified against the live Docker stack.
 | F08 | `effective_from` gates pricing resolution; pricing API accepts it (+ 3 history tests) |
 | F09 | Budgets have `period_type` (day/week/month) and windowed spend/reset; utilization never clamped in the API (+ 5 tests) |
 | F10 | `PATCH /alerts/{id}` requires the admin key (+ test, live 401 verified) |
+| F11 | workflows/clients/costs (incl. the new `team` dimension) and agents aggregate with SQL `GROUP BY`; `/executions` is SQL-paginated |
+| F12 | Stored totals accumulate in `Decimal` (pipeline + rollups); unpriced calls surfaced (read-side sums remain float with 6-dp rounding) |
 | F13 | SDK export health: failure counters + `last_error`, honest `flush()`, `export_stats()`, unknown `init()` kwargs raise, endpoint suffix normalization (+ 4 tests) |
+| F14 | SDK enrichment streams spans (bounded per-trace metadata, no whole-trace buffering); the backend keeps children-first batches in a provisional execution and merges when the root arrives (+ SDK tests, 100% KPI coverage) |
 | F17 | Postgres data persists in a named volume; all services `restart: unless-stopped` |
 | F18 | `POST /projects/{id}/disable|enable` revokes/restores keys; disabled projects 403 on ingest (+ tests, live-verified) |
 | F19 | SDK metadata is redacted (sensitive keys, recursively) before persistence; `metadata_json`/`attributes` are JSONB (+ tests) |
@@ -676,30 +680,30 @@ each fix was re-verified against the live Docker stack.
 | F31 | Naive API timestamps are interpreted as UTC |
 | F32 | Invalid `dimension` returns 422; budgets expose external keys; `/metrics/rollup` reports real days; percentiles share one implementation (`stats.percentile`) |
 | F33 | Backfilled token counts carry `sdk.tokens.estimated` (contract + SDK + read API) (+ 4 tests) |
+| F34 | ADR-0005 records the manual-vs-agent margin descope: the required inputs are customer business data, not telemetry |
 | F35 | Retention is opt-in (`AIOBS_RETENTION_DAYS`) with `POST /maintenance/purge` + `scripts/purge_retention.py`; ADR-0003 documents payload handling/erasure (+ 2 tests) |
 | F36 | ADR-0004 records the deployment decision: Compose is the supported prototype deployment; K8s deferred with an explicit migration path |
 | F37 | Alerts are delivered best-effort to `AIOBS_ALERT_WEBHOOK_URL` as JSON (+ test) |
 | F38 | CI: 80% backend coverage floor (86% measured), `e2e_smoke.py` runs in CI, SDK e2e runs on PRs, job timeouts, Phoenix pinned by digest |
+| F41 | Plans (`sdk/backend/frontend.md`) now carry an implementation-status section; README links the audit and ADRs |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
 ### Partially fixed
 
 | ID | Done | Remaining |
 |---|---|---|
-| F06 | Read auth dependency: when `AIOBS_READ_API_KEY` is set, every read endpoint requires `x-api-key` (or the admin key) + tests | Not enforced by default (demo); no per-user identities |
-| F11 | `/executions` uses SQL `ORDER BY started_at DESC, id` + SQL count/limit/offset | workflows/clients/agents/costs still aggregate in Python |
-| F12 | `unpriced_calls` + `cost_complete` surfaced on executions | `Decimal` end-to-end; aggregates still fold NULL to 0 |
+| F06 | Read auth dependency + **user identities**: `/users` (admin) mints keys with roles (`engineer`/`sdm`/`finance`/`admin`); role gates on trace-detail vs cost views (+ 3 tests, live-verified) | Not enforced by default (demo); no SSO |
 | F15 | `days` supported by `/executions` and `/metrics`; dashboard trends/forecast/metrics now filtered | alerts/budget panels are intentionally global |
-| F16 | Role selector gates nav links and routes (persisted in localStorage), documented as presentation-level | No server-side RBAC (needs F06 + identities) |
-| F20 | 17 → 68 backend tests, 86% coverage with an 80% CI floor; ruff lint in CI; Alembic migration for every schema change, applied by the Docker image and validated in CI (`upgrade head` + `alembic check`) | Type checking (mypy/pyright) |
-| F25 | `/agents` counts cost/tokens once per execution (double-count fixed); `team` dimension added to rollups and `/metrics` | Agent dimension is still globally unique (not per project); no team cost endpoint |
-| F39 | Unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized | Hook thread-safety, atexit per provider, dead code/deps |
-| F40 | Money formatting is grouped and preserves sub-cent precision; topbar wraps and wide tables scroll; nginx serves gzip + immutable asset caching | ESLint, component/route tests, a11y pass |
+| F16 | Role selector gates nav links and routes (persisted in localStorage); server-side roles apply when read auth is enabled | UI role switch is presentation-level (no per-user login) |
+| F20 | 17 → 72 backend tests, 86% coverage with an 80% CI floor; ruff + mypy in CI; Alembic applied by the image and validated in CI | — |
+| F25 | `/agents` counts cost/tokens once per execution in SQL; `team` dimension in rollups, `/metrics` and `/costs?dimension=team` | Agent dimension is still globally unique (not per project) |
+| F39 | Unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized | Hook thread-safety, atexit per provider |
+| F40 | Money formatting grouped/adaptive; responsive topbar + scrollable tables; nginx gzip + immutable assets; **ESLint** (flat config) in CI | Component/page tests (RTL/Playwright) |
 
 ### Not started (next waves)
 
-F14 (SpanProcessor enrichment instead of whole-trace buffering), F34 (manual-vs-agent
-cost/margin — needs a product decision), F41 (docs drift), plus the remaining sub-items
-noted above (RBAC identities, team cost endpoint, `Decimal` money, SQL aggregation for
-the remaining views, type checking, ESLint).
+Optional next steps, none of which block the assignment: per-agent project scoping;
+`Decimal` read-side aggregate sums; SDK background-worker mode
+(`separate_trace_from_runtime_context`); cache/reasoning token validation; component
+and Playwright page tests; production K8s manifests (descoped in ADR-0004).
 

@@ -63,22 +63,24 @@ def as_str(attrs: dict[str, object], key: str) -> str | None:
 
 def as_int(attrs: dict[str, object], key: str) -> int:
     value = attrs.get(key)
-    if value is None:
-        return 0
-    try:
+    if isinstance(value, bool):
         return int(value)
-    except (TypeError, ValueError):
-        return 0
+    if isinstance(value, (int, float, str)):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+    return 0
 
 
 def as_float(attrs: dict[str, object], key: str) -> float | None:
     value = attrs.get(key)
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def span_kind(span: RawSpan) -> str:

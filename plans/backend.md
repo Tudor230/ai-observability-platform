@@ -357,3 +357,28 @@ Resolved during implementation on the wayfinder map `.scratch/backend/` (per
 | [06 — Shared contracts](../.scratch/backend/issues/06-shared-contracts.md) | `shared/aiobs_contracts` as the SDK↔backend single source of truth |
 
 Also recorded as [ADR-0001](../docs/adr/0001-backend-ingest-otlp-direct.md).
+
+---
+
+## Implementation status (2026-09-15)
+
+Shipped as planned, with these deltas (see `docs/06-project-audit.md` �7 and
+`docs/adr/`):
+
+- **Alert engine**: budget rules **plus** threshold rules (error rate, daily
+  tokens, tool calls/execution, p95 latency, cost vs 7-day moving average);
+  webhook delivery via `AIOBS_ALERT_WEBHOOK_URL`.
+- **Budgets**: day/week/month windows anchored at `period`, so utilization
+  resets per period; spend and status include the window.
+- **Ingest**: children-first batches are kept (provisional execution) and merge
+  when the root arrives; malformed payloads get 400; bodies are capped; each
+  trace runs in a savepoint.
+- **Pricing**: `effective_from` gates resolution; cost records snapshot the
+  resolved rates; referenced rows cannot be deleted.
+- **Schema**: Alembic is authoritative in the Docker image and validated in CI.
+- **RBAC (opt-in)**: with `AIOBS_READ_API_KEY` set, reads require a key; user
+  identities (`/users`, roles engineer/sdm/finance/admin) gate persona views.
+- **Retention**: `AIOBS_RETENTION_DAYS` + `POST /maintenance/purge`
+  (ADR-0003).
+- **Still deferred**: Kubernetes manifests (ADR-0004), `Decimal` read-side
+  aggregate sums (storage is already exact), per-agent project scoping.

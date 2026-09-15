@@ -390,18 +390,56 @@ def test_export_never_raises_through_bad_sink():
     assert result is SpanExportResult.FAILURE
 
 
-def test_incomplete_trace_held_until_root():
+def test_spans_stream_without_waiting_for_the_root():
+    """F14: spans are forwarded immediately; only metadata is retained."""
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
+    from opentelemetry.trace.status import StatusCode
 
+    from ai_observability import _enrichment
     from ai_observability._enrichment import EnrichingExporter
 
     sink = InMemorySpanExporter()
     exporter = EnrichingExporter(CFG_OFF, sink)
-    llm = make_span(1, TRACE, 99, name="llm", kind="LLM")
+    llm = make_span(
+        1,
+        TRACE,
+        99,
+        name="llm",
+        kind="LLM",
+        status_code=StatusCode.ERROR,
+        events=[exception_event("RateLimitError", "429 rate limit")],
+    )
     root = make_span(2, TRACE, None, name="wf", kind="CHAIN")
-    exporter.export([llm])  # root missing -> held
-    assert len(sink.get_finished_spans()) == 0
-    exporter.export([root])  # root arrives -> whole trace flushes
-    assert len(sink.get_finished_spans()) == 2
+
+    exporter.export([llm])  # exported immediately, no buffering
+    assert len(sink.get_finished_spans()) == 1
+
+    exporter.export([root])  # root arrives later and is stamped from metadata
+    spans = {s.name: s for s in sink.get_finished_spans()}
+    assert set(spans) == {"llm", "wf"}
+    assert spans["wf"].status.status_code == StatusCode.ERROR
+    assert dict(spans["wf"].attributes)["sdk.error.kind"] == "rate_limit"
+
+
+def test_metadata_is_bounded_per_trace(monkeypatch):
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from ai_observability import _enrichment
+    from ai_observability._enrichment import EnrichingExporter
+
+    monkeypatch.setattr(_enrichment, "_MAX_PENDING_TRACES", 5)
+    monkeypatch.setattr(_enrichment, "_MAX_METAS_PER_TRACE", 4)
+    exporter = EnrichingExporter(CFG_OFF, InMemorySpanExporter())
+
+    exporter.export([make_span(1, TRACE, None, name="wf")])
+    for span_id in range(2, 12):
+        exporter.export([make_span(span_id, TRACE, 1, name="step")])
+    assert len(exporter._traces[TRACE].metas) <= 4
+
+    for trace in range(1, 11):
+        exporter.export([make_span(1, TRACE + trace, None, name="wf")])
+    assert len(exporter._traces) <= 5

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ...alerts import budget_spend, budget_window
 from ...models import Budget, Client, Project
-from ..deps import get_admin_key, get_db, require_read_access
+from ..deps import get_admin_key, get_db, require_role
 
 router = APIRouter(tags=["budgets"])
 
@@ -48,8 +49,12 @@ def _resolve_ids(session: Session, project: str | None, client: str | None):
 @router.get("/budgets", dependencies=[Depends(get_admin_key)])
 def list_budgets(session: Session = Depends(get_db)) -> dict:
     rows = session.execute(select(Budget).order_by(Budget.period.desc())).scalars().all()
-    project_keys = dict(session.execute(select(Project.id, Project.project_id)).all())
-    client_keys = dict(session.execute(select(Client.id, Client.external_key)).all())
+    project_keys = {
+        pid: ext for pid, ext in session.execute(select(Project.id, Project.project_id))
+    }
+    client_keys = {
+        cid: ext for cid, ext in session.execute(select(Client.id, Client.external_key))
+    }
     items = []
     for b in rows:
         items.append(
@@ -104,7 +109,7 @@ def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
     return {"deleted": budget_id}
 
 
-@router.get("/budgets/status", dependencies=[Depends(require_read_access)])
+@router.get("/budgets/status", dependencies=[Depends(require_role("sdm", "finance"))])
 def budget_status(session: Session = Depends(get_db)) -> dict:
     """Read-only budget utilization for dashboards (no admin key needed).
 
@@ -115,7 +120,7 @@ def budget_status(session: Session = Depends(get_db)) -> dict:
     items = []
     for b in rows:
         spend = budget_spend(session, b)
-        amount = float(b.amount or 0)
+        amount = float(b.amount or Decimal("0"))
         window_start, window_end = budget_window(b)
         items.append(
             {

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from ..models import Client, Execution, Project
+from ..models import Client, Execution, Project, Team
 
 EXTERNAL = (Execution, Project.project_id, Client.external_key)
 
@@ -66,4 +66,49 @@ def exec_rows(
 
 
 def fetch_exec_rows(session: Session, **filters) -> list[tuple[Execution, str | None, str | None]]:
-    return list(session.execute(exec_rows(session, **filters)))
+    rows = session.execute(exec_rows(session, **filters)).all()
+    return [(row[0], row[1], row[2]) for row in rows]
+
+
+def exec_aggregates(
+    session: Session,
+    *,
+    group_col,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    project_id: str | None = None,
+    client_id: str | None = None,
+    workflow: str | None = None,
+):
+    """Aggregate executions in SQL per dimension (F11).
+
+    Returns rows with: key, executions, failed, total_cost, total_tokens,
+    llm_calls, avg_duration_ms, last_seen.
+    """
+    stmt = (
+        select(
+            group_col.label("key"),
+            func.count(Execution.id).label("executions"),
+            func.count().filter(Execution.status == "error").label("failed"),
+            func.coalesce(func.sum(Execution.total_cost), 0).label("total_cost"),
+            func.coalesce(func.sum(Execution.total_tokens), 0).label("total_tokens"),
+            func.coalesce(func.sum(Execution.llm_calls), 0).label("llm_calls"),
+            func.coalesce(func.avg(Execution.duration_ms), 0).label("avg_duration_ms"),
+            func.max(Execution.started_at).label("last_seen"),
+        )
+        .join(Project, Project.id == Execution.project_id)
+        .join(Team, Team.id == Project.team_id)
+        .outerjoin(Client, Client.id == Execution.client_id)
+        .group_by(group_col)
+    )
+    if start:
+        stmt = stmt.where(Execution.started_at >= start)
+    if end:
+        stmt = stmt.where(Execution.started_at < end)
+    if project_id:
+        stmt = stmt.where(Project.project_id == project_id)
+    if client_id:
+        stmt = stmt.where(Client.external_key == client_id)
+    if workflow:
+        stmt = stmt.where(Execution.workflow_name == workflow)
+    return list(session.execute(stmt))

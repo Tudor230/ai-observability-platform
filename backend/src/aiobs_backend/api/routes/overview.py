@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from ...models import Alert, Execution
 from ...stats import percentile
-from ..deps import get_db, get_project_scope, require_read_access
+from ..deps import get_db, get_project_scope, require_role
 from ..queries import default_range, exec_rows, parse_dt
 
-router = APIRouter(tags=["overview"], dependencies=[Depends(require_read_access)])
+router = APIRouter(tags=["overview"], dependencies=[Depends(require_role())])
 
 
 def _window_stats(session: Session, start, end, **extra) -> dict:
@@ -61,8 +61,11 @@ def overview(
     workflow: str | None = Query(default=None),
     project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
-    now = parse_dt(end) if end else default_range(days)[1]
-    window_start = parse_dt(start) if start else now - timedelta(days=days)
+    now = parse_dt(end) if end else None
+    now = now or default_range(days)[1]
+    window_start = parse_dt(start)
+    if window_start is None:
+        window_start = now - timedelta(days=days)
     project_id = project_id or project_scope
 
     current = _window_stats(

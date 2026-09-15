@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import (
     DateTime,
@@ -54,6 +55,19 @@ class Project(Base):
     )
 
     team: Mapped[Team] = relationship()
+
+
+class User(Base):
+    """Platform user identity for opt-in RBAC reads (F06/F16)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    role: Mapped[str] = mapped_column(String(20), default="engineer")  # admin|engineer|sdm|finance
+    api_key_hash: Mapped[str] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class Client(Base):
@@ -115,7 +129,7 @@ class Execution(Base):
     )
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[float | None] = mapped_column(nullable=True)
-    total_cost: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    total_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -157,7 +171,7 @@ class Span(Base):
     tool_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     retrieval_doc_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
-    cost: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     attributes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     execution: Mapped[Execution] = relationship(back_populates="spans")
@@ -206,7 +220,7 @@ class CostRecord(Base):
     price_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Resolved rates snapshot so cost history survives pricing edits/deletes (F30).
     unit_prices: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    amount: Mapped[float] = mapped_column(Numeric(18, 6))
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
 
 
 class DailyMetric(Base):
@@ -254,7 +268,7 @@ class Budget(Base):
         ForeignKey("clients.id"), nullable=True, index=True
     )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    amount: Mapped[float] = mapped_column(Numeric(18, 6))
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     period: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True
     )  # anchor/period start

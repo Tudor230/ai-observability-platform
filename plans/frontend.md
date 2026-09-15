@@ -149,3 +149,22 @@ Resolved during implementation on the wayfinder map `.scratch/frontend/` (per
 | [03 — API client](../.scratch/frontend/issues/03-api-client.md) | Typed fetch client + query hooks; dev + nginx `/api` proxies |
 | [04 — Views](../.scratch/frontend/issues/04-views.md) | Overview / Engineering (span+failure tree) / Manager (cost, budget, alerts) / Executive (unit economics + forecast) |
 | [05 — Code-splitting](../.scratch/frontend/issues/05-code-splitting.md) | Lazy pages + vendor/charts chunks |
+
+---
+
+## Implementation status (2026-09-15)
+
+Shipped as planned, with these deltas (see `docs/06-project-audit.md` �7):
+
+- **Role switcher**: presentation-level role gating (nav + routes, persisted);
+  server-side RBAC is opt-in via user keys (roles engineer/sdm/finance/admin).
+- **Filters**: days/project/client/workflow thread into overview, executions,
+  metrics/trends/forecast; alerts and budget status are intentionally global.
+- **Agent efficiency**: panel backed by `/agents` (per-execution aggregation).
+- **Failure tree**: rendered hierarchically; execution detail distinguishes
+  404 from backend failures; all views show explicit error banners.
+- **Forecast**: linear projection anchored to today, labeled as an estimate,
+  with an "insufficient data" state.
+- **Deferred**: pagination/status-filter UI in the Engineering table,
+  chart-to-execution drill-downs, Playwright page tests (CI covers tsc, ESLint,
+  Vitest and the production build).

@@ -13,6 +13,9 @@ Observability + FinOps platform for agentic AI applications. See
 | **Dashboard** (engineering / manager / executive views) | Implemented — [`frontend/`](frontend/) (see [frontend/README.md](frontend/README.md), [plans/frontend.md](plans/frontend.md)) |
 | Phoenix deployment | root [`docker-compose.yml`](docker-compose.yml) — Postgres instance shared with the SDK tooling and the backend |
 
+Audit, known gaps, and the fix history: [`docs/06-project-audit.md`](docs/06-project-audit.md);
+decisions: [`docs/adr/`](docs/adr/).
+
 ## Getting started (SDK)
 
 Start the shared trace stack first (from the repo root) — Phoenix `:6006` +

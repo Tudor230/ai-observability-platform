@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import aiobs_contracts as c
 from sqlalchemy import select
@@ -213,11 +214,13 @@ def process_trace(
 
     if root is None:
         # Partial batch (children whose parent is not here). Never invent a root
-        # and never delete stored rows; merge into the existing execution if one
-        # exists (F02).
+        # and never delete stored rows; merge into an existing execution if one
+        # exists (F02). A streaming SDK can deliver children before the root, so
+        # otherwise keep them in a *provisional* execution instead of dropping
+        # them; the root batch later rebuilds the execution with full identity.
         if existing is not None:
             return _merge_partial_batch(session, existing, derived)
-        return {"trace_id": trace_id, "skipped": "root span not in batch"}
+        return _provisional_batch(session, project, derived, trace_id)
 
     root_a = root.raw.attributes
     # Ingest validation: the authenticated project must match the root's identity.
@@ -230,20 +233,19 @@ def process_trace(
             "detail": f"root sdk.project_id={root_project!r} != {project.project_id!r}",
         }
 
-    # Validated root in hand: idempotent recompute may safely replace old rows.
+    # Validated root in hand: idempotent recompute may safely replace old rows,
+    # unless the stored execution is *provisional* (children arrived first) —
+    # then keep the stored spans and upgrade the identity in place.
     if existing:
+        if existing.workflow_name is None:
+            _apply_root_identity(session, existing, project, root)
+            return _merge_partial_batch(session, existing, derived)
         session.query(CostRecord).filter(
             CostRecord.execution_id == existing.id
         ).delete()
         session.query(Span).filter(Span.execution_id == existing.id).delete()
         session.delete(existing)
         session.flush()
-
-    client_key = attrs.as_str(root_a, attrs.SDK_CLIENT_ID)
-    client = _upsert_client(session, client_key) if client_key else None
-    wf_name = root.raw.name or root.oi_kind
-    wf_version = attrs.as_str(root_a, attrs.SDK_WORKFLOW_VERSION)
-    workflow = _upsert_workflow(session, project, wf_name, wf_version)
 
     started = root.raw.start_time or min(
         (d.raw.start_time for d in derived if d.raw.start_time), default=None
@@ -255,26 +257,20 @@ def process_trace(
 
     execution = Execution(
         trace_id=trace_id,
-        workflow_id=attrs.as_str(root_a, attrs.SDK_WORKFLOW_ID),
-        session_id=attrs.as_str(root_a, attrs.SESSION_ID),
         project_id=project.id,
-        client_id=client.id if client else None,
-        workflow_name=wf_name,
-        workflow_ref=workflow.id,
-        workflow_version=wf_version,
-        metadata_json=c.redact_metadata(attrs.metadata_dict(root.raw)),
         started_at=started,
         ended_at=ended,
         duration_ms=_duration_ms(started, ended),
     )
     session.add(execution)
     session.flush()
+    _apply_root_identity(session, execution, project, root)
 
     resolver = PricingResolver(session, started)
     failed: list[DerivedSpan] = []
     span_rows: list[Span] = []
     cost_rows: list[CostRecord] = []
-    total_cost = 0.0
+    total_cost = Decimal("0")
     priced_calls = 0
     llm_calls = tool_calls = retrieval_calls = agent_calls = error_count = retries = 0
     input_tokens = output_tokens = total_tokens = 0
@@ -300,11 +296,11 @@ def process_trace(
             error_count += 1
             failed.append(d)
 
-        span_cost: float | None = None
+        span_cost: Decimal | None = None
         if kind == attrs.KIND_LLM:
             pricing = resolver.resolve(d.provider, d.model)
             if pricing is not None:
-                span_cost = compute_llm_cost(
+                amount = compute_llm_cost(
                     pricing,
                     d.input_tokens,
                     d.output_tokens,
@@ -312,22 +308,23 @@ def process_trace(
                     cache_write_tokens=d.cache_write_tokens,
                     reasoning_tokens=d.reasoning_tokens,
                 )
-            if span_cost is not None:
-                total_cost += span_cost
-                priced_calls += 1
-                cost_rows.append(
-                    CostRecord(
-                        execution_id=execution.id,
-                        span_id=d.raw.span_id,
-                        provider=d.provider,
-                        model=d.model,
-                        input_tokens=d.input_tokens,
-                        output_tokens=d.output_tokens,
-                        price_version=pricing.id,
-                        unit_prices=_price_snapshot(pricing),
-                        amount=span_cost,
+                if amount is not None:
+                    span_cost = Decimal(str(amount))
+                    total_cost += span_cost
+                    priced_calls += 1
+                    cost_rows.append(
+                        CostRecord(
+                            execution_id=execution.id,
+                            span_id=d.raw.span_id,
+                            provider=d.provider,
+                            model=d.model,
+                            input_tokens=d.input_tokens,
+                            output_tokens=d.output_tokens,
+                            price_version=pricing.id,
+                            unit_prices=_price_snapshot(pricing),
+                            amount=span_cost,
+                        )
                     )
-                )
 
         row = Span(
             execution_id=execution.id,
@@ -378,7 +375,9 @@ def process_trace(
     execution.agent_calls = agent_calls
     execution.error_count = error_count
     execution.retry_count = retries
-    execution.total_cost = round(total_cost, 6) if priced_calls else None
+    execution.total_cost = (
+        total_cost.quantize(Decimal("0.000001")) if priced_calls else None
+    )
     # Unpriced LLM calls: cost must stay auditable, never silently $0 (F12).
     execution.unpriced_calls = llm_calls - priced_calls
     execution.duration_ms = execution.duration_ms or _duration_ms(started, ended)
@@ -392,9 +391,50 @@ def process_trace(
         "error_kind": execution.root_error_kind,
         "spans": len(span_rows),
         "unpriced_calls": execution.unpriced_calls,
-        "total_cost": total_cost,
+        "total_cost": float(total_cost),
         "total_tokens": total_tokens,
     }
+
+
+def _apply_root_identity(
+    session: Session, execution: Execution, project: Project, root: DerivedSpan
+) -> None:
+    """Copy workflow identity/metadata from a validated root onto an execution."""
+    root_a = root.raw.attributes
+    client_key = attrs.as_str(root_a, attrs.SDK_CLIENT_ID)
+    client = _upsert_client(session, client_key) if client_key else None
+    wf_name = root.raw.name or root.oi_kind
+    wf_version = attrs.as_str(root_a, attrs.SDK_WORKFLOW_VERSION)
+    workflow = _upsert_workflow(session, project, wf_name, wf_version)
+    execution.workflow_id = attrs.as_str(root_a, attrs.SDK_WORKFLOW_ID)
+    execution.session_id = attrs.as_str(root_a, attrs.SESSION_ID)
+    execution.client_id = client.id if client else None
+    execution.workflow_name = wf_name
+    execution.workflow_ref = workflow.id
+    execution.workflow_version = wf_version
+    execution.metadata_json = c.redact_metadata(attrs.metadata_dict(root.raw))
+
+
+def _provisional_batch(
+    session: Session, project: Project, derived: list[DerivedSpan], trace_id: str
+) -> dict:
+    """Store a children-first batch before its root arrives (F02/F14).
+
+    The execution has no workflow identity yet; the root batch later rebuilds
+    it (same trace_id) with the real identity and the complete span set.
+    """
+    starts = [d.raw.start_time for d in derived if d.raw.start_time]
+    execution = Execution(
+        trace_id=trace_id,
+        project_id=project.id,
+        started_at=min(starts) if starts else _now(),
+        ended_at=max(starts) if starts else None,
+    )
+    session.add(execution)
+    session.flush()
+    summary = _merge_partial_batch(session, execution, derived)
+    summary["provisional"] = True
+    return summary
 
 
 def _merge_partial_batch(
@@ -416,11 +456,11 @@ def _merge_partial_batch(
     session.flush()
 
     for d in derived:
-        span_cost: float | None = None
+        span_cost: Decimal | None = None
         if d.oi_kind == attrs.KIND_LLM:
             pricing = resolver.resolve(d.provider, d.model)
             if pricing is not None:
-                span_cost = compute_llm_cost(
+                amount = compute_llm_cost(
                     pricing,
                     d.input_tokens,
                     d.output_tokens,
@@ -428,20 +468,21 @@ def _merge_partial_batch(
                     cache_write_tokens=d.cache_write_tokens,
                     reasoning_tokens=d.reasoning_tokens,
                 )
-            if span_cost is not None:
-                session.add(
-                    CostRecord(
-                        execution_id=execution.id,
-                        span_id=d.raw.span_id,
-                        provider=d.provider,
-                        model=d.model,
-                        input_tokens=d.input_tokens,
-                        output_tokens=d.output_tokens,
-                        price_version=pricing.id,
-                        unit_prices=_price_snapshot(pricing),
-                        amount=span_cost,
+                if amount is not None:
+                    span_cost = Decimal(str(amount))
+                    session.add(
+                        CostRecord(
+                            execution_id=execution.id,
+                            span_id=d.raw.span_id,
+                            provider=d.provider,
+                            model=d.model,
+                            input_tokens=d.input_tokens,
+                            output_tokens=d.output_tokens,
+                            price_version=pricing.id,
+                            unit_prices=_price_snapshot(pricing),
+                            amount=span_cost,
+                        )
                     )
-                )
         session.add(
             Span(
                 execution_id=execution.id,
@@ -497,8 +538,10 @@ def _recompute_execution(
     execution.retry_count = max((s.retry_count for s in spans), default=0)
     failed = [s for s in spans if s.status == "error" or s.error_kind]
     execution.error_count = len(failed)
-    costs = [float(s.cost) for s in spans if s.cost is not None]
-    execution.total_cost = round(sum(costs), 6) if costs else None
+    costs = [s.cost for s in spans if s.cost is not None]
+    execution.total_cost = (
+        sum(costs, Decimal("0")).quantize(Decimal("0.000001")) if costs else None
+    )
     execution.unpriced_calls = execution.llm_calls - len(costs)
 
     starts = [s.started_at for s in spans if s.started_at]

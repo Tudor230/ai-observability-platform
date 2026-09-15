@@ -16,6 +16,7 @@ from .routes import (
     overview,
     pricing,
     projects,
+    users,
     workflows,
 )
 
@@ -34,6 +35,7 @@ for module in (
     overview,
     pricing,
     projects,
+    users,
     workflows,
 ):
     api.include_router(module.router)

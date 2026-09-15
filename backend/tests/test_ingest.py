@@ -306,18 +306,38 @@ def test_partial_batch_merges_into_existing_execution(client, session_factory, p
         assert len(session.execute(select(Span)).scalars().all()) == 3
 
 
-def test_children_only_batch_without_execution_is_skipped(client, session_factory, project):
-    """F02: no stored execution + no root in batch -> skip, never invent a root."""
+def test_children_before_root_are_kept_in_a_provisional_execution(
+    client, session_factory, project
+):
+    """F02/F14: a children-first batch must not be dropped (streaming SDK)."""
     resp = client.post(
         "/api/v1/traces",
         content=build_request(_partial_children(trace_id=555)),
         headers=_headers(),
     )
     assert resp.status_code == 200
-    assert resp.json()["traces"][0]["skipped"] == "root span not in batch"
+    summary = resp.json()["traces"][0]
+    assert summary.get("provisional") is True
     with session_factory() as session:
-        assert session.execute(select(Execution)).first() is None
-        assert session.execute(select(Span)).first() is None
+        ex = session.execute(select(Execution)).scalar_one()
+        assert ex.workflow_name is None  # identity arrives with the root
+        assert len(session.execute(select(Span)).scalars().all()) == 2
+
+    # The root batch rebuilds the same execution with full identity.
+    now = _now()
+    root = build_span(
+        name="checkout", oi_kind="CHAIN", span_id=1, trace_id=555,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+    )
+    resp = client.post("/api/v1/traces", content=build_request([root]), headers=_headers())
+    assert resp.status_code == 200
+    with session_factory() as session:
+        executions = session.execute(select(Execution)).scalars().all()
+        assert len(executions) == 1
+        assert executions[0].workflow_name == "checkout"
+        # The provisional children are kept and the root joins them.
+        assert len(session.execute(select(Span)).scalars().all()) == 3
 
 
 def test_project_mismatch_preserves_existing_rows(client, session_factory, project):

@@ -8,11 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Client, Execution, Project, Span
-from ..deps import get_db, get_project_scope, require_read_access
+from ..deps import get_db, get_project_scope, require_role
 from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
-router = APIRouter(tags=["executions"], dependencies=[Depends(require_read_access)])
+router = APIRouter(tags=["executions"], dependencies=[Depends(require_role("engineer", "sdm"))])
 
 
 def _scoped_execution(

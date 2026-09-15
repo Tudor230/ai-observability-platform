@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from statistics import fmean
 
 from sqlalchemy import select
@@ -77,7 +78,9 @@ def rollup_metrics(session: Session, days: list[str] | None = None) -> dict[str,
     for (day, dim, dim_key), group in grouped.items():
         executions = len(group)
         failed = sum(1 for e in group if e.status == "error")
-        total_cost = sum(float(e.total_cost or 0) for e in group)
+        total_cost = sum(
+            (e.total_cost or Decimal("0") for e in group), Decimal("0")
+        )
         tokens = sum(e.total_tokens for e in group)
         inp = sum(e.input_tokens for e in group)
         outp = sum(e.output_tokens for e in group)

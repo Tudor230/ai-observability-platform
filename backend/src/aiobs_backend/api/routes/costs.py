@@ -7,14 +7,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...models import Client, CostRecord, Execution, Project
-from ..deps import get_db, get_project_scope, require_read_access
-from ..queries import default_range, fetch_exec_rows, parse_dt
+from ...models import Client, CostRecord, Execution, Project, Team
+from ..deps import get_db, get_project_scope, require_role
+from ..queries import default_range, exec_aggregates, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["costs"], dependencies=[Depends(require_read_access)])
+router = APIRouter(tags=["costs"], dependencies=[Depends(require_role("sdm", "finance"))])
 
-DIMENSIONS = {"project", "client", "workflow", "model"}
+DIMENSIONS = {"project", "client", "workflow", "model", "team"}
+
+_GROUP_COLUMNS = {
+    "project": Project.project_id,
+    "client": Client.external_key,
+    "workflow": Execution.workflow_name,
+    "team": Team.name,
+}
 
 
 @router.get("/costs")
@@ -68,29 +75,28 @@ def get_costs(
             i["total_cost"] = money(i["total_cost"])
         return {"items": items, "total": len(items)}
 
-    rows = fetch_exec_rows(
+    rows = exec_aggregates(
         session,
+        group_col=_GROUP_COLUMNS[dimension],
         start=start_dt,
         end=end_dt,
         project_id=project_id,
         client_id=client_id,
         workflow=workflow,
     )
+    fallback_key = {"client": "unattributed", "team": "unassigned"}.get(
+        dimension, "unknown"
+    )
     agg = {}
-    for ex, project_ext, client_ext in rows:
-        if dimension == "project":
-            key = project_ext or "unknown"
-        elif dimension == "client":
-            key = client_ext or "unattributed"
-        else:  # workflow
-            key = ex.workflow_name or "unknown"
+    for row in rows:
+        key = row.key or fallback_key
         bucket = agg.setdefault(
             key, {"key": key, "total_cost": 0.0, "tokens": 0, "executions": 0, "llm_calls": 0}
         )
-        bucket["total_cost"] += float(ex.total_cost or 0)
-        bucket["tokens"] += ex.total_tokens
-        bucket["executions"] += 1
-        bucket["llm_calls"] += ex.llm_calls
+        bucket["total_cost"] += float(row.total_cost or 0)
+        bucket["tokens"] += row.total_tokens
+        bucket["executions"] += row.executions
+        bucket["llm_calls"] += row.llm_calls
     items = sorted(agg.values(), key=lambda i: i["total_cost"], reverse=True)
     for i in items:
         i["total_cost"] = money(i["total_cost"])
