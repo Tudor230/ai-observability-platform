@@ -32,6 +32,8 @@ def execution_dict(ex: Execution, project_ext: str | None = None, client_ext: st
         "ended_at": iso(ex.ended_at),
         "duration_ms": round(ex.duration_ms, 2) if ex.duration_ms is not None else None,
         "total_cost": money(ex.total_cost),
+        "unpriced_calls": ex.unpriced_calls,
+        "cost_complete": ex.unpriced_calls == 0,
         "input_tokens": ex.input_tokens,
         "output_tokens": ex.output_tokens,
         "total_tokens": ex.total_tokens,

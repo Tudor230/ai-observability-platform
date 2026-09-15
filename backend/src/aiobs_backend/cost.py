@@ -30,7 +30,10 @@ class PricingResolver:
         rows = (
             self._session.execute(
                 select(Pricing)
-                .where(Pricing.provider == provider.lower())
+                .where(
+                    Pricing.provider == provider.lower(),
+                    Pricing.effective_from <= self._at,
+                )
                 .order_by(Pricing.effective_from.desc())
             )
             .scalars()

@@ -44,6 +44,8 @@ export interface Execution {
   agent_calls: number;
   error_count: number;
   retry_count: number;
+  unpriced_calls: number;
+  cost_complete: boolean;
 }
 
 export interface Span {
@@ -133,6 +135,9 @@ export interface BudgetStatus {
   spend: number;
   utilization: number;
   period: string;
+  period_type: string;
+  period_start: string;
+  period_end: string;
   workflow_name: string | null;
 }
 

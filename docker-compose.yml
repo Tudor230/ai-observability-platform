@@ -7,6 +7,7 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -14,6 +15,7 @@ services:
     ports:
       - "5432:5432" # common DB port shared by Phoenix, the backend, and the SDK tooling
     volumes:
+      - pgdata:/var/lib/postgresql/data
       - ./dev/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -23,6 +25,7 @@ services:
 
   phoenix:
     image: arizephoenix/phoenix:latest
+    restart: unless-stopped
     environment:
       PHOENIX_SQL_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/phoenix
     ports:
@@ -45,6 +48,7 @@ services:
     build:
       context: .
       dockerfile: backend/dev/Dockerfile
+    restart: unless-stopped
     environment:
       AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aiobs
       AIOBS_ADMIN_API_KEY: admin
@@ -59,7 +63,11 @@ services:
     build:
       context: frontend
       dockerfile: dev/Dockerfile
+    restart: unless-stopped
     ports:
       - "8080:80"
     depends_on:
       - backend
+
+volumes:
+  pgdata: # persistent platform data: Phoenix + backend survive `compose down`

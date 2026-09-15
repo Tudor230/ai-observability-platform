@@ -17,9 +17,11 @@ def parse_dt(value: str | None, *, end_of_day: bool = False) -> datetime | None:
     value = value.strip()
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
         try:
-            return datetime.strptime(value, fmt)
+            dt = datetime.strptime(value, fmt)
         except ValueError:
             continue
+        # Naive inputs are interpreted as UTC (F31), never as server-local time.
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     try:
         d = date.fromisoformat(value)
     except ValueError:
@@ -59,7 +61,8 @@ def exec_rows(
         stmt = stmt.where(Execution.workflow_name == workflow)
     if status:
         stmt = stmt.where(Execution.status == status)
-    return stmt
+    # Stable ordering for pagination and every aggregate consumer (F11).
+    return stmt.order_by(Execution.started_at.desc(), Execution.id.desc())
 
 
 def fetch_exec_rows(session: Session, **filters) -> list[tuple[Execution, str | None, str | None]]:

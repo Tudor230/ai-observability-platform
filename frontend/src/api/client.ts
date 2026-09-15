@@ -40,7 +40,8 @@ export const api = {
   clients: (f: Filters) => get<List<AggregateRow>>(`/clients${filterQuery(f)}`),
   agents: (f: Filters) => get<List<AggregateRow>>(`/agents${filterQuery(f)}`),
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
-  metrics: (dimension: string, key?: string) => get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key })}`),
+  metrics: (dimension: string, f: Filters, key?: string) =>
+    get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key, days: f.days })}`),
   alerts: () => get<List<Alert>>(`/alerts?status=open`),
   budgetStatus: () => get<List<BudgetStatus>>(`/budgets/status`),
 };

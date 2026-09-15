@@ -1,7 +1,9 @@
 """Metrics: daily time-series from the analytics rollup."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,12 +22,17 @@ def get_metrics(
     dimension_key: str | None = Query(default=None),
     start: str | None = Query(default=None),
     end: str | None = Query(default=None),
+    days: int | None = Query(default=None, ge=1, le=3650),
 ) -> dict:
     if dimension not in DIMENSIONS:
-        return {"items": [], "detail": f"dimension must be one of {sorted(DIMENSIONS)}"}
+        raise HTTPException(
+            status_code=422, detail=f"dimension must be one of {sorted(DIMENSIONS)}"
+        )
     stmt = select(DailyMetric).where(DailyMetric.dimension == dimension)
     if dimension_key is not None:
         stmt = stmt.where(DailyMetric.dimension_key == dimension_key)
+    if days is not None and not start:
+        start = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     if start:
         stmt = stmt.where(DailyMetric.day >= start[:10])
     if end:

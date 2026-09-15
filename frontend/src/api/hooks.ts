@@ -59,10 +59,10 @@ export function useCosts(dimension: string, f: Filters) {
   });
 }
 
-export function useMetrics(dimension: string, key?: string) {
+export function useMetrics(dimension: string, f: Filters, key?: string) {
   return useQuery({
-    queryKey: ["metrics", dimension, key],
-    queryFn: () => api.metrics(dimension, key),
+    queryKey: ["metrics", dimension, key, f.days],
+    queryFn: () => api.metrics(dimension, f, key),
   });
 }
 

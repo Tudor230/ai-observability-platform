@@ -15,7 +15,7 @@ import {
 export default function Overview() {
   const { filters } = useFilters();
   const { data, isLoading } = useOverview(filters);
-  const { data: ts } = useMetrics("total");
+  const { data: ts } = useMetrics("total", filters);
 
   const series = (ts?.items ?? []).map((m) => ({
     day: m.day.slice(5),
@@ -34,14 +34,14 @@ export default function Overview() {
             <KpiCard
               label="Total cost"
               value={formatMoney(data?.total_cost)}
-              sub={delta(data?.deltas?.total_cost_pct)}
-              tone={data && data.deltas?.total_cost_pct ? "bad" : undefined}
+              sub={delta(data?.deltas?.total_cost_pct, "bad-up")}
+              tone={data && (data.deltas?.total_cost_pct ?? 0) > 0 ? "bad" : undefined}
             />
-            <KpiCard label="Executions" value={data?.executions ?? 0} sub={delta(data?.deltas?.executions_pct)} />
+            <KpiCard label="Executions" value={data?.executions ?? 0} sub={delta(data?.deltas?.executions_pct, "neutral")} />
             <KpiCard
               label="Error rate"
               value={formatPct(data?.error_rate)}
-              sub={delta(data?.deltas?.error_rate_pct)}
+              sub={delta(data?.deltas?.error_rate_pct, "bad-up")}
               tone={data && data.error_rate ? "bad" : undefined}
             />
             <KpiCard label="Total tokens" value={formatTokens(data?.total_tokens)} />
@@ -76,8 +76,15 @@ export default function Overview() {
   );
 }
 
-function delta(pct: number | null | undefined) {
+function delta(pct: number | null | undefined, polarity: "bad-up" | "bad-down" | "neutral" = "bad-up") {
   if (pct === null || pct === undefined) return null;
   const sign = pct >= 0 ? "+" : "";
-  return <span className={pct >= 0 ? "error" : "muted"}>{sign}{pct.toFixed(1)}% vs prev</span>;
+  const bad =
+    polarity === "bad-up" ? pct > 0 : polarity === "bad-down" ? pct < 0 : false;
+  return (
+    <span className={bad ? "error" : "muted"}>
+      {sign}
+      {pct.toFixed(1)}% vs prev
+    </span>
+  );
 }

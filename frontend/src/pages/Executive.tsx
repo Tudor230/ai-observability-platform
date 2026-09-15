@@ -18,7 +18,7 @@ export default function Executive() {
   const { data } = useOverview(filters);
   const { data: byService } = useCosts("client", filters);
   const { data: byModel } = useCosts("model", filters);
-  const { data: ts } = useMetrics("total");
+  const { data: ts } = useMetrics("total", filters);
 
   const series = (ts?.items ?? []).map((m) => ({
     day: m.day,

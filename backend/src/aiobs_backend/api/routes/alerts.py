@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Alert
-from ..deps import get_db
+from ..deps import get_admin_key, get_db
 
 router = APIRouter(tags=["alerts"])
 
@@ -49,7 +49,7 @@ def list_alerts(
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
-@router.patch("/alerts/{alert_id}")
+@router.patch("/alerts/{alert_id}", dependencies=[Depends(get_admin_key)])
 def update_alert_status(
     alert_id: str, status: str = Query(...), session: Session = Depends(get_db)
 ) -> dict:

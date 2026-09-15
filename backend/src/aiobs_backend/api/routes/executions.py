@@ -1,13 +1,15 @@
 """Executions: list (paginated, filtered), detail, span list, failure tree."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Execution, Span
 from ..deps import get_db, get_project_scope
-from ..queries import fetch_exec_rows, parse_dt
+from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
 router = APIRouter(tags=["executions"])
@@ -18,6 +20,7 @@ def list_executions(
     session: Session = Depends(get_db),
     start: str | None = Query(default=None),
     end: str | None = Query(default=None),
+    days: int | None = Query(default=None, ge=1, le=3650),
     project_id: str | None = Query(default=None),
     client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
@@ -26,22 +29,24 @@ def list_executions(
     offset: int = Query(default=0, ge=0),
     project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
-    stmt = fetch_exec_rows(
+    # `days` is a relative window; explicit start/end win when both are given (F15).
+    start_dt = parse_dt(start)
+    if start_dt is None and days is not None:
+        start_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    base = exec_rows(
         session,
-        start=parse_dt(start),
+        start=start_dt,
         end=parse_dt(end, end_of_day=True),
         project_id=project_id or project_scope,
         client_id=client_id,
         workflow=workflow,
         status=status,
     )
-    stmt = sorted(
-        stmt,
-        key=lambda r: r[0].started_at.isoformat() if r[0].started_at else "",
-        reverse=True,
-    )
-    total = len(stmt)
-    items = [execution_dict(ex, project_ext, client_ext) for ex, project_ext, client_ext in stmt[offset : offset + limit]]
+    total = session.execute(
+        select(func.count()).select_from(base.subquery())
+    ).scalar_one()
+    rows = session.execute(base.limit(limit).offset(offset)).all()
+    items = [execution_dict(ex, project_ext, client_ext) for ex, project_ext, client_ext in rows]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 

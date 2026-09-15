@@ -84,22 +84,56 @@ def derive(raw: RawSpan) -> DerivedSpan:
     return d
 
 
-def _find_root(derived: list[DerivedSpan]) -> DerivedSpan | None:
-    span_ids = {d.raw.span_id for d in derived}
-    parentless = [d for d in derived if d.raw.parent_span_id not in span_ids]
-    if not parentless:
-        return None
-    # Prefer the SDK workflow root (CHAIN with business identity), else earliest.
-    def _score(d: DerivedSpan) -> tuple[int, int]:
-        a = d.raw.attributes
-        is_wf = d.oi_kind == attrs.KIND_CHAIN and (
-            attrs.SDK_WORKFLOW_ID in a or attrs.SDK_PROJECT_ID in a or "session.id" in a
-        )
-        start = d.raw.start_time
-        order = start.timestamp() if start else 0
-        return (0 if is_wf else 1, order)
+def _is_workflow_root(d: DerivedSpan) -> bool:
+    a = d.raw.attributes
+    return d.oi_kind == attrs.KIND_CHAIN and (
+        attrs.SDK_WORKFLOW_ID in a or attrs.SDK_PROJECT_ID in a or "session.id" in a
+    )
 
-    return min(parentless, key=_score)
+
+def _start_key(d: DerivedSpan) -> float:
+    return d.raw.start_time.timestamp() if d.raw.start_time else 0.0
+
+
+def _find_root(derived: list[DerivedSpan]) -> DerivedSpan | None:
+    """Return the trace root only when this batch can prove one (F02).
+
+    A batch may be a *partial* re-send: children whose parent lives in a
+    previous batch. Treating such children as roots would create a bogus
+    execution, so a root must be either
+    1. the SDK workflow root (CHAIN carrying ``sdk.*`` identity), or
+    2. a span with no recorded parent at all.
+    Batches that only contain parented spans that are not in the batch return
+    ``None`` and are merged into an existing execution (or skipped).
+    """
+    span_ids = {d.raw.span_id for d in derived}
+    is_parentless = lambda d: d.raw.parent_span_id not in span_ids  # noqa: E731
+    candidates = [d for d in derived if _is_workflow_root(d) and is_parentless(d)]
+    if not candidates:
+        candidates = [
+            d for d in derived if is_parentless(d) and not d.raw.parent_span_id
+        ]
+    if not candidates:
+        return None
+    return min(candidates, key=_start_key)
+
+
+def _primary_failure(
+    root: DerivedSpan, failed: list[DerivedSpan]
+) -> DerivedSpan | None:
+    """Pick the most specific failure (F28).
+
+    A wrapper root often carries only a generic propagated kind; prefer the
+    earliest failing descendant when it has a more specific classification.
+    """
+    if not failed:
+        return None
+    descendants = [d for d in failed if d.raw.span_id != root.raw.span_id]
+    if descendants:
+        earliest = min(descendants, key=_start_key)
+        if earliest.error_kind or not root.error_kind:
+            return earliest
+    return root if root.failed else min(failed, key=_start_key)
 
 
 def _now() -> datetime:
@@ -123,25 +157,24 @@ def process_trace(
     session: Session, project: Project, raw_spans: list[RawSpan]
 ) -> dict:
     trace_id = raw_spans[0].trace_id
-    # Idempotent recompute: clear any previous rows for this trace.
+    derived = [derive(r) for r in raw_spans]
+    root = _find_root(derived)
+
     existing = session.execute(
         select(Execution).where(Execution.trace_id == trace_id)
     ).scalar_one_or_none()
-    if existing:
-        session.query(CostRecord).filter(
-            CostRecord.execution_id == existing.id
-        ).delete()
-        session.query(Span).filter(Span.execution_id == existing.id).delete()
-        session.delete(existing)
-        session.flush()
 
-    derived = [derive(r) for r in raw_spans]
-    root = _find_root(derived)
     if root is None:
-        return {"trace_id": trace_id, "skipped": "no root span"}
+        # Partial batch (children whose parent is not here). Never invent a root
+        # and never delete stored rows; merge into the existing execution if one
+        # exists (F02).
+        if existing is not None:
+            return _merge_partial_batch(session, existing, derived)
+        return {"trace_id": trace_id, "skipped": "root span not in batch"}
 
     root_a = root.raw.attributes
     # Ingest validation: the authenticated project must match the root's identity.
+    # Rows are only deleted *after* this check, so a rejected batch is a no-op.
     root_project = attrs.as_str(root_a, attrs.SDK_PROJECT_ID)
     if root_project and root_project != project.project_id:
         return {
@@ -149,6 +182,15 @@ def process_trace(
             "skipped": "project_mismatch",
             "detail": f"root sdk.project_id={root_project!r} != {project.project_id!r}",
         }
+
+    # Validated root in hand: idempotent recompute may safely replace old rows.
+    if existing:
+        session.query(CostRecord).filter(
+            CostRecord.execution_id == existing.id
+        ).delete()
+        session.query(Span).filter(Span.execution_id == existing.id).delete()
+        session.delete(existing)
+        session.flush()
 
     client_key = attrs.as_str(root_a, attrs.SDK_CLIENT_ID)
     client = _upsert_client(session, client_key) if client_key else None
@@ -268,12 +310,13 @@ def process_trace(
     session.add_all(span_rows)
     session.add_all(cost_rows)
 
-    # Root propagation (consistent with SDK enrichment).
+    # Root propagation (consistent with SDK enrichment). Prefer the most
+    # specific failing descendant over a generic root wrapper (F28).
     if root.failed or failed:
         execution.status = "error"
-        primary = root if root.failed else min(failed, key=lambda x: x.raw.start_time.timestamp() if x.raw.start_time else 0)
-        execution.root_error_kind = primary.error_kind or (failed[0].error_kind if failed else None)
-        execution.root_error_message = primary.error_message or (failed[0].error_message if failed else None)
+        primary = _primary_failure(root, failed) or root
+        execution.root_error_kind = primary.error_kind
+        execution.root_error_message = primary.error_message
     else:
         execution.status = "ok"
 
@@ -287,6 +330,8 @@ def process_trace(
     execution.error_count = error_count
     execution.retry_count = retries
     execution.total_cost = round(total_cost, 6) if priced_calls else None
+    # Unpriced LLM calls: cost must stay auditable, never silently $0 (F12).
+    execution.unpriced_calls = llm_calls - priced_calls
     execution.duration_ms = execution.duration_ms or _duration_ms(started, ended)
     touch_agents(session, derived)
     session.flush()
@@ -297,8 +342,155 @@ def process_trace(
         "status": execution.status,
         "error_kind": execution.root_error_kind,
         "spans": len(span_rows),
+        "unpriced_calls": execution.unpriced_calls,
         "total_cost": total_cost,
         "total_tokens": total_tokens,
+    }
+
+
+def _merge_partial_batch(
+    session: Session, execution: Execution, derived: list[DerivedSpan]
+) -> dict:
+    """Upsert a children-only batch into an existing execution (F02).
+
+    Spans already stored are replaced, the rest are kept; aggregates are then
+    recomputed from the stored spans. The execution itself is never deleted.
+    """
+    resolver = PricingResolver(session, execution.started_at)
+    batch_ids = [d.raw.span_id for d in derived]
+    session.query(CostRecord).filter(
+        CostRecord.execution_id == execution.id, CostRecord.span_id.in_(batch_ids)
+    ).delete(synchronize_session=False)
+    session.query(Span).filter(
+        Span.execution_id == execution.id, Span.span_id.in_(batch_ids)
+    ).delete(synchronize_session=False)
+    session.flush()
+
+    for d in derived:
+        span_cost: float | None = None
+        if d.oi_kind == attrs.KIND_LLM:
+            pricing = resolver.resolve(d.provider, d.model)
+            if pricing is not None:
+                span_cost = compute_llm_cost(
+                    pricing,
+                    d.input_tokens,
+                    d.output_tokens,
+                    cache_read_tokens=d.cache_read_tokens,
+                    cache_write_tokens=d.cache_write_tokens,
+                    reasoning_tokens=d.reasoning_tokens,
+                )
+                session.add(
+                    CostRecord(
+                        execution_id=execution.id,
+                        span_id=d.raw.span_id,
+                        provider=d.provider,
+                        model=d.model,
+                        input_tokens=d.input_tokens,
+                        output_tokens=d.output_tokens,
+                        price_version=pricing.id,
+                        amount=span_cost,
+                    )
+                )
+        session.add(
+            Span(
+                execution_id=execution.id,
+                trace_id=execution.trace_id,
+                span_id=d.raw.span_id,
+                parent_id=d.raw.parent_span_id,
+                kind=d.oi_kind,
+                name=d.raw.name or None,
+                status=d.raw.status_code,
+                error_type=d.error_type,
+                error_message=d.error_message,
+                error_kind=d.error_kind,
+                started_at=d.raw.start_time or execution.started_at,
+                ended_at=d.raw.end_time,
+                duration_ms=d.duration_ms,
+                llm_model=d.model,
+                llm_provider=d.provider,
+                input_tokens=d.input_tokens,
+                output_tokens=d.output_tokens,
+                total_tokens=d.total_tokens,
+                tool_name=d.tool_name,
+                retrieval_doc_count=d.retrieval_docs,
+                retry_count=d.retry,
+                cost=span_cost,
+                attributes=trim_attributes(d.raw.attributes),
+            )
+        )
+    session.flush()
+    touch_agents(session, derived)
+    return _recompute_execution(session, execution, merged=len(derived))
+
+
+def _recompute_execution(
+    session: Session, execution: Execution, merged: int = 0
+) -> dict:
+    """Rebuild execution aggregates from its stored spans (after a merge)."""
+    spans = (
+        session.execute(
+            select(Span)
+            .where(Span.execution_id == execution.id)
+            .order_by(Span.started_at)
+        )
+        .scalars()
+        .all()
+    )
+    execution.input_tokens = sum(s.input_tokens for s in spans)
+    execution.output_tokens = sum(s.output_tokens for s in spans)
+    execution.total_tokens = sum(s.total_tokens for s in spans)
+    execution.llm_calls = sum(1 for s in spans if s.kind == attrs.KIND_LLM)
+    execution.tool_calls = sum(1 for s in spans if s.kind == attrs.KIND_TOOL)
+    execution.retrieval_calls = sum(1 for s in spans if s.kind == attrs.KIND_RETRIEVER)
+    execution.agent_calls = sum(1 for s in spans if s.kind == attrs.KIND_AGENT)
+    execution.retry_count = max((s.retry_count for s in spans), default=0)
+    failed = [s for s in spans if s.status == "error" or s.error_kind]
+    execution.error_count = len(failed)
+    costs = [float(s.cost) for s in spans if s.cost is not None]
+    execution.total_cost = round(sum(costs), 6) if costs else None
+    execution.unpriced_calls = execution.llm_calls - len(costs)
+
+    starts = [s.started_at for s in spans if s.started_at]
+    ends = [s.ended_at for s in spans if s.ended_at]
+    if starts:
+        execution.started_at = min(starts)
+    if ends:
+        execution.ended_at = max(ends)
+        execution.duration_ms = _duration_ms(execution.started_at, execution.ended_at)
+
+    if failed:
+        execution.status = "error"
+        root_span = next((s for s in spans if not s.parent_id), None)
+        descendants = [
+            s for s in failed if root_span is None or s.span_id != root_span.span_id
+        ]
+        if descendants:
+            primary = min(
+                descendants,
+                key=lambda s: s.started_at.timestamp() if s.started_at else 0,
+            )
+            if not primary.error_kind and root_span is not None and root_span.error_kind:
+                primary = root_span
+        else:
+            primary = failed[0]
+        execution.root_error_kind = primary.error_kind
+        execution.root_error_message = primary.error_message
+    else:
+        execution.status = "ok"
+        execution.root_error_kind = None
+        execution.root_error_message = None
+    session.flush()
+
+    return {
+        "trace_id": execution.trace_id,
+        "execution_id": execution.id,
+        "status": execution.status,
+        "error_kind": execution.root_error_kind,
+        "spans": len(spans),
+        "merged": merged,
+        "unpriced_calls": execution.unpriced_calls,
+        "total_cost": float(execution.total_cost or 0),
+        "total_tokens": execution.total_tokens,
     }
 
 

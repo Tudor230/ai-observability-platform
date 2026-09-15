@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...alerts import budget_spend
+from ...alerts import budget_spend, budget_window
 from ...models import Budget, Client, Project
 from ..deps import get_admin_key, get_db
 
@@ -18,7 +18,8 @@ router = APIRouter(tags=["budgets"])
 class BudgetIn(BaseModel):
     name: str | None = None
     amount: float = Field(gt=0)
-    period: date  # period start (day)
+    period: date  # period anchor (day); the current window is derived from it
+    period_type: str = Field(default="month", pattern="^(day|week|month)$")
     project: str | None = None  # external project_id
     client: str | None = None  # external client key
     workflow_name: str | None = None
@@ -55,6 +56,7 @@ def list_budgets(session: Session = Depends(get_db)) -> dict:
                 "name": b.name,
                 "amount": float(b.amount),
                 "period": b.period.isoformat(),
+                "period_type": b.period_type or "month",
                 "project_id": b.project_id,
                 "client_id": b.client_id,
                 "workflow_name": b.workflow_name,
@@ -71,13 +73,19 @@ def create_budget(body: BudgetIn, session: Session = Depends(get_db)) -> dict:
         name=body.name,
         amount=body.amount,
         period=period,
+        period_type=body.period_type,
         project_id=project_id,
         client_id=client_id,
         workflow_name=body.workflow_name,
     )
     session.add(budget)
     session.flush()
-    return {"id": budget.id, "amount": float(budget.amount), "period": budget.period.isoformat()}
+    return {
+        "id": budget.id,
+        "amount": float(budget.amount),
+        "period": budget.period.isoformat(),
+        "period_type": budget.period_type,
+    }
 
 
 @router.delete("/budgets/{budget_id}", dependencies=[Depends(get_admin_key)])
@@ -93,12 +101,17 @@ def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
 
 @router.get("/budgets/status")
 def budget_status(session: Session = Depends(get_db)) -> dict:
-    """Read-only budget utilization for dashboards (no admin key needed)."""
+    """Read-only budget utilization for dashboards (no admin key needed).
+
+    ``utilization`` is the true ratio (can exceed 1.0); clients must clamp only
+    the bar width, never the number (F23).
+    """
     rows = session.execute(select(Budget).order_by(Budget.period.desc())).scalars().all()
     items = []
     for b in rows:
         spend = budget_spend(session, b)
         amount = float(b.amount or 0)
+        window_start, window_end = budget_window(b)
         items.append(
             {
                 "id": b.id,
@@ -107,6 +120,9 @@ def budget_status(session: Session = Depends(get_db)) -> dict:
                 "spend": round(spend, 6),
                 "utilization": round(spend / amount, 4) if amount else 0.0,
                 "period": b.period.isoformat(),
+                "period_type": b.period_type or "month",
+                "period_start": window_start.isoformat(),
+                "period_end": window_end.isoformat(),
                 "workflow_name": b.workflow_name,
             }
         )

@@ -24,6 +24,7 @@ class PricingIn(BaseModel):
     cache_write_price_per_1m: float | None = None
     reasoning_price_per_1m: float | None = None
     currency: str = "USD"
+    effective_from: datetime | None = None
 
 
 @router.get("/pricing")
@@ -62,11 +63,11 @@ def create_pricing(body: PricingIn, session: Session = Depends(get_db)) -> dict:
         cache_write_price_per_1m=body.cache_write_price_per_1m,
         reasoning_price_per_1m=body.reasoning_price_per_1m,
         currency=body.currency,
-        effective_from=datetime.now(timezone.utc),
+        effective_from=body.effective_from or datetime.now(timezone.utc),
     )
     session.add(pricing)
     session.flush()
-    return {"id": pricing.id}
+    return {"id": pricing.id, "effective_from": pricing.effective_from.isoformat()}
 
 
 @router.delete("/pricing/{pricing_id}")

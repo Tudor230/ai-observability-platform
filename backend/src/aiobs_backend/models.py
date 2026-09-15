@@ -124,6 +124,7 @@ class Execution(Base):
     agent_calls: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    unpriced_calls: Mapped[int] = mapped_column(Integer, default=0)
 
     spans = relationship("Span", back_populates="execution")
 
@@ -245,7 +246,8 @@ class Budget(Base):
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
     period: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True
-    )  # period start
+    )  # anchor/period start
+    period_type: Mapped[str] = mapped_column(String(16), default="month")  # day|week|month
     name: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
 

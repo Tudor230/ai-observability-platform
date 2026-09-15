@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,9 @@ def get_costs(
     project_scope: str | None = Depends(get_project_scope),
 ) -> dict:
     if dimension not in DIMENSIONS:
-        return {"items": [], "detail": f"dimension must be one of {sorted(DIMENSIONS)}"}
+        raise HTTPException(
+            status_code=422, detail=f"dimension must be one of {sorted(DIMENSIONS)}"
+        )
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
     project_id = project_id or project_scope
@@ -56,14 +58,14 @@ def get_costs(
         for record, _ in rows:
             key = f"{record.provider or 'unknown'}:{record.model or 'unknown'}"
             bucket = agg.setdefault(
-                key, {"key": key, "provider": record.provider, "model": record.model, "cost": 0.0, "input_tokens": 0, "output_tokens": 0}
+                key, {"key": key, "provider": record.provider, "model": record.model, "total_cost": 0.0, "input_tokens": 0, "output_tokens": 0}
             )
-            bucket["cost"] += float(record.amount or 0)
+            bucket["total_cost"] += float(record.amount or 0)
             bucket["input_tokens"] += record.input_tokens
             bucket["output_tokens"] += record.output_tokens
-        items = sorted(agg.values(), key=lambda i: i["cost"], reverse=True)
+        items = sorted(agg.values(), key=lambda i: i["total_cost"], reverse=True)
         for i in items:
-            i["cost"] = money(i["cost"])
+            i["total_cost"] = money(i["total_cost"])
         return {"items": items, "total": len(items)}
 
     rows = fetch_exec_rows(
@@ -83,13 +85,13 @@ def get_costs(
         else:  # workflow
             key = ex.workflow_name or "unknown"
         bucket = agg.setdefault(
-            key, {"key": key, "cost": 0.0, "tokens": 0, "executions": 0, "llm_calls": 0}
+            key, {"key": key, "total_cost": 0.0, "tokens": 0, "executions": 0, "llm_calls": 0}
         )
-        bucket["cost"] += float(ex.total_cost or 0)
+        bucket["total_cost"] += float(ex.total_cost or 0)
         bucket["tokens"] += ex.total_tokens
         bucket["executions"] += 1
         bucket["llm_calls"] += ex.llm_calls
-    items = sorted(agg.values(), key=lambda i: i["cost"], reverse=True)
+    items = sorted(agg.values(), key=lambda i: i["total_cost"], reverse=True)
     for i in items:
-        i["cost"] = money(i["cost"])
+        i["total_cost"] = money(i["total_cost"])
     return {"items": items, "total": len(items)}

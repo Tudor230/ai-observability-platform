@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { useCosts, useWorkflows, useClients, useAlerts, useMetrics, useBudgetStatus } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
-import { formatMoney } from "../lib/format";
+import { formatMoney, formatPct } from "../lib/format";
 
 const BAR_COLORS = ["#4f8cff", "#2ecc71", "#f5b041", "#e74c3c", "#9b59b6", "#1abc9c"];
 
@@ -21,7 +21,7 @@ export default function Manager() {
   const { data: workflows } = useWorkflows(filters);
   const { data: clients } = useClients(filters);
   const { data: alerts } = useAlerts();
-  const { data: trends } = useMetrics("total");
+  const { data: trends } = useMetrics("total", filters);
   const { data: budgets } = useBudgetStatus();
 
   return (
@@ -43,7 +43,7 @@ export default function Manager() {
                 <tr key={w.name}>
                   <td>{w.name}</td>
                   <td>{w.executions}</td>
-                  <td className={w.error_rate ? "error" : ""}>{w.error_rate}</td>
+                  <td className={w.error_rate ? "error" : ""}>{formatPct(w.error_rate)}</td>
                   <td>{formatMoney(w.total_cost)}</td>
                 </tr>
               ))}
@@ -87,12 +87,13 @@ export default function Manager() {
       <div className="panel">
         <h3>Budgets ({budgets?.total ?? 0})</h3>
         {(budgets?.items ?? []).map((b) => {
-          const pct = Math.min(100, Math.round(b.utilization * 100));
+          const pct = Math.round(b.utilization * 100);
+          const barPct = Math.min(100, pct); // clamp only the bar, never the number (F23)
           const over = b.utilization >= 1;
           return (
             <div key={b.id} style={{ padding: "8px 4px", borderBottom: "1px solid var(--border)" }}>
               <div className="row">
-                <span>{b.name ?? `Budget ${b.period}`}</span>
+                <span>{b.name ?? `Budget ${b.period}`}{b.period_type ? ` (${b.period_type})` : ""}</span>
                 <span className="spacer" />
                 <span className="muted">
                   {formatMoney(b.spend)} / {formatMoney(b.amount)} · {pct}%
@@ -101,7 +102,7 @@ export default function Manager() {
               <div style={{ background: "var(--panel-2)", borderRadius: 6, height: 8, marginTop: 6 }}>
                 <div
                   style={{
-                    width: `${pct}%`,
+                    width: `${barPct}%`,
                     height: 8,
                     borderRadius: 6,
                     background: over ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--ok)",

@@ -234,3 +234,198 @@ def test_budget_alert(client, session_factory, project):
     assert alerts_list["total"] >= 1
     assert alerts_list["items"][0]["severity"] == "critical"
 
+
+# ---------------------------------------------------------------------------
+# Regression tests for the audit findings (docs/06-project-audit.md)
+# ---------------------------------------------------------------------------
+
+
+def _partial_children(trace_id: int = 100, prompt: int = 2000, completion: int = 1000):
+    """A children-only batch: both spans point at parents outside the batch."""
+    now = _now()
+    llm = build_span(
+        name="llm_call",
+        oi_kind="LLM",
+        span_id=2,
+        trace_id=trace_id,
+        parent_span_id=1,
+        start=now + timedelta(milliseconds=100),
+        end=now + timedelta(seconds=1),
+        attrs={
+            "llm.model_name": "gpt-4o-mini",
+            "llm.provider": "openai",
+            "llm.token_count.prompt": prompt,
+            "llm.token_count.completion": completion,
+            "llm.token_count.total": prompt + completion,
+        },
+    )
+    tool = build_span(
+        name="lookup_order",
+        oi_kind="TOOL",
+        span_id=3,
+        trace_id=trace_id,
+        parent_span_id=2,
+        start=now + timedelta(seconds=1),
+        end=now + timedelta(seconds=1.5),
+        attrs={"tool.name": "lookup_order"},
+    )
+    return [llm, tool]
+
+
+def test_costs_items_expose_total_cost(client, project):
+    """F01: /costs must use the same `total_cost` key as every other aggregate."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    for dimension in ("project", "client", "workflow", "model"):
+        data = client.get(f"/api/v1/costs?dimension={dimension}").json()
+        assert data["total"] >= 1, dimension
+        for item in data["items"]:
+            assert "total_cost" in item, (dimension, item)
+            assert "cost" not in item, (dimension, item)
+
+
+def test_costs_invalid_dimension_is_422(client, project):
+    assert client.get("/api/v1/costs?dimension=bogus").status_code == 422
+
+
+def test_partial_batch_merges_into_existing_execution(client, session_factory, project):
+    """F02: a children-only re-send must merge, not create a bogus execution."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    resp = client.post(
+        "/api/v1/traces", content=build_request(_partial_children()), headers=_headers()
+    )
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()["traces"][0]
+    assert summary.get("merged") == 2, summary
+
+    with session_factory() as session:
+        executions = session.execute(select(Execution)).scalars().all()
+        assert len(executions) == 1
+        ex = executions[0]
+        assert ex.workflow_name == "checkout"  # identity preserved
+        assert ex.total_tokens == 3000  # updated from the merged LLM span
+        assert float(ex.total_cost) == pytest_approx(0.0009)
+        assert len(session.execute(select(Span)).scalars().all()) == 3
+
+
+def test_children_only_batch_without_execution_is_skipped(client, session_factory, project):
+    """F02: no stored execution + no root in batch -> skip, never invent a root."""
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request(_partial_children(trace_id=555)),
+        headers=_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["traces"][0]["skipped"] == "root span not in batch"
+    with session_factory() as session:
+        assert session.execute(select(Execution)).first() is None
+        assert session.execute(select(Span)).first() is None
+
+
+def test_project_mismatch_preserves_existing_rows(client, session_factory, project):
+    """F02: a rejected re-send must not delete the stored execution."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    now = _now()
+    bad_root = build_span(
+        name="checkout",
+        oi_kind="CHAIN",
+        span_id=1,
+        trace_id=100,
+        start=now,
+        end=now + timedelta(seconds=1),
+        attrs={"sdk.project_id": "other-proj", "sdk.client_id": "client-42"},
+    )
+    resp = client.post(
+        "/api/v1/traces", content=build_request([bad_root]), headers=_headers()
+    )
+    assert resp.json()["traces"][0]["skipped"] == "project_mismatch"
+    with session_factory() as session:
+        ex = session.execute(select(Execution)).scalar_one()
+        assert ex.workflow_name == "checkout"
+        assert len(session.execute(select(Span)).scalars().all()) == 3
+
+
+def test_root_failure_kind_prefers_specific_descendant(client, session_factory, project):
+    """F28: a generic failed wrapper must not mask the child's rate_limit."""
+    now = _now()
+    root = build_span(
+        name="checkout", oi_kind="CHAIN", span_id=1, trace_id=600,
+        start=now, end=now + timedelta(seconds=1),
+        status=2,
+        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+    )
+    llm = build_span(
+        name="llm_call", oi_kind="LLM", span_id=2, trace_id=600, parent_span_id=1,
+        start=now + timedelta(milliseconds=100), end=now + timedelta(seconds=1),
+        status=2,
+        status_message="OpenAI rate limit exceeded (429)",
+        attrs={"llm.model_name": "gpt-4o-mini", "llm.provider": "openai"},
+    )
+    client.post("/api/v1/traces", content=build_request([root, llm]), headers=_headers())
+    with session_factory() as session:
+        ex = session.execute(select(Execution)).scalar_one()
+        assert ex.status == "error"
+        assert ex.root_error_kind == "rate_limit"
+
+
+def test_unpriced_calls_surface_in_reads(client, session_factory, project):
+    """F12: unpriced LLM calls are flagged, not silently reported as $0."""
+    now = _now()
+    root = build_span(
+        name="checkout", oi_kind="CHAIN", span_id=1, trace_id=601,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+    )
+    llm = build_span(
+        name="llm_call", oi_kind="LLM", span_id=2, trace_id=601, parent_span_id=1,
+        start=now + timedelta(milliseconds=100), end=now + timedelta(seconds=1),
+        attrs={"llm.model_name": "mystery-model", "llm.provider": "unknown-vendor",
+               "llm.token_count.prompt": 100, "llm.token_count.completion": 50},
+    )
+    resp = client.post("/api/v1/traces", content=build_request([root, llm]), headers=_headers())
+    assert resp.json()["traces"][0]["unpriced_calls"] == 1
+
+    item = client.get("/api/v1/executions").json()["items"][0]
+    assert item["unpriced_calls"] == 1
+    assert item["cost_complete"] is False
+    assert item["total_cost"] is None
+
+
+def test_alert_patch_requires_admin(client, session_factory, project):
+    """F10: acknowledging an alert is a mutation and needs the admin key."""
+    from aiobs_backend.models import Alert
+
+    with session_factory() as session:
+        alert = Alert(
+            rule_id="test:alert-patch",
+            severity="warning",
+            message="test",
+            dimension="budget",
+        )
+        session.add(alert)
+        session.commit()
+        alert_id = alert.id
+    assert client.patch(f"/api/v1/alerts/{alert_id}?status=acknowledged").status_code == 401
+    ok = client.patch(
+        f"/api/v1/alerts/{alert_id}?status=acknowledged",
+        headers={"x-admin-key": "admin"},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["status"] == "acknowledged"
+
+
+def test_executions_days_filter(client, project):
+    """F15: the dashboard's `days` filter must actually filter."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    assert client.get("/api/v1/executions?days=1").json()["total"] == 1
+
+    old = _now() - timedelta(days=10)
+    tl = build_span(
+        name="old_run", oi_kind="CHAIN", span_id=1, trace_id=700,
+        start=old, end=old + timedelta(seconds=1),
+        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+    )
+    client.post("/api/v1/traces", content=build_request([tl]), headers=_headers())
+    assert client.get("/api/v1/executions?days=1").json()["total"] == 1
+    assert client.get("/api/v1/executions?days=30").json()["total"] == 2
+
+
