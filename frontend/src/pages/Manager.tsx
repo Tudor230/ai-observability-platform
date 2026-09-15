@@ -1,192 +1,337 @@
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Cell,
-} from "recharts";
-import { useCosts, useWorkflows, useClients, useAgents, useAlerts, useMetrics, useBudgetStatus } from "../api/hooks";
+  useAgents,
+  useAlerts,
+  useBudgetStatus,
+  useClients,
+  useCosts,
+  useMetrics,
+  useOverview,
+  useWorkflows,
+} from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
-import { QueryError } from "../components/QueryError";
-import { formatMoney, formatPct } from "../lib/format";
-
-const BAR_COLORS = ["#4f8cff", "#2ecc71", "#f5b041", "#e74c3c", "#9b59b6", "#1abc9c"];
+import { PageHeader } from "../components/PageHeader";
+import { FilterToolbar } from "../components/FilterToolbar";
+import { RefreshButton } from "../components/RefreshButton";
+import { TrendChart } from "../components/charts/TrendChart";
+import { BreakdownBars } from "../components/charts/BreakdownBars";
+import { SeverityBadge } from "../components/domain";
+import {
+  CardPanel,
+  EmptyState,
+  Metric,
+  Progress,
+  QueryError,
+  Skeleton,
+  Table,
+  TableEmpty,
+  TableWrap,
+  Td,
+  Th,
+  Tr,
+} from "../components/core";
+import { formatMoney, formatPct, formatTokens } from "../lib/format";
 
 export default function Manager() {
   const { filters } = useFilters();
-  const costWf = useCosts("workflow", filters);
-  const costClient = useCosts("client", filters);
+  const overview = useOverview(filters);
+  const costsByWorkflow = useCosts("workflow", filters);
+  const costsByClient = useCosts("client", filters);
   const workflows = useWorkflows(filters);
   const clients = useClients(filters);
-  const { data: costByWf } = costWf;
-  const { data: costByClient } = costClient;
-  const { data: workflowsData } = workflows;
-  const { data: clientsData } = clients;
-  const { data: agents } = useAgents(filters);
-  const { data: alerts } = useAlerts();
-  const { data: trends } = useMetrics("total", filters);
-  const { data: budgets } = useBudgetStatus();
-  const chartError =
-    costWf.error ?? costClient.error ?? workflows.error ?? clients.error;
+  const agents = useAgents(filters);
+  const alerts = useAlerts();
+  const trends = useMetrics("total", filters);
+  const budgets = useBudgetStatus();
+
+  const loadError =
+    overview.error ?? costsByWorkflow.error ?? costsByClient.error ?? workflows.error;
+  const anyError =
+    overview.isError ||
+    costsByWorkflow.isError ||
+    costsByClient.isError ||
+    workflows.isError ||
+    alerts.isError ||
+    budgets.isError;
+
+  const trendSeries = (trends.data?.items ?? []).map((m) => ({
+    day: m.day.slice(5),
+    total_cost: m.total_cost,
+    executions: m.executions,
+  }));
 
   return (
-    <div className="grid" style={{ gap: 16 }}>
-      {(costWf.isError || costClient.isError || workflows.isError || clients.isError) && (
-        <QueryError what="manager data" error={chartError} />
+    <div className="page">
+      <PageHeader
+        title="Manager"
+        subTitle="Spend by workflow and client, budget health and agent efficiency."
+        extra={<RefreshButton />}
+      />
+      <FilterToolbar />
+
+      {anyError ? <QueryError what="manager data" error={loadError} /> : null}
+
+      {overview.isLoading ? (
+        <div className="grid grid-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} shape="chart" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-4">
+          <Metric label="Total cost" value={formatMoney(overview.data?.total_cost)} />
+          <Metric label="Executions" value={overview.data?.executions ?? 0} />
+          <Metric
+            label="Error rate"
+            value={formatPct(overview.data?.error_rate)}
+            tone={overview.data?.error_rate ? "danger" : "default"}
+          />
+          <Metric
+            label="Open alerts"
+            value={alerts.data?.total ?? 0}
+            tone={alerts.data?.total ? "warning" : "default"}
+          />
+        </div>
       )}
+
       <div className="grid grid-2">
-        <Chart title="Cost by workflow" rows={(costByWf?.items ?? []).map((i) => ({ name: i.key, cost: i.total_cost ?? 0 }))} />
-        <Chart title="Cost by client" rows={(costByClient?.items ?? []).map((i) => ({ name: i.key, cost: i.total_cost ?? 0 }))} />
+        <CardPanel title="Cost by workflow" subTitle="USD in range">
+          {(costsByWorkflow.data?.items ?? []).length ? (
+            <BreakdownBars
+              rows={(costsByWorkflow.data?.items ?? []).map((item) => ({
+                key: item.key ?? String(item.name),
+                label: item.key ?? item.name ?? "—",
+                value: item.total_cost ?? 0,
+                valueLabel: formatMoney(item.total_cost),
+                sublabel: [
+                  `${item.executions} executions`,
+                  item.error_rate !== undefined && item.error_rate !== null
+                    ? `${formatPct(item.error_rate)} errors`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                href: `/engineering?workflow=${encodeURIComponent(item.key ?? item.name ?? "")}`,
+              }))}
+            />
+          ) : costsByWorkflow.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="80%" />
+              <Skeleton width="60%" />
+              <Skeleton width="70%" />
+            </div>
+          ) : (
+            <EmptyState title="No workflow cost yet" description="Costs appear once executions are priced." />
+          )}
+        </CardPanel>
+
+        <CardPanel title="Cost by client" subTitle="USD in range">
+          {(costsByClient.data?.items ?? []).length ? (
+            <BreakdownBars
+              rows={(costsByClient.data?.items ?? []).map((item) => ({
+                key: item.key ?? String(item.name),
+                label: item.key ?? item.name ?? "—",
+                value: item.total_cost ?? 0,
+                valueLabel: formatMoney(item.total_cost),
+                sublabel: `${item.executions} executions · ${formatTokens(item.total_tokens)} tokens`,
+                href: `/engineering?client_id=${encodeURIComponent(item.key ?? item.name ?? "")}`,
+              }))}
+            />
+          ) : costsByClient.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="80%" />
+              <Skeleton width="60%" />
+              <Skeleton width="70%" />
+            </div>
+          ) : (
+            <EmptyState title="No client cost yet" description="Costs appear once executions are priced." />
+          )}
+        </CardPanel>
       </div>
 
       <div className="grid grid-2">
-        <div className="panel">
-          <h3>Workflows</h3>
-          <table>
-            <thead>
-              <tr><th>Workflow</th><th>Exec</th><th>Err</th><th>Cost</th></tr>
-            </thead>
-            <tbody>
-              {(workflowsData?.items ?? []).map((w) => (
-                <tr key={w.name}>
-                  <td>{w.name}</td>
-                  <td>{w.executions}</td>
-                  <td className={w.error_rate ? "error" : ""}>{formatPct(w.error_rate)}</td>
-                  <td>{formatMoney(w.total_cost)}</td>
+        <CardPanel title="Workflows" subTitle="Reliability and cost per workflow">
+          <TableWrap>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Workflow</Th>
+                  <Th align="right">Executions</Th>
+                  <Th align="right">Error rate</Th>
+                  <Th align="right">Cost</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              {workflows.data?.items?.length ? (
+                <tbody>
+                  {workflows.data.items.map((w) => (
+                    <Tr key={w.name}>
+                      <Td className="table__cell--primary">{w.name}</Td>
+                      <Td align="right" className="num">
+                        {w.executions}
+                      </Td>
+                      <Td align="right" className="num">
+                        <span className={w.error_rate ? "text-danger" : ""}>{formatPct(w.error_rate)}</span>
+                      </Td>
+                      <Td align="right" className="num">
+                        {formatMoney(w.total_cost)}
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              ) : (
+                <TableEmpty colSpan={4}>No workflows in range.</TableEmpty>
+              )}
+            </Table>
+          </TableWrap>
+        </CardPanel>
 
-        <div className="panel">
-          <h3>Clients</h3>
-          <table>
-            <thead>
-              <tr><th>Client</th><th>Exec</th><th>Cost</th><th>Tokens</th></tr>
-            </thead>
-            <tbody>
-              {(clientsData?.items ?? []).map((c) => (
-                <tr key={c.client_id}>
-                  <td>{c.client_id}</td>
-                  <td>{c.executions}</td>
-                  <td>{formatMoney(c.total_cost)}</td>
-                  <td>{c.total_tokens}</td>
+        <CardPanel title="Clients" subTitle="Consumption and cost per client">
+          <TableWrap>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Client</Th>
+                  <Th align="right">Executions</Th>
+                  <Th align="right">Tokens</Th>
+                  <Th align="right">Cost</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              {clients.data?.items?.length ? (
+                <tbody>
+                  {clients.data.items.map((c) => (
+                    <Tr key={c.client_id}>
+                      <Td className="table__cell--primary">{c.client_id}</Td>
+                      <Td align="right" className="num">
+                        {c.executions}
+                      </Td>
+                      <Td align="right" className="num">
+                        {formatTokens(c.total_tokens)}
+                      </Td>
+                      <Td align="right" className="num">
+                        {formatMoney(c.total_cost)}
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              ) : (
+                <TableEmpty colSpan={4}>No clients in range.</TableEmpty>
+              )}
+            </Table>
+          </TableWrap>
+        </CardPanel>
       </div>
 
-      <div className="panel">
-        <h3>Agent efficiency</h3>
-        <table>
-          <thead>
-            <tr><th>Agent</th><th>Exec</th><th>Err</th><th>Cost</th><th>Tokens</th></tr>
-          </thead>
-          <tbody>
-            {(agents?.items ?? []).map((a) => (
-              <tr key={a.name}>
-                <td>{a.name}</td>
-                <td>{a.executions}</td>
-                <td className={a.error_rate ? "error" : ""}>{formatPct(a.error_rate)}</td>
-                <td>{formatMoney(a.total_cost)}</td>
-                <td>{a.total_tokens}</td>
+      <CardPanel title="Agent efficiency" subTitle="Per-agent cost, tokens and error rate">
+        <TableWrap>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Agent</Th>
+                <Th align="right">Executions</Th>
+                <Th align="right">Error rate</Th>
+                <Th align="right">Cost</Th>
+                <Th align="right">Tokens</Th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {!agents?.items?.length && <p className="muted">No agent spans seen yet.</p>}
-      </div>
+            </thead>
+            {agents.data?.items?.length ? (
+              <tbody>
+                {agents.data.items.map((a) => (
+                  <Tr key={a.name}>
+                    <Td className="table__cell--primary">{a.name}</Td>
+                    <Td align="right" className="num">
+                      {a.executions}
+                    </Td>
+                    <Td align="right" className="num">
+                      <span className={a.error_rate ? "text-danger" : ""}>{formatPct(a.error_rate)}</span>
+                    </Td>
+                    <Td align="right" className="num">
+                      {formatMoney(a.total_cost)}
+                    </Td>
+                    <Td align="right" className="num">
+                      {formatTokens(a.total_tokens)}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            ) : (
+              <TableEmpty colSpan={5}>No agent spans seen yet.</TableEmpty>
+            )}
+          </Table>
+        </TableWrap>
+      </CardPanel>
 
-      <div className="panel">
-        <h3>Open alerts ({alerts?.total ?? 0})</h3>
-        {(alerts?.items ?? []).map((a) => (
-          <div key={a.id} className={`row alert-${a.severity}`} style={{ padding: "8px 4px", borderBottom: "1px solid var(--border)" }}>
-            <span className="badge">{a.severity}</span>
-            <span>{a.message}</span>
-            <span className="spacer" />
-            <span className="muted">{a.triggered_at ? new Date(a.triggered_at).toLocaleString() : ""}</span>
-          </div>
-        ))}
-        {!alerts?.items?.length && <p className="muted">No open alerts.</p>}
-      </div>
+      <div className="grid grid-2">
+        <CardPanel title="Budgets" subTitle="Utilization against configured caps">
+          {(budgets.data?.items ?? []).length ? (
+            <div className="stack stack--loose" style={{ padding: "var(--global-dimension-size-200)" }}>
+              {(budgets.data?.items ?? []).map((b) => {
+                const pct = Math.round(b.utilization * 100);
+                return (
+                  <Progress
+                    key={b.id}
+                    fraction={b.utilization}
+                    label={
+                      <>
+                        {b.name ?? `Budget ${b.period}`}
+                        {b.period_type ? <span className="muted"> ({b.period_type})</span> : null}
+                      </>
+                    }
+                    detail={`${formatMoney(b.spend)} / ${formatMoney(b.amount)} · ${pct}%`}
+                  />
+                );
+              })}
+            </div>
+          ) : budgets.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="70%" />
+              <Skeleton width="50%" />
+            </div>
+          ) : (
+            <EmptyState title="No budgets configured" description="Create a budget to track spend caps per dimension." />
+          )}
+        </CardPanel>
 
-      <div className="panel">
-        <h3>Budgets ({budgets?.total ?? 0})</h3>
-        {(budgets?.items ?? []).map((b) => {
-          const pct = Math.round(b.utilization * 100);
-          const barPct = Math.min(100, pct); // clamp only the bar, never the number (F23)
-          const over = b.utilization >= 1;
-          return (
-            <div key={b.id} style={{ padding: "8px 4px", borderBottom: "1px solid var(--border)" }}>
-              <div className="row">
-                <span>{b.name ?? `Budget ${b.period}`}{b.period_type ? ` (${b.period_type})` : ""}</span>
+        <CardPanel
+          title="Open alerts"
+          subTitle={alerts.data ? `${alerts.data.total} open` : undefined}
+        >
+          {(alerts.data?.items ?? []).length ? (
+            (alerts.data?.items ?? []).map((alert) => (
+              <div className="list-row" key={alert.id}>
+                <SeverityBadge severity={alert.severity} />
+                <div className="list-row__main">
+                  <span className="truncate">{alert.message}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {alert.dimension}
+                    {alert.dimension_key ? ` · ${alert.dimension_key}` : ""}
+                  </span>
+                </div>
                 <span className="spacer" />
-                <span className="muted">
-                  {formatMoney(b.spend)} / {formatMoney(b.amount)} · {pct}%
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {alert.triggered_at ? new Date(alert.triggered_at).toLocaleString() : ""}
                 </span>
               </div>
-              <div style={{ background: "var(--panel-2)", borderRadius: 6, height: 8, marginTop: 6 }}>
-                <div
-                  style={{
-                    width: `${barPct}%`,
-                    height: 8,
-                    borderRadius: 6,
-                    background: over ? "var(--bad)" : pct >= 80 ? "var(--warn)" : "var(--ok)",
-                  }}
-                />
-              </div>
+            ))
+          ) : alerts.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="60%" />
+              <Skeleton width="80%" />
             </div>
-          );
-        })}
-        {!budgets?.items?.length && <p className="muted">No budgets configured.</p>}
+          ) : (
+            <EmptyState title="No open alerts" description="Nothing is crossing its configured threshold." />
+          )}
+        </CardPanel>
       </div>
 
-      <TrendChart data={trends?.items ?? []} />
-    </div>
-  );
-}
-
-function Chart({ title, rows }: { title: string; rows: { name?: string; cost: number }[] }) {
-  return (
-    <div className="panel">
-      <h3>{title}</h3>
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={rows}>
-          <CartesianGrid stroke="#2a2f3a" strokeDasharray="3 3" />
-          <XAxis dataKey="name" stroke="#9aa3b2" interval={0} />
-          <YAxis stroke="#9aa3b2" />
-          <Tooltip contentStyle={{ background: "#171a21", border: "1px solid #2a2f3a" }} />
-          <Bar dataKey="cost" radius={[4, 4, 0, 0]}>
-            {rows.map((_, i) => (
-              <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function TrendChart({ data }: { data: { day: string; total_cost: number }[] }) {
-  const series = data.map((m) => ({ day: m.day.slice(5), cost: m.total_cost }));
-  return (
-    <div className="panel">
-      <h3>Consumption trend (cost)</h3>
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={series}>
-          <CartesianGrid stroke="#2a2f3a" strokeDasharray="3 3" />
-          <XAxis dataKey="day" stroke="#9aa3b2" />
-          <YAxis stroke="#9aa3b2" />
-          <Tooltip contentStyle={{ background: "#171a21", border: "1px solid #2a2f3a" }} />
-          <Bar dataKey="cost" fill="#4f8cff" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+      <CardPanel title="Consumption trend" subTitle="Cost per day">
+        <div style={{ padding: "var(--global-dimension-size-100)" }}>
+          <TrendChart
+            data={trendSeries}
+            series={[{ key: "total_cost", label: "Cost", type: "bar", colorIndex: 0 }]}
+            valueFormatter={(v) => formatMoney(v)}
+            height={220}
+          />
+        </div>
+      </CardPanel>
     </div>
   );
 }

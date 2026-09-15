@@ -149,12 +149,38 @@ Resolved during implementation on the wayfinder map `.scratch/frontend/` (per
 | [03 — API client](../.scratch/frontend/issues/03-api-client.md) | Typed fetch client + query hooks; dev + nginx `/api` proxies |
 | [04 — Views](../.scratch/frontend/issues/04-views.md) | Overview / Engineering (span+failure tree) / Manager (cost, budget, alerts) / Executive (unit economics + forecast) |
 | [05 — Code-splitting](../.scratch/frontend/issues/05-code-splitting.md) | Lazy pages + vendor/charts chunks |
+| [06 — Phoenix design system](../.scratch/frontend/issues/06-phoenix-design-system.md) | Arize Phoenix design system: tokens, side-nav shell, core components, themed charts; Geist fonts; dark default + light toggle |
+
+---
+
+## Redesign (2026-09-15): Phoenix design system
+
+The dashboard was re-skinned to faithfully match the **Arize Phoenix** UI
+(Apache-2.0) shipped at `:6006`, so the platform and Phoenix read as one
+product:
+
+- **Tokens** (`src/theme/tokens.css`): Phoenix's dimension scale, color ramps
+  (`-rgb` companions), semantic aliases, text opacities, rounding, borders,
+  table/badge/card/field/button/chart tokens and z-index bands. Dark is the
+  default; `.theme--light` provides the light palette and the sidebar toggle
+  persists the choice.
+- **Shell**: collapsible side nav (52/260px) with brand, separators and theme
+  toggle; top nav with breadcrumbs, open-alert counter and persona select;
+  every page is `page` → `PageHeader` → `FilterToolbar` → content.
+- **Primitives** (`src/components/core/`): Card, Badge (LCH variants), Table,
+  Tabs, Button, Alert, Field/Select, Progress, Metric, Skeleton, EmptyState,
+  inline icon set — BEM classes, no CSS-in-JS dependency.
+- **Charts**: Recharts bound to Phoenix chart tokens via `useChartTheme`
+  (themed gridlines, axes, tooltip panel); horizontal breakdown bars for
+  per-dimension cost.
+- **Type**: Geist Sans/Mono self-hosted via `@fontsource` (offline-safe).
+
 
 ---
 
 ## Implementation status (2026-09-15)
 
-Shipped as planned, with these deltas (see `docs/06-project-audit.md` �7):
+Shipped as planned, with these deltas (see `docs/06-project-audit.md` �7):
 
 - **Role switcher**: presentation-level role gating (nav + routes, persisted);
   server-side RBAC is opt-in via user keys (roles engineer/sdm/finance/admin).

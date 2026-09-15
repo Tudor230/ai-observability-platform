@@ -9,10 +9,10 @@ export function useOverview(f: Filters) {
   });
 }
 
-export function useExecutions(f: Filters, status?: string) {
+export function useExecutions(f: Filters, status?: string, limit = 100) {
   return useQuery({
-    queryKey: ["executions", f, status],
-    queryFn: () => api.executions(f, status),
+    queryKey: ["executions", f, status, limit],
+    queryFn: () => api.executions(f, status, limit),
   });
 }
 

@@ -26,6 +26,9 @@ backend Platform API. Decision tickets below record resolved decisions.
   Executive unit economics + linear forecast.
 - [05 — Code-splitting](issues/05-code-splitting.md): lazy-loaded pages and
   vendor/charts manual chunks to keep the initial bundle small.
+- [06 — Phoenix design system](issues/06-phoenix-design-system.md): the UI
+  adopts the Arize Phoenix design system (tokens, shell layout, core
+  components, chart theming; Geist fonts; dark default + light toggle).
 
 ## Fog / not yet specified
 

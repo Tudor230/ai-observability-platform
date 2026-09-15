@@ -1,93 +1,188 @@
-import { useOverview, useMetrics } from "../api/hooks";
+import { Link } from "react-router-dom";
+import { useAlerts, useMetrics, useOverview } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
-import { KpiCard } from "../components/KpiCard";
-import { QueryError } from "../components/QueryError";
-import { formatMoney, formatTokens, formatMs, formatPct } from "../lib/format";
+import { PageHeader } from "../components/PageHeader";
+import { FilterToolbar } from "../components/FilterToolbar";
+import { RefreshButton } from "../components/RefreshButton";
+import { TrendChart } from "../components/charts/TrendChart";
+import { SeverityBadge } from "../components/domain";
 import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
+  Alert,
+  CardPanel,
+  Delta,
+  EmptyState,
+  Metric,
+  QueryError,
+  Skeleton,
+} from "../components/core";
+import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
 
 export default function Overview() {
   const { filters } = useFilters();
-  const { data, isLoading, isError, error } = useOverview(filters);
-  const { data: ts } = useMetrics("total", filters);
+  const overview = useOverview(filters);
+  const metrics = useMetrics("total", filters);
+  const alerts = useAlerts();
 
-  const series = (ts?.items ?? []).map((m) => ({
+  const data = overview.data;
+  const series = (metrics.data?.items ?? []).map((m) => ({
     day: m.day.slice(5),
     cost: m.total_cost,
     executions: m.executions,
-    tokens: m.total_tokens,
+    input_tokens: m.input_tokens,
+    output_tokens: m.output_tokens,
   }));
 
+  const loadError = overview.error ?? metrics.error;
+  const loading = overview.isLoading;
+
   return (
-    <div className="grid" style={{ gap: 16 }}>
-      {isError ? (
-        <QueryError what="the overview" error={error} />
-      ) : isLoading ? (
-        <p className="muted">Loading…</p>
+    <div className="page">
+      <PageHeader
+        title="Overview"
+        subTitle="Usage, cost and reliability across every agent execution."
+        extra={<RefreshButton />}
+      />
+      <FilterToolbar />
+
+      {overview.isError ? (
+        <QueryError what="the overview" error={loadError} />
+      ) : null}
+
+      {loading ? (
+        <>
+          <div className="grid grid-4">
+            {Array.from({ length: 8 }, (_, i) => (
+              <Skeleton key={i} shape="chart" />
+            ))}
+          </div>
+          <Skeleton shape="chart" />
+        </>
       ) : (
         <>
           <div className="grid grid-4">
-            <KpiCard
+            <Metric
               label="Total cost"
               value={formatMoney(data?.total_cost)}
-              sub={delta(data?.deltas?.total_cost_pct, "bad-up")}
-              tone={data && (data.deltas?.total_cost_pct ?? 0) > 0 ? "bad" : undefined}
+              sub={<Delta pct={data?.deltas?.total_cost_pct} polarity="up-is-bad" />}
             />
-            <KpiCard label="Executions" value={data?.executions ?? 0} sub={delta(data?.deltas?.executions_pct, "neutral")} />
-            <KpiCard
+            <Metric
+              label="Executions"
+              value={data?.executions ?? 0}
+              sub={
+                <>
+                  <Delta pct={data?.deltas?.executions_pct} polarity="down-is-bad" />
+                  <span className="muted">{data?.failed_executions ?? 0} failed</span>
+                </>
+              }
+            />
+            <Metric
               label="Error rate"
               value={formatPct(data?.error_rate)}
-              sub={delta(data?.deltas?.error_rate_pct, "bad-up")}
-              tone={data && data.error_rate ? "bad" : undefined}
+              tone={data && data.error_rate > 0 ? "danger" : "default"}
+              sub={<Delta pct={data?.deltas?.error_rate_pct} polarity="up-is-bad" />}
             />
-            <KpiCard label="Total tokens" value={formatTokens(data?.total_tokens)} />
-            <KpiCard label="LLM calls" value={data?.llm_calls ?? 0} />
-            <KpiCard label="Tool calls" value={data?.tool_calls ?? 0} />
-            <KpiCard label="Avg duration" value={formatMs(data?.avg_duration_ms)} />
-            <KpiCard label="P95 latency" value={formatMs(data?.p95_duration_ms)} />
-            <KpiCard label="Open alerts" value={data?.open_alerts ?? 0} tone="warn" />
+            <Metric label="Total tokens" value={formatTokens(data?.total_tokens)} />
+            <Metric label="LLM calls" value={data?.llm_calls ?? 0} />
+            <Metric label="Tool calls" value={data?.tool_calls ?? 0} />
+            <Metric label="Avg duration" value={formatMs(data?.avg_duration_ms)} sub={`p50 ${formatMs(data?.p50_duration_ms)}`} />
+            <Metric label="P95 latency" value={formatMs(data?.p95_duration_ms)} sub={`p99 ${formatMs(data?.p99_duration_ms)}`} />
+            <Metric
+              label="Open alerts"
+              value={data?.open_alerts ?? 0}
+              tone={data && data.open_alerts > 0 ? "warning" : "default"}
+              sub={data && data.open_alerts > 0 ? <Link to="/manager">Review alerts</Link> : "All clear"}
+            />
           </div>
 
-          <div className="panel">
-            <h3>Cost over time</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={series}>
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#4f8cff" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#4f8cff" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#2a2f3a" strokeDasharray="3 3" />
-                <XAxis dataKey="day" stroke="#9aa3b2" />
-                <YAxis stroke="#9aa3b2" />
-                <Tooltip contentStyle={{ background: "#171a21", border: "1px solid #2a2f3a" }} />
-                <Area type="monotone" dataKey="cost" stroke="#4f8cff" fill="url(#g)" name="Cost" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="grid grid-2">
+            <CardPanel title="Cost over time" subTitle="USD per day">
+              <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                <TrendChart
+                  data={series}
+                  series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
+                  valueFormatter={(v) => formatMoney(v)}
+                  height={240}
+                />
+              </div>
+            </CardPanel>
+            <CardPanel title="Executions over time" subTitle="Completed workflow roots per day">
+              <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                <TrendChart
+                  data={series}
+                  series={[{ key: "executions", label: "Executions", type: "bar", colorIndex: 6 }]}
+                  height={240}
+                />
+              </div>
+            </CardPanel>
           </div>
+
+          <div className="grid grid-2">
+            <CardPanel title="Tokens over time" subTitle="Input vs output tokens">
+              <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                <TrendChart
+                  data={series}
+                  series={[
+                    { key: "input_tokens", label: "Input", colorIndex: 0, stack: true },
+                    { key: "output_tokens", label: "Output", colorIndex: 3, stack: true },
+                  ]}
+                  valueFormatter={(v) => formatTokens(v)}
+                  height={220}
+                />
+              </div>
+            </CardPanel>
+            <CardPanel
+              title="Open alerts"
+              subTitle={alerts.data ? `${alerts.data.total} open` : undefined}
+              extra={<Link to="/manager">View all</Link>}
+            >
+              {(alerts.data?.items ?? []).slice(0, 4).map((alert) => (
+                <div className="list-row" key={alert.id}>
+                  <SeverityBadge severity={alert.severity} />
+                  <div className="list-row__main">
+                    <span className="truncate">{alert.message}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {alert.dimension}
+                      {alert.dimension_key ? ` · ${alert.dimension_key}` : ""}
+                    </span>
+                  </div>
+                  <span className="spacer" />
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {alert.triggered_at ? new Date(alert.triggered_at).toLocaleString() : ""}
+                  </span>
+                </div>
+              ))}
+              {alerts.isError ? (
+                <div style={{ padding: 16 }}>
+                  <QueryError what="alerts" error={alerts.error} />
+                </div>
+              ) : null}
+              {!alerts.isError && !alerts.isLoading && !alerts.data?.items?.length ? (
+                <EmptyState
+                  title="No open alerts"
+                  description="Budgets are tracking within thresholds for the selected range."
+                />
+              ) : null}
+              {alerts.isLoading ? (
+                <div className="stack" style={{ padding: 16 }}>
+                  <Skeleton width="60%" />
+                  <Skeleton width="80%" />
+                  <Skeleton width="40%" />
+                </div>
+              ) : null}
+            </CardPanel>
+          </div>
+
+          {metrics.isError ? <QueryError what="time series metrics" error={metrics.error} /> : null}
         </>
       )}
-    </div>
-  );
-}
 
-function delta(pct: number | null | undefined, polarity: "bad-up" | "bad-down" | "neutral" = "bad-up") {
-  if (pct === null || pct === undefined) return null;
-  const sign = pct >= 0 ? "+" : "";
-  const bad =
-    polarity === "bad-up" ? pct > 0 : polarity === "bad-down" ? pct < 0 : false;
-  return (
-    <span className={bad ? "error" : "muted"}>
-      {sign}
-      {pct.toFixed(1)}% vs prev
-    </span>
+      {overview.isLoading ? null : (
+        <Alert
+          variant="info"
+          message="All values are computed by the backend from ingested OTLP traces."
+          detail="Unpriced models appear without a cost until a matching price is configured."
+        />
+      )}
+    </div>
   );
 }
