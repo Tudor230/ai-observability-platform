@@ -133,16 +133,22 @@ def build_provider(
 
 
 _atexit_registered = False
+_latest_provider: Optional[TracerProvider] = None
 
 
 def register_atexit_flush(provider: TracerProvider) -> None:
-    global _atexit_registered
+    """Flush the *latest* provider at exit (re-`init()` must not go unflushed, F39)."""
+    global _atexit_registered, _latest_provider
+    _latest_provider = provider
     if _atexit_registered:
         return
 
     def _flush_on_exit() -> None:
+        current = _latest_provider
+        if current is None:
+            return
         try:
-            provider.force_flush(timeout_millis=5_000)
+            current.force_flush(timeout_millis=5_000)
         except Exception:
             logger.exception("SDK atexit flush failed")
 

@@ -686,6 +686,7 @@ Docker stack.
 | F36 | ADR-0004 records the deployment decision: Compose is the supported prototype deployment; K8s deferred with an explicit migration path |
 | F37 | Alerts are delivered best-effort to `AIOBS_ALERT_WEBHOOK_URL` as JSON (+ test) |
 | F38 | CI: 80% backend coverage floor (86% measured), `e2e_smoke.py` runs in CI, SDK e2e runs on PRs, job timeouts, Phoenix pinned by digest |
+| F39 | SDK hygiene: unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized; kind-override registration is lock-protected and iterated from a snapshot; atexit flushes the latest provider |
 | F41 | Plans (`sdk/backend/frontend.md`) now carry an implementation-status section; README links the audit and ADRs |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
@@ -697,7 +698,6 @@ Docker stack.
 | F15 | `days` supported by `/executions` and `/metrics`; dashboard trends/forecast/metrics now filtered | alerts/budget panels are intentionally global |
 | F16 | Role selector gates nav links and routes (persisted in localStorage); server-side roles apply when read auth is enabled | UI role switch is presentation-level (no per-user login) |
 | F20 | 17 → 73 backend tests, 86% coverage with an 80% CI floor; ruff + mypy in CI; Alembic applied by the image and validated in CI | — |
-| F39 | Unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized | Hook thread-safety, atexit per provider |
 | F40 | Money formatting grouped/adaptive; responsive topbar + scrollable tables; nginx gzip + immutable assets; **ESLint** (flat config) in CI | Component/page tests (RTL/Playwright) |
 
 ### Not started (optional next steps)

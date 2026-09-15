@@ -61,13 +61,21 @@ _ERROR_ENRICH_KINDS = frozenset({"LLM", "TOOL", "RETRIEVER", "CHAIN", "AGENT"})
 
 # Optional span-kind reclassification hooks (correct AGENT spans the
 # instrumentors' heuristics misfire on). Each hook receives the span and
-# returns a kind string or None.
+# returns a kind string or None. Registration is locked and iteration copies
+# the list, so registering while the export thread runs is safe (F39).
 _kind_override_hooks: list[Callable[[ReadableSpan], Optional[str]]] = []
+_hooks_lock = threading.Lock()
 
 
 def register_span_kind_override(hook: Callable[[ReadableSpan], Optional[str]]) -> None:
     """Register a reclassification hook for instrumentor span kinds."""
-    _kind_override_hooks.append(hook)
+    with _hooks_lock:
+        _kind_override_hooks.append(hook)
+
+
+def _snapshot_kind_hooks() -> list[Callable[[ReadableSpan], Optional[str]]]:
+    with _hooks_lock:
+        return list(_kind_override_hooks)
 
 
 # Workflow-scoped prompt capture (F14). Children end before their root, so the
@@ -325,7 +333,7 @@ class EnrichingExporter(SpanExporter):
             normalize_provider(attrs)
             backfill_token_counts(attrs)
 
-        for hook in _kind_override_hooks:
+        for hook in _snapshot_kind_hooks():
             try:
                 new_kind = hook(span)
             except Exception:
