@@ -1,16 +1,19 @@
 import { Link } from "react-router-dom";
 import { useExecutions } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
+import { QueryError } from "../components/QueryError";
 import { formatMoney, formatTokens, formatMs } from "../lib/format";
 
 export default function Engineering() {
   const { filters } = useFilters();
-  const { data, isLoading } = useExecutions(filters);
+  const { data, isLoading, isError, error } = useExecutions(filters);
 
   return (
     <div className="panel">
       <h3>Trace Explorer</h3>
-      {isLoading ? (
+      {isError ? (
+        <QueryError what="executions" error={error} />
+      ) : isLoading ? (
         <p className="muted">Loading…</p>
       ) : (
         <table>

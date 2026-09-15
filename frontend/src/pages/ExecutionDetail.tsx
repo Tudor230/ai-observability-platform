@@ -6,11 +6,19 @@ import type { Span, FailureNode } from "../api/types";
 
 export default function ExecutionDetail() {
   const { id = "" } = useParams();
-  const { data: ex, isLoading: l1 } = useExecution(id);
+  const { data: ex, isLoading: l1, isError, error } = useExecution(id);
   const { data: spansData } = useSpans(id);
   const { data: failures } = useFailures(id);
 
   if (l1) return <p className="muted">Loading…</p>;
+  if (isError) {
+    const message = error instanceof Error ? error.message : "";
+    return message.includes("404") ? (
+      <p className="error">Execution not found.</p>
+    ) : (
+      <p className="error">Failed to load execution. ({message})</p>
+    );
+  }
   if (!ex) return <p className="error">Execution not found.</p>;
 
   const spans = spansData?.items ?? [];

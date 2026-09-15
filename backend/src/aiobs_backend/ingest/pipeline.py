@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import aiobs_contracts as c
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import attrs
@@ -544,37 +545,52 @@ def _recompute_execution(
     }
 
 
+def _upsert_row(session: Session, model, lookup, values: dict):
+    """Insert-or-select with retry, safe under concurrent exporters (F27).
+
+    Two exporters sending the same client/workflow/agent concurrently would
+    otherwise race between the SELECT and the INSERT; the losing insert is
+    retried as a lookup once the winning transaction commits.
+    """
+    row = session.execute(select(model).where(lookup)).scalar_one_or_none()
+    if row is not None:
+        return row, False
+    try:
+        with session.begin_nested():
+            row = model(**values)
+            session.add(row)
+            session.flush()
+        return row, True
+    except IntegrityError:
+        row = session.execute(select(model).where(lookup)).scalar_one()
+        return row, False
+
+
 def _upsert_client(session: Session, client_key: str) -> Client:
-    row = session.execute(
-        select(Client).where(Client.external_key == client_key)
-    ).scalar_one_or_none()
-    if row:
+    row, created = _upsert_row(
+        session,
+        Client,
+        Client.external_key == client_key,
+        {"external_key": client_key, "name": client_key},
+    )
+    if not created:
         row.last_seen = _now()
-        return row
-    row = Client(external_key=client_key, name=client_key)
-    session.add(row)
-    session.flush()
     return row
 
 
 def _upsert_workflow(
     session: Session, project: Project, name: str, version: str | None
 ) -> Workflow:
-    row = session.execute(
-        select(Workflow).where(
-            Workflow.project_id == project.id,
-            Workflow.name == name,
-            Workflow.version == version,
-        )
-    ).scalar_one_or_none()
-    if row:
-        row.last_seen = _now()
-        return row
-    row = Workflow(
-        project_id=project.id, name=name, version=version
+    row, created = _upsert_row(
+        session,
+        Workflow,
+        (Workflow.project_id == project.id)
+        & (Workflow.name == name)
+        & (Workflow.version == version),
+        {"project_id": project.id, "name": name, "version": version},
     )
-    session.add(row)
-    session.flush()
+    if not created:
+        row.last_seen = _now()
     return row
 
 
@@ -586,11 +602,9 @@ def touch_agents(session: Session, derived: list[DerivedSpan]) -> None:
         if d.oi_kind == attrs.KIND_AGENT and d.raw.name
     }
     for name in names:
-        row = session.execute(
-            select(Agent).where(Agent.name == name)
-        ).scalar_one_or_none()
-        if row:
+        row, created = _upsert_row(
+            session, Agent, Agent.name == name, {"name": name}
+        )
+        if not created:
             row.last_seen = _now()
-        else:
-            session.add(Agent(name=name))
     session.flush()

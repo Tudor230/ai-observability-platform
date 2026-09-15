@@ -111,3 +111,47 @@ def test_rule_alerts_do_not_trigger_budget_alerts(session_factory, project):
         created = evaluate_alerts(session)
         session.commit()
     assert not [a for a in created if a["dimension"] == "rule"], created
+
+
+def test_alerts_are_posted_to_the_webhook(monkeypatch, session_factory, project):
+    """F37: created alerts are delivered best-effort to the configured webhook."""
+    import json as jsonlib
+
+    from aiobs_backend import alerts as alerts_mod
+    from aiobs_backend.config import get_settings
+
+    sent: dict = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        sent["url"] = request.full_url
+        sent["payload"] = jsonlib.loads(request.data.decode("utf-8"))
+        return _Response()
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(alerts_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        get_settings(), "alert_webhook_url", "http://hooks.test/alerts"
+    )
+    try:
+        now = datetime.now(timezone.utc)
+        with session_factory() as session:
+            for i in range(6):
+                _add_execution(
+                    session, project, started=now, status="error" if i < 5 else "ok"
+                )
+            session.commit()
+            created = evaluate_alerts(session)
+            session.commit()
+        assert created, "expected the error-rate alert"
+        assert sent["url"] == "http://hooks.test/alerts"
+        assert sent["payload"]["alerts"]
+        assert sent["payload"]["alerts"][0]["rule_id"].startswith("rule:error_rate")
+    finally:
+        get_settings.cache_clear()

@@ -1,8 +1,9 @@
 import { useOverview, useCosts, useMetrics } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { KpiCard } from "../components/KpiCard";
+import { QueryError } from "../components/QueryError";
 import { formatMoney, formatTokens } from "../lib/format";
-import { buildForecast } from "../lib/forecast";
+import { buildForecast, forecastAsOf } from "../lib/forecast";
 import {
   ResponsiveContainer,
   LineChart,
@@ -15,17 +16,21 @@ import {
 
 export default function Executive() {
   const { filters } = useFilters();
-  const { data } = useOverview(filters);
-  const { data: byService } = useCosts("client", filters);
-  const { data: byModel } = useCosts("model", filters);
+  const overview = useOverview(filters);
+  const byService = useCosts("client", filters);
+  const byModel = useCosts("model", filters);
+  const { data } = overview;
+  const { data: byServiceData } = byService;
+  const { data: byModelData } = byModel;
   const { data: ts } = useMetrics("total", filters);
+  const loadError = overview.error ?? byService.error ?? byModel.error;
 
   const series = (ts?.items ?? []).map((m) => ({
     day: m.day,
     cost: m.total_cost,
     tokens: m.total_tokens,
   }));
-  const forecast = buildForecast(series, 7);
+  const forecast = buildForecast(series, 7, forecastAsOf());
 
   const execs = data?.executions ?? 0;
   const avgPerExec = execs ? (data?.total_cost ?? 0) / execs : null;
@@ -35,6 +40,9 @@ export default function Executive() {
 
   return (
     <div className="grid" style={{ gap: 16 }}>
+      {(overview.isError || byService.isError || byModel.isError) && (
+        <QueryError what="executive data" error={loadError} />
+      )}
       <div className="grid grid-4">
         <KpiCard label="Total AI cost" value={formatMoney(data?.total_cost)} />
         <KpiCard label="Cost per execution" value={formatMoney(avgPerExec)} />
@@ -42,11 +50,12 @@ export default function Executive() {
         <KpiCard label="Total tokens" value={formatTokens(tokens)} />
       </div>
 
-      {forecast.length > 0 && (
+      {forecast.length > 0 ? (
         <div className="panel">
           <h3>Forecast (next 7 days, linear projection — estimate)</h3>
           <p className="muted">
-            Projected spend: <strong>{formatMoney(forecastTotal)}</strong> over the next {forecast.length} days.
+            Projected spend: <strong>{formatMoney(forecastTotal)}</strong> over the next {forecast.length} days
+            (from {forecast[0].day}).
           </p>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={[...series.slice(-14), ...forecast]}>
@@ -58,6 +67,13 @@ export default function Executive() {
             </LineChart>
           </ResponsiveContainer>
         </div>
+      ) : (
+        <div className="panel">
+          <h3>Forecast</h3>
+          <p className="muted">
+            Not enough cost history to forecast — at least 3 days with cost are required.
+          </p>
+        </div>
       )}
 
       <div className="panel">
@@ -67,7 +83,7 @@ export default function Executive() {
             <tr><th>Client</th><th>Cost</th><th>Executions</th><th>LLM calls</th></tr>
           </thead>
           <tbody>
-            {(byService?.items ?? []).map((c) => (
+            {(byServiceData?.items ?? []).map((c) => (
               <tr key={c.key}>
                 <td>{c.key}</td>
                 <td>{formatMoney(c.total_cost)}</td>
@@ -86,7 +102,7 @@ export default function Executive() {
             <tr><th>Provider / model</th><th>Cost</th><th>Input tokens</th><th>Output tokens</th></tr>
           </thead>
           <tbody>
-            {(byModel?.items ?? []).map((m) => (
+            {(byModelData?.items ?? []).map((m) => (
               <tr key={m.key}>
                 <td>{m.provider} · {m.model}</td>
                 <td>{formatMoney(m.total_cost)}</td>

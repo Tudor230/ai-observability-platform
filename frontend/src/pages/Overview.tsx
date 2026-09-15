@@ -1,6 +1,7 @@
 import { useOverview, useMetrics } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { KpiCard } from "../components/KpiCard";
+import { QueryError } from "../components/QueryError";
 import { formatMoney, formatTokens, formatMs, formatPct } from "../lib/format";
 import {
   ResponsiveContainer,
@@ -14,7 +15,7 @@ import {
 
 export default function Overview() {
   const { filters } = useFilters();
-  const { data, isLoading } = useOverview(filters);
+  const { data, isLoading, isError, error } = useOverview(filters);
   const { data: ts } = useMetrics("total", filters);
 
   const series = (ts?.items ?? []).map((m) => ({
@@ -26,7 +27,9 @@ export default function Overview() {
 
   return (
     <div className="grid" style={{ gap: 16 }}>
-      {isLoading ? (
+      {isError ? (
+        <QueryError what="the overview" error={error} />
+      ) : isLoading ? (
         <p className="muted">Loading…</p>
       ) : (
         <>

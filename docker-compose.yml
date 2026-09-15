@@ -24,7 +24,8 @@ services:
       retries: 30
 
   phoenix:
-    image: arizephoenix/phoenix:latest
+    # Pinned by digest for reproducible e2e runs (was arizephoenix/phoenix:latest).
+    image: arizephoenix/phoenix@sha256:440c03af939e775343788a4e9e0fed72df6fd87ee287c771e94494ab3037c790
     restart: unless-stopped
     environment:
       PHOENIX_SQL_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/phoenix

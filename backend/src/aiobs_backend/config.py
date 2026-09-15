@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     seed_pricing: bool = True
     # Alert evaluation cadence (seconds) for the CLI/background loop
     alert_interval_s: int = 60
+    # Alert delivery (F37): POST created alerts as JSON to this webhook
+    alert_webhook_url: str | None = None
+    alert_webhook_timeout_s: float = 3.0
     # Threshold rules (F04) — evaluated per UTC day
     alert_min_executions: int = 5
     alert_error_rate: float = 0.5

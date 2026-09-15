@@ -491,4 +491,26 @@ def test_one_bad_trace_does_not_roll_back_the_batch(
         assert len(session.execute(select(Execution)).scalars().all()) == 1
 
 
+def test_estimated_token_flag_is_persisted(client, project):
+    """F33: backfilled token counts carry sdk.tokens.estimated to the read API."""
+    now = _now()
+    root = build_span(
+        name="checkout", oi_kind="CHAIN", span_id=1, trace_id=1700,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+    )
+    llm = build_span(
+        name="llm_call", oi_kind="LLM", span_id=2, trace_id=1700, parent_span_id=1,
+        start=now + timedelta(milliseconds=10), end=now + timedelta(seconds=1),
+        attrs={"llm.model_name": "gpt-4o-mini", "llm.provider": "openai",
+               "llm.token_count.prompt": 7, "llm.token_count.completion": 3,
+               "sdk.tokens.estimated": True},
+    )
+    client.post("/api/v1/traces", content=build_request([root, llm]), headers=_headers())
+    execution_id = client.get("/api/v1/executions").json()["items"][0]["id"]
+    spans = client.get(f"/api/v1/executions/{execution_id}/spans").json()["items"]
+    llm_span = next(s for s in spans if s["kind"] == "LLM")
+    assert llm_span["attributes"]["sdk.tokens.estimated"] is True
+
+
 

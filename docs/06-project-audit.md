@@ -642,9 +642,10 @@ mock scenarios, KPI harness) is the right skeleton to build the fixes on.
 ## 7. Implementation status (post-audit)
 
 Work in `feat/backend-frontend-plans` (uncommitted at time of writing).
-Verification: **63 backend tests pass** (was 17), the **SDK suite passes** (63 + 1
-skipped), the **hardened KPI gate passes 14/14 twice in a row** with measured KPI
-values, and each fix was re-verified against the live Docker stack.
+Verification: **66 backend tests pass** (was 17, 86% coverage), the **SDK suite passes**
+(66 + 1 skipped), the **frontend suite passes** (13), the **hardened KPI gate passes 14/14
+twice in a row** with measured KPI values, and each fix was re-verified against the live
+Docker stack.
 
 ### Fixed (with tests)
 
@@ -665,12 +666,17 @@ values, and each fix was re-verified against the live Docker stack.
 | F19 | SDK metadata is redacted (sensitive keys, recursively) before persistence; `metadata_json`/`attributes` are JSONB (+ tests) |
 | F21 | Malformed OTLP → 400, oversized bodies → 413, per-trace savepoints keep the rest of the batch (+ 3 tests) |
 | F22 | `shared/**` changes now trigger the backend and SDK workflows |
+| F23 | Frontend error states are explicit (banners on every view, 404 vs failure on detail); budget % unclamped; error rate formatted; direction-aware deltas; forecast anchored to today with an "insufficient data" panel |
 | F24 | Manager has an agent-efficiency panel; the failure tree is rendered hierarchically |
 | F26 | `DailyMetric` has a `uq_daily_dim` unique constraint (NULLS NOT DISTINCT) and rollups upsert against it (+ tests) |
+| F27 | Concurrent upserts retry instead of failing (`_upsert_row` savepoint + re-select) (+ threaded race test) |
 | F28 | Execution root cause prefers the most specific failing descendant (+ test) |
 | F29 | Cache pricing never fabricates rates and cannot go negative; missing cache prices stay unpriced (+ 5 tests) |
 | F30 | Cost records snapshot the resolved rates; deleting a referenced pricing row returns 409 (+ 3 tests, live-verified) |
 | F31 | Naive API timestamps are interpreted as UTC |
+| F33 | Backfilled token counts carry `sdk.tokens.estimated` (contract + SDK + read API) (+ 4 tests) |
+| F37 | Alerts are delivered best-effort to `AIOBS_ALERT_WEBHOOK_URL` as JSON (+ test) |
+| F38 | CI: 80% backend coverage floor (86% measured), `e2e_smoke.py` runs in CI, SDK e2e runs on PRs, job timeouts, Phoenix pinned by digest |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
 ### Partially fixed
@@ -682,16 +688,16 @@ values, and each fix was re-verified against the live Docker stack.
 | F12 | `unpriced_calls` + `cost_complete` surfaced on executions | `Decimal` end-to-end; aggregates still fold NULL to 0 |
 | F15 | `days` supported by `/executions` and `/metrics`; dashboard trends/forecast/metrics now filtered | alerts/budget panels are intentionally global |
 | F16 | Role selector gates nav links and routes (persisted in localStorage), documented as presentation-level | No server-side RBAC (needs F06 + identities) |
-| F20 | 17 → 63 backend tests covering every P0/P1 fixed so far | lint/typecheck/coverage, Alembic in deploy/CI |
-| F23 | Budget % displayed unclamped, `formatPct` for error rate, direction-aware deltas | error banners, forecast labeling/anchor |
+| F20 | 17 → 66 backend tests, 86% coverage with an 80% CI floor; SDK/frontend suites in CI | Python lint/typecheck, Alembic in deploy/CI |
 | F25 | `/agents` counts cost/tokens once per execution (double-count fixed); `team` dimension added to rollups and `/metrics` | Agent dimension is still globally unique (not per project); no team cost endpoint |
-| F27 | Mutating routes commit before responding, so sequential exporters always see prior writes | `ON CONFLICT` upserts for true concurrent writers still pending |
 | F32 | Invalid `dimension` returns 422 | budget response keys, rollup summary, percentile de-dup |
 | F39 | Unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized | Hook thread-safety, atexit per provider, dead code/deps |
 
 ### Not started (next waves)
 
-F14 (SpanProcessor enrichment instead of whole-trace buffering), F33–F38/F40/F41
-(retention, K8s, alert delivery, CI hardening, docs drift, retention/PII), plus the
-remaining sub-items noted above.
+F14 (SpanProcessor enrichment instead of whole-trace buffering), F34–F36 (manual-vs-agent
+cost/margin, retention/PII, K8s-or-ADR), F40 (frontend polish: money formatting,
+responsive/a11y, nginx caching, ESLint), F41 (docs drift), plus the remaining sub-items
+noted above (RBAC/identities, lint/typecheck/Alembic, team cost endpoint, SQL aggregation
+for the remaining views, `Decimal` money).
 

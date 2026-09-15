@@ -10,23 +10,33 @@ import {
 } from "recharts";
 import { useCosts, useWorkflows, useClients, useAgents, useAlerts, useMetrics, useBudgetStatus } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
+import { QueryError } from "../components/QueryError";
 import { formatMoney, formatPct } from "../lib/format";
 
 const BAR_COLORS = ["#4f8cff", "#2ecc71", "#f5b041", "#e74c3c", "#9b59b6", "#1abc9c"];
 
 export default function Manager() {
   const { filters } = useFilters();
-  const { data: costByWf } = useCosts("workflow", filters);
-  const { data: costByClient } = useCosts("client", filters);
-  const { data: workflows } = useWorkflows(filters);
-  const { data: clients } = useClients(filters);
+  const costWf = useCosts("workflow", filters);
+  const costClient = useCosts("client", filters);
+  const workflows = useWorkflows(filters);
+  const clients = useClients(filters);
+  const { data: costByWf } = costWf;
+  const { data: costByClient } = costClient;
+  const { data: workflowsData } = workflows;
+  const { data: clientsData } = clients;
   const { data: agents } = useAgents(filters);
   const { data: alerts } = useAlerts();
   const { data: trends } = useMetrics("total", filters);
   const { data: budgets } = useBudgetStatus();
+  const chartError =
+    costWf.error ?? costClient.error ?? workflows.error ?? clients.error;
 
   return (
     <div className="grid" style={{ gap: 16 }}>
+      {(costWf.isError || costClient.isError || workflows.isError || clients.isError) && (
+        <QueryError what="manager data" error={chartError} />
+      )}
       <div className="grid grid-2">
         <Chart title="Cost by workflow" rows={(costByWf?.items ?? []).map((i) => ({ name: i.key, cost: i.total_cost ?? 0 }))} />
         <Chart title="Cost by client" rows={(costByClient?.items ?? []).map((i) => ({ name: i.key, cost: i.total_cost ?? 0 }))} />
@@ -40,7 +50,7 @@ export default function Manager() {
               <tr><th>Workflow</th><th>Exec</th><th>Err</th><th>Cost</th></tr>
             </thead>
             <tbody>
-              {(workflows?.items ?? []).map((w) => (
+              {(workflowsData?.items ?? []).map((w) => (
                 <tr key={w.name}>
                   <td>{w.name}</td>
                   <td>{w.executions}</td>
@@ -59,7 +69,7 @@ export default function Manager() {
               <tr><th>Client</th><th>Exec</th><th>Cost</th><th>Tokens</th></tr>
             </thead>
             <tbody>
-              {(clients?.items ?? []).map((c) => (
+              {(clientsData?.items ?? []).map((c) => (
                 <tr key={c.client_id}>
                   <td>{c.client_id}</td>
                   <td>{c.executions}</td>

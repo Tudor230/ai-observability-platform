@@ -10,6 +10,9 @@ evaluations do not spam.
 from __future__ import annotations
 
 import calendar
+import json
+import logging
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -17,6 +20,8 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .models import Alert, Budget, Execution
+
+logger = logging.getLogger(__name__)
 
 WARN_AT = 0.8
 CRITICAL_AT = 1.0
@@ -317,6 +322,44 @@ def evaluate_threshold_rules(
     return created
 
 
+def _alert_dict(a: Alert) -> dict:
+    return {
+        "id": a.id,
+        "rule_id": a.rule_id,
+        "severity": a.severity,
+        "message": a.message,
+        "dimension": a.dimension,
+        "dimension_key": a.dimension_key,
+        "status": a.status,
+        "triggered_at": a.triggered_at.isoformat() if a.triggered_at else None,
+    }
+
+
+def _notify_webhook(alerts: list[Alert]) -> None:
+    """Best-effort webhook delivery for newly created alerts (F37).
+
+    Delivery failures never affect evaluation: they are logged and the alert
+    remains available through the API/UI.
+    """
+    settings = get_settings()
+    if not alerts or not settings.alert_webhook_url:
+        return
+    payload = json.dumps({"alerts": [_alert_dict(a) for a in alerts]}).encode("utf-8")
+    request = urllib.request.Request(
+        settings.alert_webhook_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=settings.alert_webhook_timeout_s
+        ):
+            pass
+    except Exception:
+        logger.warning("alert webhook delivery failed", exc_info=True)
+
+
 def evaluate_alerts(
     session: Session, now: datetime | None = None
 ) -> list[dict]:
@@ -326,16 +369,5 @@ def evaluate_alerts(
         created.extend(evaluate_budget(session, budget, now))
     created.extend(evaluate_threshold_rules(session, now))
     session.flush()
-    return [
-        {
-            "id": a.id,
-            "rule_id": a.rule_id,
-            "severity": a.severity,
-            "message": a.message,
-            "dimension": a.dimension,
-            "dimension_key": a.dimension_key,
-            "status": a.status,
-            "triggered_at": a.triggered_at.isoformat(),
-        }
-        for a in created
-    ]
+    _notify_webhook(created)
+    return [_alert_dict(a) for a in created]
