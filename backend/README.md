@@ -10,13 +10,13 @@ alerts/budgets, and a FastAPI Platform API consumed by the
 
 ```bash
 uv sync --group dev
-uv run pytest          # needs Postgres; default DSN aiobs_test on :55432
+uv run pytest          # needs Postgres; default DSN aiobs_test on :5432
 ```
 
 ## Run against the docker stack (postgres + phoenix + dashboard)
 
 The root [`docker-compose.yml`](../docker-compose.yml) runs the whole platform
-(Postgres `:55432`, Phoenix `:6006`, backend `:8000`, dashboard `:8080`):
+(Postgres `:5432`, Phoenix `:6006`, backend `:8000`, dashboard `:8080`):
 
 ```bash
 docker compose up -d --build

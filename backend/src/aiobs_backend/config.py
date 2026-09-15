@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AIOBS_", extra="ignore")
 
     database_url: str = (
-        "postgresql+psycopg://postgres:postgres@127.0.0.1:55432/aiobs"
+        "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/aiobs"
     )
     db_connect_timeout_s: int = 10
     # API keys / admin bootstrap

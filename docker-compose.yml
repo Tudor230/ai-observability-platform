@@ -12,7 +12,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - "55432:5432" # avoid colliding with a host Postgres on 5432
+      - "5432:5432" # common DB port shared by Phoenix, the backend, and the SDK tooling
     volumes:
       - ./dev/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -30,6 +30,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - /usr/bin/python3.13
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:6006/health', timeout=5)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
 
   backend:
     build:

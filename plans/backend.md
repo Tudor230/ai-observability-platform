@@ -308,8 +308,10 @@ Stable read-side API for the dashboard (`docs/04 §4.4.9`). Versioned under `/ap
 
 ## 12. Phoenix deployment
 
-- Containerized Phoenix + Postgres already defined in `sdk/dev/docker-compose.yml`
-  (Phoenix `:6006`, Postgres `:5432`).
+- Containerized Phoenix + Postgres run in the root `docker-compose.yml`
+  (Phoenix `:6006`, Postgres `:5432`). SDK tooling, Phoenix, and the backend
+  all use this **single shared instance** (`phoenix` / `aiobs` / `aiobs_test`
+  databases); see `docs/adr/0002-shared-postgres-instance.md`.
 - Backend containers join the same compose network (production: the K8s layout in
   `docs/04 §4.7`).
 - Phoenix remains the canonical trace store and UI; the backend's normalized `spans` table

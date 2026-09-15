@@ -1,8 +1,10 @@
 """End-to-end: SDK -> Phoenix -> PostgreSQL rows.
 
-Requires the dev stack running (docker compose up -d --wait in sdk/dev) and
-AI_OBSERVABILITY_E2E=1. Runs a mock scenario through the real OTLP exporter
-and asserts the enriched spans landed in Postgres (Phoenix's own schema).
+Requires the shared platform stack running (from the repo root:
+`docker compose up -d --wait postgres phoenix`) and AI_OBSERVABILITY_E2E=1.
+Runs a mock scenario through the real OTLP exporter and asserts the enriched
+spans landed in Postgres (Phoenix's own schema) — the same instance the
+backend uses.
 """
 
 from __future__ import annotations

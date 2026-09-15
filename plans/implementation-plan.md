@@ -51,7 +51,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | **Backend: failure classification** (consume `sdk.error.*` + exception events + span status → failure tree) | **Implemented** | `plans/backend.md` §7 → `backend/src/aiobs_backend/classify.py` |
 | **Backend: cost engine** (Phoenix pricing + attribution by client/project/workflow/agent/team) | **Implemented** | `plans/backend.md` §8 → `backend/src/aiobs_backend/cost.py` |
 | **Backend: analytics & alerts** (consumption, error rate, budgets; cost thresholds) | **Implemented** (budget rules) | `plans/backend.md` §9–10 → `backend/src/aiobs_backend/analytics.py`, `alerts.py` |
-| **Phoenix deployment** (self-hosted, containerized) | `sdk/dev/docker-compose.yml` | backend plan |
+| **Phoenix deployment** (self-hosted, containerized) | root `docker-compose.yml` (shared Postgres instance) | backend plan |
 | **Dashboard** (engineering / manager / executive views) | **Implemented** | `plans/frontend.md` → `frontend/` |
 
 ## 6. Phased roadmap

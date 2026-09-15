@@ -28,7 +28,7 @@ sys.path.insert(0, str(BACKEND_DIR / "tests"))
 
 DB_URL = os.environ.get(
     "AIOBS_KPI_DATABASE_URL",
-    "postgresql+psycopg://postgres:postgres@127.0.0.1:55432/aiobs",
+    "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/aiobs",
 )
 PORT = int(os.environ.get("AIOBS_KPI_PORT", "8000"))
 PROJECT_ID = "proj-1"  # the SDK mock scenarios hard-assert sdk.project_id == proj-1

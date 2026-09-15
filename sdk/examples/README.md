@@ -39,8 +39,8 @@ Ollama, LM Studio, vLLM, ...
 ## 1. Start the trace backend
 
 ```bash
-cd sdk/dev
-docker compose up -d --wait      # Phoenix :6006 + Postgres :5432
+docker compose up -d --wait postgres phoenix   # from the repo root
+# Phoenix :6006 + shared Postgres :5432 (same instance the backend uses)
 ```
 
 ## 2. Configure a provider
