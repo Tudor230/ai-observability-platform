@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import text
-
 from helpers import build_request, build_span
+from sqlalchemy import text
 
 KEY = "test-key"
 

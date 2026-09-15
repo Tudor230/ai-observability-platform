@@ -37,12 +37,19 @@ jobs:
     env:
       AIOBS_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
       AIOBS_E2E_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
+      AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
       - run: uv sync --group dev
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Migrations apply cleanly on a fresh database
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
       - name: Unit + integration tests (coverage floor 80%)
         run: uv run pytest -q --cov=aiobs_backend --cov-fail-under=80
       - name: E2E smoke (ingest -> rollup -> API reads)

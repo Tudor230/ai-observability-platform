@@ -11,7 +11,6 @@ from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.resource.v1.resource_pb2 import Resource
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
 
-from aiobs_backend.db import Base
 from aiobs_backend.models import Project, Team
 from aiobs_backend.security import hash_api_key
 

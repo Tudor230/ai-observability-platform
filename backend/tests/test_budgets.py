@@ -3,12 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from helpers import build_request, build_span
 
-from aiobs_backend.alerts import budget_spend, budget_window, evaluate_alerts
-from aiobs_backend.models import Alert, Budget
-
-from helpers import build_request, build_span, seed_project
+from aiobs_backend.alerts import budget_window, evaluate_alerts
+from aiobs_backend.models import Budget
 
 KEY = "test-key"
 

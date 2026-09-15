@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .models import Alert, Budget, Execution
+from .stats import percentile
 
 logger = logging.getLogger(__name__)
 
@@ -157,14 +158,6 @@ def evaluate_budget(
     return created
 
 
-def _p95(values: list[float]) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    idx = min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1))))
-    return ordered[idx]
-
-
 def _severity(value: float, threshold: float) -> str:
     return "critical" if value >= threshold * 2 else "warning"
 
@@ -271,7 +264,9 @@ def evaluate_threshold_rules(
         if alert:
             created.append(alert)
 
-    p95 = _p95([e.duration_ms for e in rows if e.duration_ms is not None])
+    p95 = percentile(
+        [e.duration_ms for e in rows if e.duration_ms is not None], 0.95
+    )
     if p95 >= settings.alert_p95_latency_ms:
         alert = _rule_alert(
             session,

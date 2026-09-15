@@ -4,11 +4,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from helpers import build_request, build_span
 from sqlalchemy import select
 
 from aiobs_backend.models import Execution, Pricing, Span
-
-from helpers import build_request, build_span
 
 
 def _headers():

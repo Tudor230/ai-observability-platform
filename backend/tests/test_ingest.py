@@ -3,12 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from helpers import build_request, build_span
 from sqlalchemy import select
 
 from aiobs_backend import analytics
-from aiobs_backend.models import Alert, Budget, CostRecord, Execution, Span
-
-from helpers import build_request, build_span
+from aiobs_backend.models import Alert, CostRecord, Execution, Span
 
 KEY = "test-key"
 
@@ -392,7 +391,6 @@ def test_unpriced_calls_surface_in_reads(client, session_factory, project):
 
 def test_alert_patch_requires_admin(client, session_factory, project):
     """F10: acknowledging an alert is a mutation and needs the admin key."""
-    from aiobs_backend.models import Alert
 
     with session_factory() as session:
         alert = Alert(

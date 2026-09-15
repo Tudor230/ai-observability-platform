@@ -1,6 +1,16 @@
 export function formatMoney(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
-  return `$${value.toFixed(4)}`;
+  const v = Number(value);
+  if (!Number.isFinite(v)) return "—";
+  const abs = Math.abs(v);
+  // Sub-cent amounts (LLM calls) keep precision; normal amounts get grouping.
+  if (abs > 0 && abs < 0.01) {
+    return `$${v.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
+  }
+  return `$${v.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatTokens(value: number | null | undefined): string {

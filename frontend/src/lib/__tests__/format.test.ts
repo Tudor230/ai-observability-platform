@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import { formatMoney, formatTokens, formatMs, formatPct, formatDate } from "../format";
 
 describe("formatMoney", () => {
-  it("formats dollars with 4 decimals", () => {
-    expect(formatMoney(0.00045)).toBe("$0.0004");
-    expect(formatMoney(1234.5)).toBe("$1234.5000");
+  it("keeps precision for sub-cent amounts", () => {
+    expect(formatMoney(0.00045)).toBe("$0.00045");
+    expect(formatMoney(0.005)).toBe("$0.005");
+  });
+
+  it("groups and rounds normal amounts", () => {
+    expect(formatMoney(1234.5)).toBe("$1,234.50");
+    expect(formatMoney(0)).toBe("$0.00");
+    expect(formatMoney(12)).toBe("$12.00");
   });
 
   it("handles null/undefined", () => {

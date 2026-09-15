@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from aiobs_backend.models import Pricing
-
 from helpers import build_request, build_span
+
+from aiobs_backend.models import Pricing
 
 KEY = "test-key"
 

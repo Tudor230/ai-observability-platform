@@ -1,19 +1,14 @@
 """Local e2e smoke: start uvicorn against Postgres, ingest a trace, check the API."""
 import os
 import sys
-import threading
-import time
-import urllib.request
 
 from fastapi.testclient import TestClient
 
-from aiobs_backend.main import app
 from aiobs_backend import db
+from aiobs_backend.main import app
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests"))
-from helpers import build_request, build_span, seed_project  # noqa: E402
-
-from aiobs_backend.security import hash_api_key  # noqa: E402
+from helpers import build_request, build_span  # noqa: E402
 
 DSN = os.environ.get(
     "AIOBS_E2E_DATABASE_URL",
@@ -57,7 +52,7 @@ def main():
     assert r.status_code == 200, r.text
     print("ingest:", r.json())
 
-    from aiobs_backend import analytics, alerts
+    from aiobs_backend import alerts, analytics
     with db.session_scope() as s:
         analytics.rollup_recent(s)
         created = alerts.evaluate_alerts(s)

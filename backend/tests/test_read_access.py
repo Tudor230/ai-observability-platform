@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from aiobs_backend.config import get_settings
-
 from helpers import build_request, build_span, seed_project
+
+from aiobs_backend.config import get_settings
 
 KEY = "test-key"
 

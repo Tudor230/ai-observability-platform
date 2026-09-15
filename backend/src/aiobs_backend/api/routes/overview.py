@@ -2,30 +2,17 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from math import ceil, floor
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Alert, Execution
+from ...stats import percentile
 from ..deps import get_db, get_project_scope, require_read_access
 from ..queries import default_range, exec_rows, parse_dt
 
 router = APIRouter(tags=["overview"], dependencies=[Depends(require_read_access)])
-
-
-def _percentile(values: list[float], pct: float) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    k = (len(ordered) - 1) * pct
-    lo, hi = floor(k), ceil(k)
-    if lo == hi:
-        return ordered[lo]
-    return ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo)
 
 
 def _window_stats(session: Session, start, end, **extra) -> dict:
@@ -51,9 +38,9 @@ def _window_stats(session: Session, start, end, **extra) -> dict:
         "llm_calls": sum(r.llm_calls or 0 for r in rows),
         "tool_calls": sum(r.tool_calls or 0 for r in rows),
         "avg_duration_ms": round(sum(durations) / len(durations), 2) if durations else 0.0,
-        "p50_duration_ms": round(_percentile(durations, 0.5), 2),
-        "p95_duration_ms": round(_percentile(durations, 0.95), 2),
-        "p99_duration_ms": round(_percentile(durations, 0.99), 2),
+        "p50_duration_ms": round(percentile(durations, 0.5), 2),
+        "p95_duration_ms": round(percentile(durations, 0.95), 2),
+        "p99_duration_ms": round(percentile(durations, 0.99), 2),
     }
 
 

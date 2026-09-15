@@ -37,6 +37,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 
 .brand {
@@ -138,6 +140,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  overflow-x: auto; /* keep wide tables usable on narrow screens */
 }
 
 .panel h3 {

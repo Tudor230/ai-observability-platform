@@ -3,11 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from helpers import build_request, build_span
 from sqlalchemy import select
 
 from aiobs_backend.models import CostRecord, Pricing
-
-from helpers import build_request, build_span
 
 KEY = "test-key"
 ADMIN = {"x-admin-key": "admin"}

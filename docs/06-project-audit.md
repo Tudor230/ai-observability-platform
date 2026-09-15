@@ -642,10 +642,10 @@ mock scenarios, KPI harness) is the right skeleton to build the fixes on.
 ## 7. Implementation status (post-audit)
 
 Work in `feat/backend-frontend-plans` (uncommitted at time of writing).
-Verification: **66 backend tests pass** (was 17, 86% coverage), the **SDK suite passes**
-(66 + 1 skipped), the **frontend suite passes** (13), the **hardened KPI gate passes 14/14
-twice in a row** with measured KPI values, and each fix was re-verified against the live
-Docker stack.
+Verification: **68 backend tests pass** (was 17, 86% coverage, ruff clean, Alembic
+migrates a fresh DB), the **SDK suite passes** (66 + 1 skipped), the **frontend suite
+passes** (14), the **hardened KPI gate passes 14/14** with measured KPI values, and
+each fix was re-verified against the live Docker stack.
 
 ### Fixed (with tests)
 
@@ -674,7 +674,10 @@ Docker stack.
 | F29 | Cache pricing never fabricates rates and cannot go negative; missing cache prices stay unpriced (+ 5 tests) |
 | F30 | Cost records snapshot the resolved rates; deleting a referenced pricing row returns 409 (+ 3 tests, live-verified) |
 | F31 | Naive API timestamps are interpreted as UTC |
+| F32 | Invalid `dimension` returns 422; budgets expose external keys; `/metrics/rollup` reports real days; percentiles share one implementation (`stats.percentile`) |
 | F33 | Backfilled token counts carry `sdk.tokens.estimated` (contract + SDK + read API) (+ 4 tests) |
+| F35 | Retention is opt-in (`AIOBS_RETENTION_DAYS`) with `POST /maintenance/purge` + `scripts/purge_retention.py`; ADR-0003 documents payload handling/erasure (+ 2 tests) |
+| F36 | ADR-0004 records the deployment decision: Compose is the supported prototype deployment; K8s deferred with an explicit migration path |
 | F37 | Alerts are delivered best-effort to `AIOBS_ALERT_WEBHOOK_URL` as JSON (+ test) |
 | F38 | CI: 80% backend coverage floor (86% measured), `e2e_smoke.py` runs in CI, SDK e2e runs on PRs, job timeouts, Phoenix pinned by digest |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
@@ -688,16 +691,15 @@ Docker stack.
 | F12 | `unpriced_calls` + `cost_complete` surfaced on executions | `Decimal` end-to-end; aggregates still fold NULL to 0 |
 | F15 | `days` supported by `/executions` and `/metrics`; dashboard trends/forecast/metrics now filtered | alerts/budget panels are intentionally global |
 | F16 | Role selector gates nav links and routes (persisted in localStorage), documented as presentation-level | No server-side RBAC (needs F06 + identities) |
-| F20 | 17 → 66 backend tests, 86% coverage with an 80% CI floor; SDK/frontend suites in CI | Python lint/typecheck, Alembic in deploy/CI |
+| F20 | 17 → 68 backend tests, 86% coverage with an 80% CI floor; ruff lint in CI; Alembic migration for every schema change, applied by the Docker image and validated in CI (`upgrade head` + `alembic check`) | Type checking (mypy/pyright) |
 | F25 | `/agents` counts cost/tokens once per execution (double-count fixed); `team` dimension added to rollups and `/metrics` | Agent dimension is still globally unique (not per project); no team cost endpoint |
-| F32 | Invalid `dimension` returns 422 | budget response keys, rollup summary, percentile de-dup |
 | F39 | Unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized | Hook thread-safety, atexit per provider, dead code/deps |
+| F40 | Money formatting is grouped and preserves sub-cent precision; topbar wraps and wide tables scroll; nginx serves gzip + immutable asset caching | ESLint, component/route tests, a11y pass |
 
 ### Not started (next waves)
 
-F14 (SpanProcessor enrichment instead of whole-trace buffering), F34–F36 (manual-vs-agent
-cost/margin, retention/PII, K8s-or-ADR), F40 (frontend polish: money formatting,
-responsive/a11y, nginx caching, ESLint), F41 (docs drift), plus the remaining sub-items
-noted above (RBAC/identities, lint/typecheck/Alembic, team cost endpoint, SQL aggregation
-for the remaining views, `Decimal` money).
+F14 (SpanProcessor enrichment instead of whole-trace buffering), F34 (manual-vs-agent
+cost/margin — needs a product decision), F41 (docs drift), plus the remaining sub-items
+noted above (RBAC identities, team cost endpoint, `Decimal` money, SQL aggregation for
+the remaining views, type checking, ESLint).
 

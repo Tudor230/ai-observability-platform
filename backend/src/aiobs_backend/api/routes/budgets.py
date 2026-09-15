@@ -48,6 +48,8 @@ def _resolve_ids(session: Session, project: str | None, client: str | None):
 @router.get("/budgets", dependencies=[Depends(get_admin_key)])
 def list_budgets(session: Session = Depends(get_db)) -> dict:
     rows = session.execute(select(Budget).order_by(Budget.period.desc())).scalars().all()
+    project_keys = dict(session.execute(select(Project.id, Project.project_id)).all())
+    client_keys = dict(session.execute(select(Client.id, Client.external_key)).all())
     items = []
     for b in rows:
         items.append(
@@ -57,8 +59,9 @@ def list_budgets(session: Session = Depends(get_db)) -> dict:
                 "amount": float(b.amount),
                 "period": b.period.isoformat(),
                 "period_type": b.period_type or "month",
-                "project_id": b.project_id,
-                "client_id": b.client_id,
+                # External keys, consistent with every other resource (F32).
+                "project": project_keys.get(b.project_id),
+                "client": client_keys.get(b.client_id),
                 "workflow_name": b.workflow_name,
             }
         )

@@ -4,13 +4,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from helpers import build_request, build_span
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from aiobs_backend import analytics
 from aiobs_backend.models import DailyMetric
-
-from helpers import build_request, build_span
 
 KEY = "test-key"
 
