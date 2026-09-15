@@ -1,3 +1,6 @@
+@tailwind components;
+
+@layer components {
 /*
  * App shell layout — side navigation, top navigation, page scaffolding,
  * responsive grids and the trace tree / waterfall.
@@ -395,141 +398,33 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Trace tree + waterfall
+ * Trace explorer (AgentPrism)
  * ------------------------------------------------------------------ */
-.trace-tree {
-  --trace-tree-name-width: 360px;
-
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.trace-tree__header {
-  display: grid;
-  grid-template-columns: var(--trace-tree-name-width) 1fr;
-  gap: var(--global-dimension-size-100);
-  padding: var(--global-dimension-size-75) var(--global-dimension-size-200);
-  border-bottom: 1px solid var(--global-border-color-default);
-  color: var(--global-text-color-500);
-  font-size: var(--global-font-size-xs);
-  font-weight: 600;
-  background-color: var(--global-table-header-background-color);
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-
-.trace-tree__rows {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.span-row {
-  display: grid;
-  grid-template-columns: var(--trace-tree-name-width) 1fr;
-  gap: var(--global-dimension-size-100);
-  align-items: center;
-  padding: var(--global-dimension-size-50) var(--global-dimension-size-200);
-  cursor: pointer;
-  border: none;
-  background: none;
-  text-align: left;
-  width: 100%;
-  font-size: var(--global-font-size-s);
-  color: var(--global-text-color-900);
-  border-bottom: 1px solid var(--global-table-row-border-color);
-  box-sizing: border-box;
-}
-
-.span-row:hover {
-  background-color: var(--hover-background);
-}
-
-.span-row[data-selected="true"] {
-  background-color: var(--global-table-row-selected-background-color);
-}
-
-.span-row__name {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--global-dimension-size-75);
-  min-width: 0;
-}
-
-.span-row__indent {
-  flex: none;
-  display: flex;
-  align-items: center;
-  color: var(--global-text-color-300);
-  width: var(--global-dimension-size-150);
-}
-
-.span-row__label {
-  min-width: 0;
+.trace-explorer {
+  height: min(72vh, 700px);
+  min-height: 420px;
+  border-top: 1px solid var(--global-border-color-default);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.span-row__meta {
-  color: var(--global-text-color-500);
-  font-size: var(--global-font-size-xs);
-  font-variant-numeric: tabular-nums;
-  flex: none;
-}
-
-.span-row__waterfall {
-  position: relative;
-  height: var(--global-dimension-size-200);
-  min-width: 0;
-}
-
-.span-row__bar {
-  position: absolute;
-  top: 2px;
-  height: var(--global-dimension-size-150);
-  border-radius: var(--global-rounding-xsmall);
-  background-color: var(--chart-color-1);
-  min-width: 2px;
-}
-
-.span-row__bar[data-kind="TOOL"] {
-  background-color: var(--chart-color-3);
-}
-
-.span-row__bar[data-kind="RETRIEVER"] {
-  background-color: var(--chart-color-6);
-}
-
-.span-row__bar[data-kind="AGENT"] {
-  background-color: var(--chart-color-4);
-}
-
-.span-row__bar[data-kind="CHAIN"] {
-  background-color: var(--chart-color-7);
-}
-
-.span-row__bar[data-status="error"] {
-  background-color: var(--global-color-danger);
-}
-
-.span-detail {
+.trace-explorer__pane {
   display: flex;
   flex-direction: column;
-  gap: var(--global-dimension-size-200);
-  padding: var(--global-dimension-size-200);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.span-detail__section-title {
-  font-size: var(--global-font-size-xs);
-  font-weight: 600;
-  color: var(--global-text-color-500);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: var(--global-dimension-size-75);
+.trace-explorer__handle {
+  width: 1px;
+  background-color: var(--global-border-color-default);
+  transition: background-color 0.15s ease-in-out;
+}
+
+.trace-explorer__handle:hover,
+.trace-explorer__handle[data-resize-handle-state="drag"],
+.trace-explorer__handle[data-resize-handle-state="hover"] {
+  background-color: var(--global-color-primary-300);
 }
 
 /* ------------------------------------------------------------------ *
@@ -557,4 +452,6 @@
     padding: var(--global-dimension-size-150) var(--global-dimension-size-150)
       var(--global-dimension-size-500);
   }
+}
+
 }

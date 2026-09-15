@@ -1,0 +1,344 @@
+/*
+ * AgentPrism token bridge.
+ *
+ * The vendored AgentPrism components consume `--agentprism-*` tokens as RGB
+ * triplets (`rgb(var(--agentprism-x) / <alpha>)`). This file remaps every
+ * token onto the Phoenix palette so the trace visualization is pixel-consistent
+ * with the rest of the dashboard, in both themes.
+ *
+ * Light values come from the Phoenix light ramps, dark values from the dark
+ * ramps (see `tokens.css`).
+ */
+
+/* Phoenix gray ramps as space-separated triplets (the format the tokens need). */
+.theme--light {
+  --ap-gray-50: 255 255 255;
+  --ap-gray-75: 253 253 253;
+  --ap-gray-100: 248 248 248;
+  --ap-gray-200: 230 230 230;
+  --ap-gray-300: 213 213 213;
+  --ap-gray-400: 177 177 177;
+  --ap-gray-500: 144 144 144;
+  --ap-gray-600: 104 104 104;
+  --ap-gray-700: 70 70 70;
+  --ap-gray-900: 0 0 0;
+
+  --ap-white: 255 255 255;
+  --ap-black: 0 0 0;
+
+  --ap-blue: 20 122 243; /* blue-800 */
+  --ap-blue-muted: 224 242 255; /* blue-100 */
+  --ap-blue-strong: 2 101 220; /* blue-900 */
+  --ap-blue-soft: 120 187 250; /* blue-500 */
+
+  --ap-green: 0 143 93; /* green-800 */
+  --ap-green-muted: 206 248 224; /* green-100 */
+  --ap-green-strong: 0 122 77; /* green-900 */
+
+  --ap-red: 234 56 41; /* red-800 */
+  --ap-red-muted: 255 235 231; /* red-100 */
+  --ap-red-strong: 180 0 0; /* red-1000 */
+
+  --ap-orange: 228 111 0; /* orange-700 */
+  --ap-orange-muted: 255 236 204; /* orange-100 */
+  --ap-orange-strong: 177 76 0; /* orange-900 */
+  --ap-orange-soft: 255 160 55; /* orange-500 */
+
+  --ap-yellow: 155 120 0; /* yellow-800 */
+  --ap-yellow-muted: 251 241 152; /* yellow-100 */
+  --ap-yellow-strong: 72 51 0; /* yellow-1200 */
+  --ap-yellow-soft: 196 159 0; /* yellow-600 */
+
+  --ap-purple: 115 38 211; /* purple-1000 */
+  --ap-purple-muted: 246 235 255; /* purple-100 */
+  --ap-purple-soft: 157 87 244; /* purple-800 */
+
+  --ap-indigo: 82 88 228; /* indigo-900 */
+  --ap-indigo-muted: 237 238 255; /* indigo-100 */
+  --ap-indigo-soft: 104 109 244; /* indigo-800 */
+
+  --ap-seafoam: 0 140 135; /* seafoam-800 */
+  --ap-seafoam-muted: 206 247 243; /* seafoam-100 */
+  --ap-seafoam-strong: 0 99 95; /* seafoam-1000 */
+  --ap-seafoam-soft: 101 218 210; /* seafoam-400 */
+
+  --ap-cyan: 0 134 180; /* cyan-800 */
+  --ap-cyan-muted: 197 248 255; /* cyan-100 */
+  --ap-cyan-strong: 0 93 137; /* cyan-1000 */
+  --ap-cyan-soft: 96 216 243; /* cyan-400 */
+
+  --ap-magenta: 222 61 130; /* magenta-800 */
+  --ap-magenta-muted: 255 234 241; /* magenta-100 */
+  --ap-magenta-strong: 173 9 85; /* magenta-1000 */
+  --ap-magenta-soft: 255 149 189; /* magenta-500 */
+
+  /* General purpose */
+  --agentprism-background: var(--ap-gray-50);
+  --agentprism-foreground: var(--ap-gray-900);
+  --agentprism-primary: var(--ap-gray-900);
+  --agentprism-primary-foreground: var(--ap-white);
+  --agentprism-secondary: var(--ap-gray-100);
+  --agentprism-secondary-foreground: var(--ap-gray-600);
+  --agentprism-muted: var(--ap-gray-50);
+  --agentprism-muted-foreground: var(--ap-gray-600);
+  --agentprism-accent: var(--ap-gray-100);
+  --agentprism-accent-foreground: var(--ap-gray-100);
+
+  /* Brand */
+  --agentprism-brand: var(--ap-blue);
+  --agentprism-brand-foreground: var(--ap-white);
+  --agentprism-brand-secondary: var(--ap-orange);
+  --agentprism-brand-secondary-foreground: var(--ap-white);
+
+  /* Borders */
+  --agentprism-border: var(--ap-gray-200);
+  --agentprism-border-subtle: var(--ap-gray-100);
+  --agentprism-border-strong: var(--ap-gray-300);
+  --agentprism-border-inverse: var(--ap-gray-900);
+
+  /* Status */
+  --agentprism-success: var(--ap-green);
+  --agentprism-success-muted: var(--ap-green-muted);
+  --agentprism-success-muted-foreground: var(--ap-green-strong);
+  --agentprism-error: var(--ap-red);
+  --agentprism-error-muted: var(--ap-red-muted);
+  --agentprism-error-muted-foreground: var(--ap-red-strong);
+  --agentprism-warning: var(--ap-orange);
+  --agentprism-warning-muted: var(--ap-orange-muted);
+  --agentprism-warning-muted-foreground: var(--ap-orange-strong);
+  --agentprism-pending: var(--ap-purple);
+  --agentprism-pending-muted: var(--ap-purple-muted);
+  --agentprism-pending-muted-foreground: var(--ap-purple);
+
+  /* Code syntax */
+  --agentprism-code-string: 211 21 16; /* red-900 */
+  --agentprism-code-number: 234 56 41; /* red-800 */
+  --agentprism-code-key: var(--ap-blue);
+  --agentprism-code-base: var(--ap-gray-600);
+
+  /* Badges */
+  --agentprism-badge-default: var(--ap-gray-100);
+  --agentprism-badge-default-foreground: var(--ap-gray-600);
+
+  /* Trace categories */
+  --agentprism-avatar-llm: var(--ap-purple);
+  --agentprism-badge-llm: var(--ap-purple-muted);
+  --agentprism-badge-llm-foreground: var(--ap-purple);
+  --agentprism-timeline-llm: var(--ap-purple-soft);
+
+  --agentprism-avatar-agent: var(--ap-indigo);
+  --agentprism-badge-agent: var(--ap-indigo-muted);
+  --agentprism-badge-agent-foreground: var(--ap-indigo);
+  --agentprism-timeline-agent: var(--ap-indigo-soft);
+
+  --agentprism-avatar-tool: var(--ap-orange);
+  --agentprism-badge-tool: var(--ap-orange-muted);
+  --agentprism-badge-tool-foreground: var(--ap-orange-strong);
+  --agentprism-timeline-tool: var(--ap-orange-soft);
+
+  --agentprism-avatar-chain: var(--ap-blue);
+  --agentprism-badge-chain: var(--ap-blue-muted);
+  --agentprism-badge-chain-foreground: var(--ap-blue-strong);
+  --agentprism-timeline-chain: var(--ap-blue-soft);
+
+  --agentprism-avatar-retrieval: var(--ap-seafoam);
+  --agentprism-badge-retrieval: var(--ap-seafoam-muted);
+  --agentprism-badge-retrieval-foreground: var(--ap-seafoam-strong);
+  --agentprism-timeline-retrieval: var(--ap-seafoam-soft);
+
+  --agentprism-avatar-embedding: var(--ap-cyan);
+  --agentprism-badge-embedding: var(--ap-cyan-muted);
+  --agentprism-badge-embedding-foreground: var(--ap-cyan-strong);
+  --agentprism-timeline-embedding: var(--ap-cyan-soft);
+
+  --agentprism-avatar-guardrail: var(--ap-magenta);
+  --agentprism-badge-guardrail: var(--ap-magenta-muted);
+  --agentprism-badge-guardrail-foreground: var(--ap-magenta-strong);
+  --agentprism-timeline-guardrail: var(--ap-magenta-soft);
+
+  --agentprism-avatar-create-agent: var(--ap-green);
+  --agentprism-badge-create-agent: var(--ap-green-muted);
+  --agentprism-badge-create-agent-foreground: var(--ap-green-strong);
+  --agentprism-timeline-create-agent: 103 222 168; /* green-400 */
+
+  --agentprism-avatar-span: var(--ap-gray-600);
+  --agentprism-badge-span: var(--ap-gray-100);
+  --agentprism-badge-span-foreground: var(--ap-gray-700);
+  --agentprism-timeline-span: var(--ap-gray-400);
+
+  --agentprism-avatar-event: var(--ap-yellow);
+  --agentprism-badge-event: var(--ap-yellow-muted);
+  --agentprism-badge-event-foreground: var(--ap-yellow-strong);
+  --agentprism-timeline-event: var(--ap-yellow-soft);
+
+  --agentprism-avatar-unknown: var(--ap-gray-600);
+  --agentprism-badge-unknown: var(--ap-gray-100);
+  --agentprism-badge-unknown-foreground: var(--ap-gray-700);
+  --agentprism-timeline-unknown: var(--ap-gray-400);
+}
+
+.theme--dark {
+  --ap-gray-50: 0 0 0;
+  --ap-gray-75: 14 14 14;
+  --ap-gray-100: 29 29 29;
+  --ap-gray-200: 48 48 48;
+  --ap-gray-300: 75 75 75;
+  --ap-gray-400: 106 106 106;
+  --ap-gray-500: 141 141 141;
+  --ap-gray-600: 176 176 176;
+  --ap-gray-700: 208 208 208;
+  --ap-gray-900: 255 255 255;
+
+  --ap-white: 255 255 255;
+  --ap-black: 0 0 0;
+
+  --ap-blue: 64 150 243; /* blue-800 */
+  --ap-blue-muted: 0 38 81; /* blue-100 */
+  --ap-blue-strong: 152 206 253; /* blue-1100 */
+  --ap-blue-soft: 6 108 231; /* blue-600 */
+
+  --ap-green: 28 168 114; /* green-800 */
+  --ap-green-muted: 10 44 28; /* green-100 */
+  --ap-green-strong: 137 236 188; /* green-1200 */
+
+  --ap-red: 249 99 76; /* red-800 */
+  --ap-red-muted: 87 0 0; /* red-100 */
+  --ap-red-strong: 255 183 169; /* red-1100 */
+
+  --ap-orange: 255 162 59; /* orange-1000 */
+  --ap-orange-muted: 72 24 1; /* orange-100 */
+  --ap-orange-strong: 253 210 145; /* orange-1200 */
+  --ap-orange-soft: 210 98 0; /* orange-700 */
+
+  --ap-yellow: 199 162 0; /* yellow-900 */
+  --ap-yellow-muted: 53 36 0; /* yellow-100 */
+  --ap-yellow-strong: 247 216 4; /* yellow-1200 */
+  --ap-yellow-soft: 161 126 0; /* yellow-700 */
+
+  --ap-purple: 162 94 246; /* purple-700 */
+  --ap-purple-muted: 50 16 104; /* purple-100 */
+  --ap-purple-soft: 145 70 236; /* purple-600 */
+
+  --ap-indigo: 110 115 246; /* indigo-700 */
+  --ap-indigo-muted: 26 29 97; /* indigo-100 */
+  --ap-indigo-soft: 90 96 235; /* indigo-600 */
+
+  --ap-seafoam: 0 165 159; /* seafoam-800 */
+  --ap-seafoam-muted: 18 43 42; /* seafoam-100 */
+  --ap-seafoam-strong: 139 232 225; /* seafoam-1200 */
+  --ap-seafoam-soft: 0 127 121; /* seafoam-600 */
+
+  --ap-cyan: 4 160 205; /* cyan-800 */
+  --ap-cyan-muted: 0 41 68; /* cyan-100 */
+  --ap-cyan-strong: 134 230 250; /* cyan-1200 */
+  --ap-cyan-soft: 0 121 167; /* cyan-600 */
+
+  --ap-magenta: 227 69 137; /* magenta-700 */
+  --ap-magenta-muted: 83 3 41; /* magenta-100 */
+  --ap-magenta-strong: 255 179 207; /* magenta-1100 */
+  --ap-magenta-soft: 186 22 93; /* magenta-500 */
+
+  /* General purpose */
+  --agentprism-background: var(--ap-gray-75);
+  --agentprism-foreground: var(--ap-gray-900);
+  --agentprism-primary: var(--ap-gray-900);
+  --agentprism-primary-foreground: var(--ap-gray-100);
+  --agentprism-secondary: var(--ap-gray-200);
+  --agentprism-secondary-foreground: var(--ap-gray-500);
+  --agentprism-muted: var(--ap-gray-100);
+  --agentprism-muted-foreground: var(--ap-gray-600);
+  --agentprism-accent: var(--ap-gray-200);
+  --agentprism-accent-foreground: var(--ap-gray-200);
+
+  /* Brand */
+  --agentprism-brand: var(--ap-blue);
+  --agentprism-brand-foreground: var(--ap-black);
+  --agentprism-brand-secondary: var(--ap-orange);
+  --agentprism-brand-secondary-foreground: var(--ap-black);
+
+  /* Borders */
+  --agentprism-border: var(--ap-gray-200);
+  --agentprism-border-subtle: var(--ap-gray-100);
+  --agentprism-border-strong: var(--ap-gray-300);
+  --agentprism-border-inverse: var(--ap-gray-900);
+
+  /* Status */
+  --agentprism-success: var(--ap-green);
+  --agentprism-success-muted: var(--ap-green-muted);
+  --agentprism-success-muted-foreground: var(--ap-green-strong);
+  --agentprism-error: var(--ap-red);
+  --agentprism-error-muted: var(--ap-red-muted);
+  --agentprism-error-muted-foreground: var(--ap-red-strong);
+  --agentprism-warning: var(--ap-orange);
+  --agentprism-warning-muted: var(--ap-orange-muted);
+  --agentprism-warning-muted-foreground: var(--ap-orange-strong);
+  --agentprism-pending: var(--ap-purple);
+  --agentprism-pending-muted: var(--ap-purple-muted);
+  --agentprism-pending-muted-foreground: var(--ap-purple);
+
+  /* Code syntax */
+  --agentprism-code-string: 255 129 107; /* red-900 */
+  --agentprism-code-number: 255 162 59; /* orange-1000 */
+  --agentprism-code-key: 94 170 247; /* blue-900 */
+  --agentprism-code-base: var(--ap-gray-600);
+
+  /* Badges */
+  --agentprism-badge-default: var(--ap-gray-200);
+  --agentprism-badge-default-foreground: var(--ap-gray-700);
+
+  /* Trace categories */
+  --agentprism-avatar-llm: var(--ap-purple);
+  --agentprism-badge-llm: var(--ap-purple-muted);
+  --agentprism-badge-llm-foreground: 192 143 252; /* purple-900 */
+  --agentprism-timeline-llm: var(--ap-purple-soft);
+
+  --agentprism-avatar-agent: var(--ap-indigo);
+  --agentprism-badge-agent: var(--ap-indigo-muted);
+  --agentprism-badge-agent-foreground: 153 159 255; /* indigo-900 */
+  --agentprism-timeline-agent: var(--ap-indigo-soft);
+
+  --agentprism-avatar-tool: 249 137 23; /* orange-900 */
+  --agentprism-badge-tool: var(--ap-orange-muted);
+  --agentprism-badge-tool-foreground: 255 188 102; /* orange-1100 */
+  --agentprism-timeline-tool: var(--ap-orange-soft);
+
+  --agentprism-avatar-chain: var(--ap-blue);
+  --agentprism-badge-chain: var(--ap-blue-muted);
+  --agentprism-badge-chain-foreground: var(--ap-blue-strong);
+  --agentprism-timeline-chain: var(--ap-blue-soft);
+
+  --agentprism-avatar-retrieval: var(--ap-seafoam);
+  --agentprism-badge-retrieval: var(--ap-seafoam-muted);
+  --agentprism-badge-retrieval-foreground: var(--ap-seafoam-strong);
+  --agentprism-timeline-retrieval: var(--ap-seafoam-soft);
+
+  --agentprism-avatar-embedding: var(--ap-cyan);
+  --agentprism-badge-embedding: var(--ap-cyan-muted);
+  --agentprism-badge-embedding-foreground: var(--ap-cyan-strong);
+  --agentprism-timeline-embedding: var(--ap-cyan-soft);
+
+  --agentprism-avatar-guardrail: var(--ap-magenta);
+  --agentprism-badge-guardrail: var(--ap-magenta-muted);
+  --agentprism-badge-guardrail-foreground: var(--ap-magenta-strong);
+  --agentprism-timeline-guardrail: var(--ap-magenta-soft);
+
+  --agentprism-avatar-create-agent: var(--ap-green);
+  --agentprism-badge-create-agent: var(--ap-green-muted);
+  --agentprism-badge-create-agent-foreground: var(--ap-green-strong);
+  --agentprism-timeline-create-agent: 0 130 82; /* green-600 */
+
+  --agentprism-avatar-span: var(--ap-gray-500);
+  --agentprism-badge-span: var(--ap-gray-100);
+  --agentprism-badge-span-foreground: var(--ap-gray-700);
+  --agentprism-timeline-span: var(--ap-gray-400);
+
+  --agentprism-avatar-event: var(--ap-yellow);
+  --agentprism-badge-event: var(--ap-yellow-muted);
+  --agentprism-badge-event-foreground: var(--ap-yellow-strong);
+  --agentprism-timeline-event: var(--ap-yellow-soft);
+
+  --agentprism-avatar-unknown: var(--ap-gray-500);
+  --agentprism-badge-unknown: var(--ap-gray-100);
+  --agentprism-badge-unknown-foreground: var(--ap-gray-700);
+  --agentprism-timeline-unknown: var(--ap-gray-400);
+}

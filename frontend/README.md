@@ -4,9 +4,10 @@ Web dashboard (phase 3). Implements
 [`plans/frontend.md`](../plans/frontend.md): engineering / manager / executive
 views over the [backend Platform API](../plans/backend.md).
 
-Stack: React + Vite + TypeScript, TanStack Query, React Router, Recharts,
+Stack: React 19 + Vite + TypeScript, TanStack Query, React Router, Recharts,
 styled with the [Arize Phoenix](https://github.com/Arize-ai/phoenix) design
-system (Apache-2.0).
+system (Apache-2.0); traces render with
+[AgentPrism](https://github.com/evilmartians/agent-prism) (MIT).
 
 ## Development
 
@@ -32,9 +33,12 @@ src/theme/        Phoenix design tokens (dark + light), base styles, component C
 src/components/
   core/           Card, Badge, Table, Tabs, Button, Alert, Metric, ... + icons
   charts/         Recharts trend charts + breakdown bars
+  agent-prism/    vendored AgentPrism UI/data/types (see its LOCAL.md)
+  TraceExplorer   AgentPrism tree + span details for the execution page
   AppShell.tsx    side nav, top nav, breadcrumbs
 src/pages/        Overview, Engineering (+ ExecutionDetail), Manager, Executive
 src/state/        filters, role and theme contexts
+src/lib/          formatting, forecast, chart theming, span→AgentPrism adapter
 ```
 
 ## Design system
@@ -49,3 +53,14 @@ The UI mirrors Phoenix's tokens and primitives (see
   (`src/lib/chartTheme.ts`)
 - class naming follows Phoenix's BEM convention (`block__element`,
   `data-*` for state)
+
+## Traces (AgentPrism)
+
+`src/pages/ExecutionDetail.tsx` renders spans with the vendored AgentPrism
+components (see `.scratch/frontend/issues/07-agent-prism-traces.md`):
+
+- `src/components/agent-prism/` is vendored with `npx degit`; keep local edits
+  to the three documented patches in its `LOCAL.md`
+- `src/lib/traceSpans.ts` maps backend spans onto AgentPrism's `TraceSpan`
+- Tailwind is scoped to those components; the Phoenix palette is mapped onto
+  the `agentprism-*` tokens in `src/theme/agent-prism.css` (dark + light)

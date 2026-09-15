@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAlerts } from "../api/hooks";
 import { useRole, type Role } from "../state/RoleContext";
@@ -20,7 +20,7 @@ import {
 interface NavItem {
   to: string;
   label: string;
-  icon: (p: { size?: number }) => JSX.Element;
+  icon: (p: { size?: number }) => ReactElement;
   allow: Role[];
   end?: boolean;
 }

@@ -150,6 +150,7 @@ Resolved during implementation on the wayfinder map `.scratch/frontend/` (per
 | [04 — Views](../.scratch/frontend/issues/04-views.md) | Overview / Engineering (span+failure tree) / Manager (cost, budget, alerts) / Executive (unit economics + forecast) |
 | [05 — Code-splitting](../.scratch/frontend/issues/05-code-splitting.md) | Lazy pages + vendor/charts chunks |
 | [06 — Phoenix design system](../.scratch/frontend/issues/06-phoenix-design-system.md) | Arize Phoenix design system: tokens, side-nav shell, core components, themed charts; Geist fonts; dark default + light toggle |
+| [07 — AgentPrism trace viewer](../.scratch/frontend/issues/07-agent-prism-traces.md) | Execution traces render with the vendored AgentPrism components (tree, timeline, search, details); React 19; Tailwind scoped to the vendored code |
 
 ---
 
@@ -174,6 +175,19 @@ product:
   (themed gridlines, axes, tooltip panel); horizontal breakdown bars for
   per-dimension cost.
 - **Type**: Geist Sans/Mono self-hosted via `@fontsource` (offline-safe).
+
+## Trace rendering (2026-09-15): AgentPrism
+
+The execution detail's Spans tab is now built on
+[AgentPrism](https://github.com/evilmartians/agent-prism) (MIT) rather than a
+hand-rolled tree: vendored UI/data/types, a `TraceExplorer` composing its
+TreeView (search + expand/collapse) and DetailsView over resizable panels, and
+a `src/lib/traceSpans.ts` adapter from backend spans onto its normalized types.
+This brought React 19 and a Tailwind setup scoped to the vendored components;
+the Phoenix tokens are remapped onto the `agentprism-*` color tokens so both
+themes stay consistent. See
+[issue 07](../.scratch/frontend/issues/07-agent-prism-traces.md).
+
 
 
 ---

@@ -4,7 +4,11 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "tsconfig.tsbuildinfo"] },
+  {
+    // Vendored third-party code (AgentPrism, MIT) — kept byte-close to
+    // upstream so it can be refreshed with `npx degit` (see its LOCAL.md).
+    ignores: ["dist", "node_modules", "tsconfig.tsbuildinfo", "src/components/agent-prism/**"],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

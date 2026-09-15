@@ -1,4 +1,7 @@
+@tailwind base;
+
 /* Global element styles — the app-level reset Phoenix applies on top of its tokens. */
+@layer base {
 
 *,
 *::before,
@@ -170,4 +173,6 @@ a:hover {
 
 .num {
   font-variant-numeric: tabular-nums;
+}
+
 }

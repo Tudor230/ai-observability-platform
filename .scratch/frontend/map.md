@@ -29,6 +29,9 @@ backend Platform API. Decision tickets below record resolved decisions.
 - [06 — Phoenix design system](issues/06-phoenix-design-system.md): the UI
   adopts the Arize Phoenix design system (tokens, shell layout, core
   components, chart theming; Geist fonts; dark default + light toggle).
+- [07 — AgentPrism trace viewer](issues/07-agent-prism-traces.md): execution
+  traces render with the vendored AgentPrism components (tree, timeline,
+  search, span details), React 19 + Tailwind scoped to the vendored code.
 
 ## Fog / not yet specified
 
