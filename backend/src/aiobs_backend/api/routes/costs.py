@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -65,9 +66,9 @@ def get_costs(
         for record, _ in rows:
             key = f"{record.provider or 'unknown'}:{record.model or 'unknown'}"
             bucket = agg.setdefault(
-                key, {"key": key, "provider": record.provider, "model": record.model, "total_cost": 0.0, "input_tokens": 0, "output_tokens": 0}
+                key, {"key": key, "provider": record.provider, "model": record.model, "total_cost": Decimal("0"), "input_tokens": 0, "output_tokens": 0}
             )
-            bucket["total_cost"] += float(record.amount or 0)
+            bucket["total_cost"] += record.amount or Decimal("0")
             bucket["input_tokens"] += record.input_tokens
             bucket["output_tokens"] += record.output_tokens
         items = sorted(agg.values(), key=lambda i: i["total_cost"], reverse=True)
@@ -91,9 +92,9 @@ def get_costs(
     for row in rows:
         key = row.key or fallback_key
         bucket = agg.setdefault(
-            key, {"key": key, "total_cost": 0.0, "tokens": 0, "executions": 0, "llm_calls": 0}
+            key, {"key": key, "total_cost": Decimal("0"), "tokens": 0, "executions": 0, "llm_calls": 0}
         )
-        bucket["total_cost"] += float(row.total_cost or 0)
+        bucket["total_cost"] += row.total_cost or Decimal("0")
         bucket["tokens"] += row.total_tokens
         bucket["executions"] += row.executions
         bucket["llm_calls"] += row.llm_calls

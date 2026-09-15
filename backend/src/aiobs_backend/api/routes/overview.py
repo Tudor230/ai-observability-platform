@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -29,11 +30,14 @@ def _window_stats(session: Session, start, end, **extra) -> dict:
     n = len(rows)
     failed = sum(1 for r in rows if r.status == "error")
     durations = [r.duration_ms for r in rows if r.duration_ms is not None]
+    total_cost = sum(
+        (r.total_cost or Decimal("0") for r in rows), Decimal("0")
+    )
     return {
         "executions": n,
         "failed_executions": failed,
         "error_rate": round(failed / n, 4) if n else 0.0,
-        "total_cost": round(sum(float(r.total_cost or 0) for r in rows), 6),
+        "total_cost": round(float(total_cost), 6),
         "total_tokens": sum(r.total_tokens or 0 for r in rows),
         "llm_calls": sum(r.llm_calls or 0 for r in rows),
         "tool_calls": sum(r.tool_calls or 0 for r in rows),

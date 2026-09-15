@@ -219,7 +219,7 @@ def process_trace(
         # otherwise keep them in a *provisional* execution instead of dropping
         # them; the root batch later rebuilds the execution with full identity.
         if existing is not None:
-            return _merge_partial_batch(session, existing, derived)
+            return _merge_partial_batch(session, existing, derived, project)
         return _provisional_batch(session, project, derived, trace_id)
 
     root_a = root.raw.attributes
@@ -239,7 +239,7 @@ def process_trace(
     if existing:
         if existing.workflow_name is None:
             _apply_root_identity(session, existing, project, root)
-            return _merge_partial_batch(session, existing, derived)
+            return _merge_partial_batch(session, existing, derived, project)
         session.query(CostRecord).filter(
             CostRecord.execution_id == existing.id
         ).delete()
@@ -381,7 +381,7 @@ def process_trace(
     # Unpriced LLM calls: cost must stay auditable, never silently $0 (F12).
     execution.unpriced_calls = llm_calls - priced_calls
     execution.duration_ms = execution.duration_ms or _duration_ms(started, ended)
-    touch_agents(session, derived)
+    touch_agents(session, project, derived)
     session.flush()
 
     return {
@@ -432,13 +432,13 @@ def _provisional_batch(
     )
     session.add(execution)
     session.flush()
-    summary = _merge_partial_batch(session, execution, derived)
+    summary = _merge_partial_batch(session, execution, derived, project)
     summary["provisional"] = True
     return summary
 
 
 def _merge_partial_batch(
-    session: Session, execution: Execution, derived: list[DerivedSpan]
+    session: Session, execution: Execution, derived: list[DerivedSpan], project: Project
 ) -> dict:
     """Upsert a children-only batch into an existing execution (F02).
 
@@ -511,7 +511,7 @@ def _merge_partial_batch(
             )
         )
     session.flush()
-    touch_agents(session, derived)
+    touch_agents(session, project, derived)
     return _recompute_execution(session, execution, merged=len(derived))
 
 
@@ -637,8 +637,8 @@ def _upsert_workflow(
     return row
 
 
-def touch_agents(session: Session, derived: list[DerivedSpan]) -> None:
-    """Ensure AGENT dimension rows exist for seen agent names."""
+def touch_agents(session: Session, project: Project, derived: list[DerivedSpan]) -> None:
+    """Ensure AGENT dimension rows exist for seen agent names (per project, F25)."""
     names = {
         d.raw.name
         for d in derived
@@ -646,7 +646,10 @@ def touch_agents(session: Session, derived: list[DerivedSpan]) -> None:
     }
     for name in names:
         row, created = _upsert_row(
-            session, Agent, Agent.name == name, {"name": name}
+            session,
+            Agent,
+            (Agent.project_id == project.id) & (Agent.name == name),
+            {"project_id": project.id, "name": name},
         )
         if not created:
             row.last_seen = _now()
