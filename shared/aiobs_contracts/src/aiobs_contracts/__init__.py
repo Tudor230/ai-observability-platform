@@ -122,6 +122,29 @@ LAYER_ERROR_KIND = {
     KIND_RETRIEVER: KIND_RETRIEVAL_ERROR,
 }
 
+# --- Control-flow exceptions (not failures) -----------------------------------
+# LangGraph/LangChain exceptions that pause/resume agent execution (interrupts,
+# graph-level Commands). They are expected behavior, not failures: an
+# interrupted-for-approval workflow is paused, not broken. Matched as substrings
+# because instrumentors report fully qualified names
+# (e.g. ``langgraph.errors.GraphInterrupt``).
+CONTROL_FLOW_EXCEPTION_TYPES = frozenset(
+    {
+        "GraphInterrupt",
+        "GraphBubbleUp",
+        "Command",
+        "ParentCommand",
+    }
+)
+
+
+def is_control_flow_exception(exc_type: str | None) -> bool:
+    """True when an exception type names control flow rather than a failure."""
+    if not exc_type:
+        return False
+    return any(name in exc_type for name in CONTROL_FLOW_EXCEPTION_TYPES)
+
+
 # --- Payload redaction --------------------------------------------------------
 PAYLOAD_STRIP_EXACT = frozenset(
     {

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 
 import pytest
 import psycopg
@@ -38,8 +39,9 @@ def test_mock_trace_lands_in_postgres():
         service_name="mock-checkout",
         capture_prompts=True,
     )
+    workflow_id = f"order-123-{uuid.uuid4().hex[:8]}"
     try:
-        run_happy_path()
+        run_happy_path(workflow_id=workflow_id)
         assert ai_observability.flush(timeout_millis=10_000)
 
         deadline = time.time() + 60
@@ -58,7 +60,7 @@ def test_mock_trace_lands_in_postgres():
                     ORDER BY s.start_time DESC
                     LIMIT 1
                     """,
-                    ("checkout", "order-123"),
+                    ("checkout", workflow_id),
                 )
             except (psycopg.errors.UndefinedTable, psycopg.OperationalError):
                 # Phoenix migrations may still be running on a fresh stack.
@@ -72,7 +74,7 @@ def test_mock_trace_lands_in_postgres():
         assert len(rows) == 1, rows
         row = rows[0]
         assert row["client_id"] == "client-42"
-        assert row["session_id"] == "order-123"
+        assert row["session_id"] == workflow_id
         assert row["prompt_tokens"] is None  # business context rides the root span
 
         llm_rows = _query(
@@ -85,12 +87,14 @@ def test_mock_trace_lands_in_postgres():
             WHERE t.trace_id = (
                 SELECT t.trace_id FROM spans s2
                 JOIN traces t ON t.id = s2.trace_rowid
-                WHERE s2.attributes->'sdk'->>'workflow_id' = 'order-123'
+                WHERE s2.attributes->'sdk'->>'workflow_id' = %s
                 ORDER BY s2.start_time DESC
                 LIMIT 1
             )
+            
             AND s.attributes->'openinference'->'span'->>'kind' = 'LLM'
             """,
+            (workflow_id,),
         )
         assert len(llm_rows) >= 2, "expected LLM spans under the workflow trace"
         assert all(r["completion_tokens"] is not None for r in llm_rows)

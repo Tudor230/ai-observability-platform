@@ -28,7 +28,8 @@ Configuration (env vars, 12-factor):
 
 Usage:
     cd sdk
-    # offline, deterministic (fake model) — still exports real spans:
+    # offline, deterministic (fake model) — still exports real spans.
+    # Each run gets a random request id (pass --request-id to pin it):
     uv run python examples/langgraph_refund_approval.py --mock --capture-prompts
 
     # real LLM against your local Phoenix:
@@ -45,6 +46,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import uuid
 from typing import TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -274,7 +276,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run the LangGraph HITL refund-approval demo."
     )
-    parser.add_argument("--request-id", default="ORD-1234", help="thread_id / workflow_id")
+    parser.add_argument("--request-id", default=f"ORD-{uuid.uuid4().hex[:6].upper()}", help="thread_id / workflow_id (defaults to a random one per run)")
     parser.add_argument("--issue", default="I received a damaged item, I want a refund")
     parser.add_argument("--client-id", default="client-42")
     parser.add_argument("--project-id", default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID", "demo"))

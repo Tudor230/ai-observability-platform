@@ -43,6 +43,7 @@ import argparse
 import os
 import re
 import sys
+import uuid
 
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -197,7 +198,7 @@ def validate_response(answer, query: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the real RAG checkout-support demo.")
     parser.add_argument("query", nargs="?", default="Where is my order ORD-1234?")
-    parser.add_argument("--order-id", default=None, help="business workflow_id (defaults to the order id found in the query)")
+    parser.add_argument("--workflow-id", default=None, help="pin the workflow_id (defaults to a random one per run)")
     parser.add_argument("--client-id", default="client-42")
     parser.add_argument("--project-id", default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID", "demo"))
     parser.add_argument("--capture-prompts", action="store_true", default=False)
@@ -227,7 +228,7 @@ def main() -> int:
         temperature=0,
     )
 
-    workflow_id = args.order_id or "ORD-1234"
+    workflow_id = args.workflow_id or f"ord-{uuid.uuid4().hex[:8]}"
     with workflow(
         name="checkout_rag",
         client_id=args.client_id,
@@ -238,6 +239,7 @@ def main() -> int:
     ):
         composed = run_rag(model, args.query)
 
+    print(f"\nworkflow_id: {workflow_id}")
     print("\n--- composed response ---")
     print(composed)
     print("\nTrace exported. Inspect with:")

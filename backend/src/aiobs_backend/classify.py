@@ -31,7 +31,7 @@ def classify_span(span: RawSpan) -> tuple[str | None, str | None, str | None]:
     error_type = attrs.as_str(span.attributes, attrs.SDK_ERROR_TYPE)
     error_message = attrs.as_str(span.attributes, attrs.SDK_ERROR_MESSAGE)
 
-    events = attrs.exception_events(span)
+    events = attrs.real_exception_events(span)
     if events:
         ev = events[0]
         error_type = error_type or ev.get("type")
@@ -88,8 +88,19 @@ def _more_specific(raw_hint: str, hint: str) -> bool:
 
 
 def is_failed(span: RawSpan) -> bool:
+    """True when the span carries a real failure.
+
+    Mirrors the SDK: control-flow exceptions (``GraphInterrupt`` & co) only
+    pause execution and are not failures. An ERROR status with no exception
+    event still counts as a failure (an instrumentor can set ERROR without
+    recording an event).
+    """
+    events = attrs.exception_events(span)
+    real_events = [e for e in events if not c.is_control_flow_exception(e.get("type"))]
     if span.status_code == "error":
-        return True
+        if real_events:
+            return True
+        return not events
     if attrs.as_str(span.attributes, attrs.SDK_ERROR_KIND):
         return True
-    return bool(attrs.exception_events(span))
+    return bool(real_events)

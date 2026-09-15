@@ -16,6 +16,7 @@ from aiobs_contracts import (
     KIND_TIMEOUT,
     KIND_TOOL,
     KIND_TOOL_ERROR,
+    is_control_flow_exception,
     match_hint,
 )
 from opentelemetry.sdk.trace import ReadableSpan
@@ -30,18 +31,6 @@ from ._attributes import (
     SDK_ERROR_TYPE,
 )
 
-# LangGraph/LangChain control-flow exceptions used to pause/resume agent
-# execution (interrupts, graph-level Commands). They are expected behavior,
-# not failures: an interrupted-for-approval workflow is paused, not broken.
-_CONTROL_FLOW_EXCEPTION_TYPES = frozenset(
-    {
-        "GraphInterrupt",
-        "GraphBubbleUp",
-        "Command",
-        "ParentCommand",
-    }
-)
-
 def has_exception_event(span: ReadableSpan) -> bool:
     return any(event.name == EXCEPTION_EVENT_NAME for event in span.events)
 
@@ -50,7 +39,7 @@ def _is_control_flow_event(event) -> bool:
     exc_type = (event.attributes or {}).get(EXCEPTION_TYPE)
     if not isinstance(exc_type, str):
         return False
-    return any(name in exc_type for name in _CONTROL_FLOW_EXCEPTION_TYPES)
+    return is_control_flow_exception(exc_type)
 
 
 def _is_real_exception_event(event) -> bool:

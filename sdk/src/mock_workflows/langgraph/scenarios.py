@@ -18,12 +18,11 @@ from langgraph.types import Command, interrupt
 
 import ai_observability  # noqa: F401  (SDK must be initialized by runner)
 from ..assertions import ScenarioAssertions
-from ..scenario import Scenario
+from ..scenario import Scenario, scenario_with_random_workflow_id
 
 WORKFLOW = dict(
     name="approval",
     client_id="client-42",
-    workflow_id="thread-1",
     version="v1",
     context={"channel": "web"},
 )
@@ -70,20 +69,21 @@ def _build_linear_graph():
 # --- scenarios ----------------------------------------------------------------
 
 
-def run_basic() -> None:
+def run_basic(workflow_id: str) -> None:
     graph = _build_linear_graph()
     with ai_observability.workflow(
-        name="checkout", client_id="client-42", workflow_id="order-1"
+        name="checkout", client_id="client-42", workflow_id=workflow_id
     ):
         graph.invoke({"messages": []})
 
 
-def assert_basic(spans) -> list[str]:
+def assert_basic(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
         return checks.failures
     checks.status_ok(root)
+    checks.attr_eq(root, "sdk.workflow_id", workflow_id)
     for node in ("node_a", "node_b"):
         found = checks.spans(kind="CHAIN", name=node)
         checks.require(len(found) == 1, f"expected exactly 1 CHAIN span named {node}")
@@ -97,23 +97,23 @@ def assert_basic(spans) -> list[str]:
     return checks.failures
 
 
-def run_hitl_interrupt() -> None:
+def run_hitl_interrupt(workflow_id: str) -> None:
     graph = _build_approval_graph()
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         graph.invoke(
             {"messages": []},
-            config={"configurable": {"thread_id": WORKFLOW["workflow_id"]}},
+            config={"configurable": {"thread_id": workflow_id}},
         )
 
 
-def assert_hitl_interrupt(spans) -> list[str]:
+def assert_hitl_interrupt(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("approval")
     if root is None:
         return checks.failures
     checks.status_ok(root)
     checks.attr_eq(root, "sdk.hitl.interrupted", "true")
-    checks.attr_eq(root, "sdk.hitl.thread_id", "thread-1")
+    checks.attr_eq(root, "sdk.hitl.thread_id", workflow_id)
     checks.attr_eq(root, "sdk.hitl.node", "human_review")
     payload = dict(root.attributes or {}).get("sdk.hitl.interrupt_payload")
     checks.require(
@@ -130,16 +130,16 @@ def assert_hitl_interrupt(spans) -> list[str]:
     return checks.failures
 
 
-def run_hitl_resume() -> None:
+def run_hitl_resume(workflow_id: str) -> None:
     graph = _build_approval_graph()
-    config = {"configurable": {"thread_id": WORKFLOW["workflow_id"]}}
-    with ai_observability.workflow(**WORKFLOW):
+    config = {"configurable": {"thread_id": workflow_id}}
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         graph.invoke({"messages": []}, config=config)
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         graph.invoke(Command(resume=True), config=config)
 
 
-def assert_hitl_resume(spans) -> list[str]:
+def assert_hitl_resume(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     roots = [s for s in spans if s.parent is None or s.parent.is_remote]
     checks.require(
@@ -161,8 +161,8 @@ def assert_hitl_resume(spans) -> list[str]:
     checks.status_ok(resume)
     checks.attr_eq(resume, "sdk.hitl.interrupted", "false")
     checks.attr_eq(resume, "sdk.hitl.resumed", "true")
-    checks.attr_eq(resume, "sdk.hitl.thread_id", "thread-1")
-    checks.attr_eq(resume, "session.id", "thread-1")
+    checks.attr_eq(resume, "sdk.hitl.thread_id", workflow_id)
+    checks.attr_eq(resume, "session.id", workflow_id)
     checks.require(
         json.loads(dict(resume.attributes)["sdk.hitl.resume_value"]) is True,
         "sdk.hitl.resume_value should be true",
@@ -170,24 +170,24 @@ def assert_hitl_resume(spans) -> list[str]:
     return checks.failures
 
 
-def run_hitl_stream() -> None:
+def run_hitl_stream(workflow_id: str) -> None:
     graph = _build_approval_graph()
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         for _ in graph.stream(
             {"messages": []},
-            config={"configurable": {"thread_id": WORKFLOW["workflow_id"]}},
+            config={"configurable": {"thread_id": workflow_id}},
         ):
             pass
 
 
-def assert_hitl_stream(spans) -> list[str]:
+def assert_hitl_stream(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("approval")
     if root is None:
         return checks.failures
     checks.status_ok(root)
     checks.attr_eq(root, "sdk.hitl.interrupted", "true")
-    checks.attr_eq(root, "sdk.hitl.thread_id", "thread-1")
+    checks.attr_eq(root, "sdk.hitl.thread_id", workflow_id)
     checks.attr_eq(root, "sdk.hitl.node", "human_review")
     payload = dict(root.attributes or {}).get("sdk.hitl.interrupt_payload")
     checks.require(
@@ -198,32 +198,36 @@ def assert_hitl_stream(spans) -> list[str]:
 
 
 SCENARIOS: list[Scenario] = [
-    Scenario(
-        id="lg_basic",
-        framework="langgraph",
-        description="linear graph: node CHAIN spans under the workflow root, langgraph_node metadata",
-        run=run_basic,
-        assert_trace=assert_basic,
+    scenario_with_random_workflow_id(
+        "lg_basic",
+        "langgraph",
+        "linear graph: node CHAIN spans under the workflow root, langgraph_node metadata",
+        run_basic,
+        assert_basic,
+        workflow_id_base="order-1",
     ),
-    Scenario(
-        id="lg_hitl_interrupt",
-        framework="langgraph",
-        description="interrupt() pauses for approval: root OK, sdk.hitl.* stamped, no error",
-        run=run_hitl_interrupt,
-        assert_trace=assert_hitl_interrupt,
+    scenario_with_random_workflow_id(
+        "lg_hitl_interrupt",
+        "langgraph",
+        "interrupt() pauses for approval: root OK, sdk.hitl.* stamped, no error",
+        run_hitl_interrupt,
+        assert_hitl_interrupt,
+        workflow_id_base="thread-1",
     ),
-    Scenario(
-        id="lg_hitl_resume",
-        framework="langgraph",
-        description="Command(resume=True) continues the same thread AND the same trace: sdk.hitl.resume_value, one trace",
-        run=run_hitl_resume,
-        assert_trace=assert_hitl_resume,
+    scenario_with_random_workflow_id(
+        "lg_hitl_resume",
+        "langgraph",
+        "Command(resume=True) continues the same thread AND the same trace: sdk.hitl.resume_value, one trace",
+        run_hitl_resume,
+        assert_hitl_resume,
+        workflow_id_base="thread-1",
     ),
-    Scenario(
-        id="lg_hitl_stream",
-        framework="langgraph",
-        description="streaming interrupt captured via the lifecycle hook",
-        run=run_hitl_stream,
-        assert_trace=assert_hitl_stream,
+    scenario_with_random_workflow_id(
+        "lg_hitl_stream",
+        "langgraph",
+        "streaming interrupt captured via the lifecycle hook",
+        run_hitl_stream,
+        assert_hitl_stream,
+        workflow_id_base="thread-1",
     ),
 ]

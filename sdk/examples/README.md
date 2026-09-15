@@ -179,6 +179,13 @@ OPENAI_API_KEY=sk-... uv run python examples/rag_order_support_llamaindex.py \
     "Where is my order ORD-1234?" --capture-prompts
 ```
 
+> **One trace per run:** each demo run gets a fresh `workflow_id` by default,
+> so every run is its own execution/trace. Pass `--workflow-id <id>` to pin it:
+> the SDK derives the trace id deterministically from the workflow id, so runs
+> sharing the pinned id join ONE trace (LangGraph HITL continuation) — and the
+> backend recomputes that single execution on each re-ingest (idempotent per
+> trace id), so re-runs replace it instead of appending.
+
 ---
 
 # Demo: LangGraph human-in-the-loop refund approval
@@ -208,7 +215,9 @@ roots as entry points, plus `session.id = thread_id`. No store is involved, so
 this also works when the resume happens in a different process.
 
 Runs **fully offline** with a scripted fake model (fixed responses + usage) —
-no API key needed:
+no API key needed. Each run gets a random request id (pass `--request-id` to
+pin it — pinned ids join one trace and the backend recomputes that execution
+on re-run, exactly as documented above):
 
 ```bash
 cd sdk

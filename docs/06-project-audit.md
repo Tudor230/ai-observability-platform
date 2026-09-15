@@ -542,11 +542,13 @@ KPI, or explicitly descope with an ADR so the docs and app agree.
 ---
 
 **F35 [P2] Retention, deletion and PII posture are undefined**
-Evidence: payload stripping exists at export/persist (`_enrichment.py:69-72`,
-`pipeline.py:30-32`) but there is no retention/TTL, no erasure path, no PII ADR; docs/04
+Evidence: payload stripping existed at export/persist (`_enrichment.py:69-72`,
+`pipeline.py:30-32`) but there was no retention/TTL, no erasure path, no PII ADR; docs/04
 §4.9 requires minimization/handling.
-Fix: add retention windows + purge job; document the payload/redaction model in an ADR
-(encryption at rest/in transit, deletion procedure).
+Fix: retention windows + purge job shipped (`AIOBS_RETENTION_DAYS`, ADR-0003); the
+payload model is documented in ADR-0003 — capture is opt-in at the SDK, payloads are
+persisted as captured (full-fidelity span detail), sensitive metadata is redacted
+before storage (encryption at rest/in transit deferred, deletion via purge window).
 
 ---
 

@@ -33,11 +33,6 @@ from .otlp import RawSpan
 logger = logging.getLogger(__name__)
 
 
-def trim_attributes(attributes: dict[str, object]) -> dict[str, object]:
-    """Drop captured payloads from the stored attribute snapshot (privacy + size)."""
-    return {k: v for k, v in attributes.items() if not c.is_payload_attribute(k)}
-
-
 def _duration_ms(start: datetime | None, end: datetime | None) -> float | None:
     if start and end:
         return max(0.0, (end - start).total_seconds() * 1000.0)
@@ -349,7 +344,7 @@ def process_trace(
             retrieval_doc_count=d.retrieval_docs,
             retry_count=d.retry,
             cost=span_cost,
-            attributes=trim_attributes(root_a if is_root else d.raw.attributes),
+            attributes=root_a if is_root else d.raw.attributes,
         )
         span_rows.append(row)
 
@@ -507,7 +502,7 @@ def _merge_partial_batch(
                 retrieval_doc_count=d.retrieval_docs,
                 retry_count=d.retry,
                 cost=span_cost,
-                attributes=trim_attributes(d.raw.attributes),
+                attributes=d.raw.attributes,
             )
         )
     session.flush()

@@ -117,6 +117,18 @@ def exception_events(span: RawSpan) -> list[dict]:
     return out
 
 
+def real_exception_events(span: RawSpan) -> list[dict]:
+    """Exception events excluding LangGraph control flow (interrupts/Commands).
+
+    Mirrors the SDK: those exceptions pause execution, they are not failures.
+    """
+    return [
+        event
+        for event in exception_events(span)
+        if not c.is_control_flow_exception(event.get("type"))
+    ]
+
+
 def retry_count(attrs: dict[str, object]) -> int:
     return as_int(attrs, SDK_RETRY_COUNT)
 
