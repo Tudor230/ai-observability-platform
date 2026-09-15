@@ -12,7 +12,7 @@ from ..deps import get_db, get_project_scope, require_read_access
 
 router = APIRouter(tags=["metrics"], dependencies=[Depends(require_read_access)])
 
-DIMENSIONS = {"total", "project", "client", "workflow"}
+DIMENSIONS = {"total", "project", "client", "workflow", "team"}
 
 
 @router.get("/metrics")

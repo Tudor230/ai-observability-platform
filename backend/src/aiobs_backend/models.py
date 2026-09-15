@@ -13,7 +13,9 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -108,7 +110,7 @@ class Execution(Base):
     status: Mapped[str] = mapped_column(String(20), default="ok", index=True)
     root_error_kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
     root_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True
     )
@@ -157,7 +159,7 @@ class Span(Base):
     retrieval_doc_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     cost: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
-    attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attributes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     execution: Mapped[Execution] = relationship(back_populates="spans")
 
@@ -203,6 +205,8 @@ class CostRecord(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     price_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Resolved rates snapshot so cost history survives pricing edits/deletes (F30).
+    unit_prices: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
 
 
@@ -211,7 +215,7 @@ class DailyMetric(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     day: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD
-    dimension: Mapped[str] = mapped_column(String(40), index=True)  # total|project|client|workflow
+    dimension: Mapped[str] = mapped_column(String(40), index=True)  # total|project|client|workflow|team
     dimension_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     executions: Mapped[int] = mapped_column(Integer, default=0)
     failed_executions: Mapped[int] = mapped_column(Integer, default=0)
@@ -228,7 +232,15 @@ class DailyMetric(Base):
     p99_duration_ms: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
 
     __table_args__ = (
-        Index("ix_daily_dim", "day", "dimension", "dimension_key"),
+        # One row per (day, dimension, key) — prevents duplicate rollups (F26).
+        # NULLS NOT DISTINCT covers the `total` dimension's NULL key.
+        UniqueConstraint(
+            "day",
+            "dimension",
+            "dimension_key",
+            name="uq_daily_dim",
+            postgresql_nulls_not_distinct=True,
+        ),
     )
 
 

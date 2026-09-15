@@ -138,22 +138,37 @@ class EnrichingExporter(SpanExporter):
         self._inner = inner
         self._by_trace: dict[int, list[ReadableSpan]] = {}
         self._lock = threading.Lock()
+        # Export health (F13): cumulative counters + the last failure, so an
+        # app can detect that telemetry is not reaching the backend.
+        self._exported_batches = 0
+        self._failed_batches = 0
+        self._dropped_traces = 0
+        self._last_error: Optional[str] = None
 
     # -- SpanExporter API ------------------------------------------------------
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         try:
             ready = self._buffer(spans)
-        except Exception:
+        except Exception as exc:
             logger.exception("SDK enrichment buffering failed; dropping batch")
+            self._record_failure(f"enrichment buffering failed: {exc}")
             return SpanExportResult.FAILURE
         if not ready:
             return SpanExportResult.SUCCESS
         try:
-            return self._inner.export(ready)
-        except Exception:
+            result = self._inner.export(ready)
+        except Exception as exc:
             logger.exception("SDK export failed; spans dropped (app unaffected)")
+            self._record_failure(f"{type(exc).__name__}: {exc}")
             return SpanExportResult.FAILURE
+        if result is SpanExportResult.SUCCESS:
+            with self._lock:
+                self._exported_batches += 1
+                self._last_error = None
+        else:
+            self._record_failure("exporter returned FAILURE")
+        return result
 
     def force_flush(self, timeout_millis: Optional[int] = None) -> bool:
         with self._lock:
@@ -163,12 +178,44 @@ class EnrichingExporter(SpanExporter):
             self._by_trace.clear()
         ok = True
         if ready:
-            ok = self._inner.export(ready) is SpanExportResult.SUCCESS
+            try:
+                ok = self._inner.export(ready) is SpanExportResult.SUCCESS
+            except Exception as exc:
+                logger.exception("SDK flush export failed")
+                ok = False
+                self._record_failure(f"{type(exc).__name__}: {exc}")
+            if ok:
+                with self._lock:
+                    self._exported_batches += 1
+                    self._last_error = None
+            else:
+                self._record_failure("exporter returned FAILURE during flush")
         return self._inner.force_flush(timeout_millis) and ok
 
     def shutdown(self) -> None:
         self.force_flush(timeout_millis=None)
         self._inner.shutdown()
+
+    # -- export health ---------------------------------------------------------
+
+    @property
+    def last_export_failed(self) -> bool:
+        with self._lock:
+            return self._last_error is not None
+
+    def export_stats(self) -> dict:
+        with self._lock:
+            return {
+                "exported_batches": self._exported_batches,
+                "failed_batches": self._failed_batches,
+                "dropped_traces": self._dropped_traces,
+                "last_error": self._last_error,
+            }
+
+    def _record_failure(self, message: str) -> None:
+        with self._lock:
+            self._failed_batches += 1
+            self._last_error = message
 
     # -- internals -------------------------------------------------------------
 
@@ -183,6 +230,7 @@ class EnrichingExporter(SpanExporter):
                 for _ in range(dropped):
                     oldest = next(iter(self._by_trace))
                     self._by_trace.pop(oldest)
+                self._dropped_traces += dropped
                 logger.warning(
                     "SDK enrichment buffer overflow: dropped %d pending trace(s)",
                     dropped,

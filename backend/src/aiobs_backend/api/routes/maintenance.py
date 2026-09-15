@@ -14,10 +14,12 @@ router = APIRouter(tags=["maintenance"], dependencies=[Depends(get_admin_key)])
 @router.post("/metrics/rollup")
 def rollup(session: Session = Depends(get_db)) -> dict:
     counts = rollup_recent(session)
+    session.commit()  # response is sent before dependency teardown (see ingest route)
     return {"days": len(counts), "metrics_written": sum(counts.values())}
 
 
 @router.post("/alerts/evaluate")
 def evaluate(session: Session = Depends(get_db)) -> dict:
     created = evaluate_alerts(session)
+    session.commit()
     return {"created": len(created), "alerts": created}

@@ -81,11 +81,20 @@ def build_headers(config: Config) -> dict[str, str]:
     return headers
 
 
+def traces_endpoint(endpoint: str | None) -> str | None:
+    """Append ``/v1/traces`` once, tolerating endpoints that already include it (F39)."""
+    if not endpoint:
+        return None
+    base = endpoint.rstrip("/")
+    if base.endswith("/v1/traces"):
+        return base
+    return f"{base}/v1/traces"
+
+
 def build_otlp_exporter(config: Config) -> OTLPSpanExporter:
     """The OTLP HTTP exporter the SDK owns (endpoint + routing headers)."""
-    endpoint = f"{config.endpoint}/v1/traces" if config.endpoint else None
     return OTLPSpanExporter(
-        endpoint=endpoint,
+        endpoint=traces_endpoint(config.endpoint),
         headers=build_headers(config) or None,
     )
 

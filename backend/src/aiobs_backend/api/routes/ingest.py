@@ -28,6 +28,10 @@ async def _ingest(request: Request, session: Session, project: Project) -> dict:
     except InvalidOtlpPayload as exc:
         raise HTTPException(status_code=400, detail=f"invalid OTLP payload: {exc}") from exc
     summaries = process_trace_batch(session, project, raw_spans)
+    # Commit before the response is sent: FastAPI runs yield-dependency teardown
+    # (where session_scope commits) *after* the response, and an exporter that
+    # sends the next batch immediately must be able to see this one.
+    session.commit()
     return {"ingested": len(summaries), "traces": summaries}
 
 

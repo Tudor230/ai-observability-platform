@@ -67,6 +67,7 @@ def create_project(body: ProjectIn, session: Session = Depends(get_db)) -> KeyOu
     )
     session.add(project)
     session.flush()
+    session.commit()  # before the response: see ingest route note
     return KeyOut(project_id=body.project_id, api_key=key)
 
 
@@ -80,6 +81,7 @@ def rotate_key(project_id: str, session: Session = Depends(get_db)) -> KeyOut:
     key = generate_api_key()
     project.api_key_hash = hash_api_key(key)
     session.flush()
+    session.commit()
     return KeyOut(project_id=project_id, api_key=key)
 
 
@@ -92,6 +94,7 @@ def _set_enabled(session: Session, project_id: str, enabled: bool) -> dict:
     project.enabled = enabled
     project.revoked_at = None if enabled else datetime.now(timezone.utc)
     session.flush()
+    session.commit()
     return {
         "project_id": project.project_id,
         "enabled": project.enabled,

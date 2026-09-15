@@ -152,6 +152,35 @@ def is_payload_attribute(key: str) -> bool:
     return key.startswith(PAYLOAD_STRIP_PREFIXES)
 
 
+# --- Metadata redaction (business context persisted by the backend) ----------
+REDACTED = "[redacted]"
+
+SENSITIVE_METADATA_KEY = re.compile(
+    r"pass(word|wd)?|secret|token|api[_-]?key|authorization|credential|ssn|credit[_-]?card",
+    re.IGNORECASE,
+)
+
+
+def redact_metadata(value: object) -> object:
+    """Return a copy of SDK metadata with sensitive values redacted (F19).
+
+    Applied by the backend before persisting ``metadata``; nested dicts and
+    lists are handled recursively so secrets cannot hide one level down.
+    """
+    if isinstance(value, dict):
+        return {
+            key: (
+                REDACTED
+                if isinstance(key, str) and SENSITIVE_METADATA_KEY.search(key)
+                else redact_metadata(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_metadata(item) for item in value]
+    return value
+
+
 # --- Best-effort classification hint patterns (SDK + backend share) ----------
 _HINT_RATE_LIMIT = re.compile(r"ratelimit|rate.?limit|throttl|429")
 _HINT_TIMEOUT = re.compile(r"timeout|timed.?out|deadline")

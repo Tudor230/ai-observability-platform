@@ -80,6 +80,7 @@ def create_budget(body: BudgetIn, session: Session = Depends(get_db)) -> dict:
     )
     session.add(budget)
     session.flush()
+    session.commit()
     return {
         "id": budget.id,
         "amount": float(budget.amount),
@@ -96,6 +97,7 @@ def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
     if budget is None:
         raise HTTPException(status_code=404, detail="budget not found")
     session.delete(budget)
+    session.commit()
     return {"deleted": budget_id}
 
 

@@ -36,33 +36,30 @@ def list_agents(
     if scope:
         stmt = stmt.where(Project.project_id == scope)
     rows = session.execute(stmt).all()
-    agg: dict[str, dict] = {}
+    # Aggregate once per execution: an execution with several AGENT spans must
+    # not bill its full cost/tokens once per span (F25).
+    per_agent: dict[str, dict[str, Execution]] = {}
     for span, ex in rows:
-        name = span.name or "unknown"
-        bucket = agg.setdefault(
-            name,
-            {"name": name, "executions": set(), "failed": 0, "cost": 0.0, "tokens": 0, "last_seen": None},
-        )
-        bucket["executions"].add(ex.id)
-        if ex.status == "error":
-            bucket["failed"] += 1
-        bucket["cost"] += float(ex.total_cost or 0)
-        bucket["tokens"] += ex.total_tokens
-        seen = ex.started_at
-        if seen and (bucket["last_seen"] is None or seen > bucket["last_seen"]):
-            bucket["last_seen"] = seen
+        per_agent.setdefault(span.name or "unknown", {})[ex.id] = ex
+
     items = []
-    for bucket in agg.values():
-        n = len(bucket["executions"])
+    for name, execs in per_agent.items():
+        n = len(execs)
+        failed = sum(1 for e in execs.values() if e.status == "error")
+        cost = sum(float(e.total_cost or 0) for e in execs.values())
+        tokens = sum(e.total_tokens for e in execs.values())
+        last_seen = max(
+            (e.started_at for e in execs.values() if e.started_at), default=None
+        )
         items.append(
             {
-                "name": bucket["name"],
+                "name": name,
                 "executions": n,
-                "failed_executions": bucket["failed"],
-                "error_rate": round(bucket["failed"] / n, 4) if n else 0.0,
-                "total_cost": money(bucket["cost"]),
-                "total_tokens": bucket["tokens"],
-                "last_seen": bucket["last_seen"].isoformat() if bucket["last_seen"] else None,
+                "failed_executions": failed,
+                "error_rate": round(failed / n, 4) if n else 0.0,
+                "total_cost": money(cost),
+                "total_tokens": tokens,
+                "last_seen": last_seen.isoformat() if last_seen else None,
             }
         )
     items.sort(key=lambda i: i["total_cost"] or 0, reverse=True)

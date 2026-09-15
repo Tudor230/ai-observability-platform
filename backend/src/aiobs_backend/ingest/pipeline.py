@@ -21,6 +21,7 @@ from ..models import (
     Client,
     CostRecord,
     Execution,
+    Pricing,
     Project,
     Span,
     Workflow,
@@ -39,6 +40,33 @@ def _duration_ms(start: datetime | None, end: datetime | None) -> float | None:
     if start and end:
         return max(0.0, (end - start).total_seconds() * 1000.0)
     return None
+
+
+def _price_snapshot(pricing: Pricing) -> dict:
+    """Rates resolved for a cost record, kept so history survives price edits (F30)."""
+    return {
+        "currency": pricing.currency,
+        "input": float(pricing.input_price_per_1m or 0.0),
+        "output": float(pricing.output_price_per_1m or 0.0),
+        "cache_read": (
+            float(pricing.cache_read_price_per_1m)
+            if pricing.cache_read_price_per_1m is not None
+            else None
+        ),
+        "cache_write": (
+            float(pricing.cache_write_price_per_1m)
+            if pricing.cache_write_price_per_1m is not None
+            else None
+        ),
+        "reasoning": (
+            float(pricing.reasoning_price_per_1m)
+            if pricing.reasoning_price_per_1m is not None
+            else None
+        ),
+        "effective_from": (
+            pricing.effective_from.isoformat() if pricing.effective_from else None
+        ),
+    }
 
 
 @dataclass
@@ -233,7 +261,7 @@ def process_trace(
         workflow_name=wf_name,
         workflow_ref=workflow.id,
         workflow_version=wf_version,
-        metadata_json=attrs.metadata_dict(root.raw),
+        metadata_json=c.redact_metadata(attrs.metadata_dict(root.raw)),
         started_at=started,
         ended_at=ended,
         duration_ms=_duration_ms(started, ended),
@@ -295,6 +323,7 @@ def process_trace(
                         input_tokens=d.input_tokens,
                         output_tokens=d.output_tokens,
                         price_version=pricing.id,
+                        unit_prices=_price_snapshot(pricing),
                         amount=span_cost,
                     )
                 )
@@ -408,6 +437,7 @@ def _merge_partial_batch(
                         input_tokens=d.input_tokens,
                         output_tokens=d.output_tokens,
                         price_version=pricing.id,
+                        unit_prices=_price_snapshot(pricing),
                         amount=span_cost,
                     )
                 )

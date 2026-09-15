@@ -642,8 +642,9 @@ mock scenarios, KPI harness) is the right skeleton to build the fixes on.
 ## 7. Implementation status (post-audit)
 
 Work in `feat/backend-frontend-plans` (uncommitted at time of writing).
-Verification: **56 backend tests pass** (was 17), the **hardened KPI gate passes 14/14**
-with measured KPI values, and each fix was re-verified against the live Docker stack.
+Verification: **63 backend tests pass** (was 17), the **SDK suite passes** (63 + 1
+skipped), the **hardened KPI gate passes 14/14 twice in a row** with measured KPI
+values, and each fix was re-verified against the live Docker stack.
 
 ### Fixed (with tests)
 
@@ -658,14 +659,19 @@ with measured KPI values, and each fix was re-verified against the live Docker s
 | F08 | `effective_from` gates pricing resolution; pricing API accepts it (+ 3 history tests) |
 | F09 | Budgets have `period_type` (day/week/month) and windowed spend/reset; utilization never clamped in the API (+ 5 tests) |
 | F10 | `PATCH /alerts/{id}` requires the admin key (+ test, live 401 verified) |
+| F13 | SDK export health: failure counters + `last_error`, honest `flush()`, `export_stats()`, unknown `init()` kwargs raise, endpoint suffix normalization (+ 4 tests) |
 | F17 | Postgres data persists in a named volume; all services `restart: unless-stopped` |
 | F18 | `POST /projects/{id}/disable|enable` revokes/restores keys; disabled projects 403 on ingest (+ tests, live-verified) |
+| F19 | SDK metadata is redacted (sensitive keys, recursively) before persistence; `metadata_json`/`attributes` are JSONB (+ tests) |
 | F21 | Malformed OTLP → 400, oversized bodies → 413, per-trace savepoints keep the rest of the batch (+ 3 tests) |
 | F22 | `shared/**` changes now trigger the backend and SDK workflows |
 | F24 | Manager has an agent-efficiency panel; the failure tree is rendered hierarchically |
+| F26 | `DailyMetric` has a `uq_daily_dim` unique constraint (NULLS NOT DISTINCT) and rollups upsert against it (+ tests) |
 | F28 | Execution root cause prefers the most specific failing descendant (+ test) |
 | F29 | Cache pricing never fabricates rates and cannot go negative; missing cache prices stay unpriced (+ 5 tests) |
+| F30 | Cost records snapshot the resolved rates; deleting a referenced pricing row returns 409 (+ 3 tests, live-verified) |
 | F31 | Naive API timestamps are interpreted as UTC |
+| — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
 ### Partially fixed
 
@@ -676,14 +682,16 @@ with measured KPI values, and each fix was re-verified against the live Docker s
 | F12 | `unpriced_calls` + `cost_complete` surfaced on executions | `Decimal` end-to-end; aggregates still fold NULL to 0 |
 | F15 | `days` supported by `/executions` and `/metrics`; dashboard trends/forecast/metrics now filtered | alerts/budget panels are intentionally global |
 | F16 | Role selector gates nav links and routes (persisted in localStorage), documented as presentation-level | No server-side RBAC (needs F06 + identities) |
-| F20 | 17 → 56 tests covering every P0 | lint/typecheck/coverage, Alembic in deploy/CI |
+| F20 | 17 → 63 backend tests covering every P0/P1 fixed so far | lint/typecheck/coverage, Alembic in deploy/CI |
 | F23 | Budget % displayed unclamped, `formatPct` for error rate, direction-aware deltas | error banners, forecast labeling/anchor |
+| F25 | `/agents` counts cost/tokens once per execution (double-count fixed); `team` dimension added to rollups and `/metrics` | Agent dimension is still globally unique (not per project); no team cost endpoint |
+| F27 | Mutating routes commit before responding, so sequential exporters always see prior writes | `ON CONFLICT` upserts for true concurrent writers still pending |
 | F32 | Invalid `dimension` returns 422 | budget response keys, rollup summary, percentile de-dup |
+| F39 | Unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized | Hook thread-safety, atexit per provider, dead code/deps |
 
 ### Not started (next waves)
 
-F13/F14 (SDK fail-loud exports, SpanProcessor enrichment), F19 (JSONB + metadata
-redaction), F25 (team/service attribution, `/agents` double count), F26/F27 (rollup
-uniqueness, concurrency), F30 (price deletion), F33–F41 (retention, K8s, alert delivery,
-CI hardening, docs drift).
+F14 (SpanProcessor enrichment instead of whole-trace buffering), F33–F38/F40/F41
+(retention, K8s, alert delivery, CI hardening, docs drift, retention/PII), plus the
+remaining sub-items noted above.
 

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...models import Pricing
+from ...models import CostRecord, Pricing
 from ..deps import get_admin_key, get_db
 
 router = APIRouter(tags=["pricing"], dependencies=[Depends(get_admin_key)])
@@ -67,6 +67,7 @@ def create_pricing(body: PricingIn, session: Session = Depends(get_db)) -> dict:
     )
     session.add(pricing)
     session.flush()
+    session.commit()
     return {"id": pricing.id, "effective_from": pricing.effective_from.isoformat()}
 
 
@@ -77,5 +78,19 @@ def delete_pricing(pricing_id: str, session: Session = Depends(get_db)) -> dict:
     ).scalar_one_or_none()
     if pricing is None:
         raise HTTPException(status_code=404, detail="pricing not found")
+    # Price history is immutable once it has priced real traffic (F30): the
+    # resolved rates are also snapshotted on each cost record.
+    referenced = session.execute(
+        select(CostRecord.id).where(CostRecord.price_version == pricing_id).limit(1)
+    ).first()
+    if referenced is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "pricing row is referenced by cost records; add a newer "
+                "effective-dated price instead of deleting history"
+            ),
+        )
     session.delete(pricing)
+    session.commit()
     return {"deleted": pricing_id}

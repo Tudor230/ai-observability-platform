@@ -62,4 +62,5 @@ def update_alert_status(
         raise HTTPException(status_code=404, detail="alert not found")
     alert.status = status
     session.flush()
+    session.commit()
     return {"id": alert.id, "status": alert.status}
