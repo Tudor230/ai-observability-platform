@@ -1,0 +1,74 @@
+# Full platform stack: Postgres + Phoenix + backend API + dashboard.
+#   docker compose up -d --build
+#   Phoenix UI:   http://localhost:6006
+#   Backend API:  http://localhost:8000  (docs at /docs)
+#   Dashboard:    http://localhost:8080
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432" # common DB port shared by Phoenix, the backend, and the SDK tooling
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./dev/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  phoenix:
+    # Pinned by digest for reproducible e2e runs (was arizephoenix/phoenix:latest).
+    image: arizephoenix/phoenix@sha256:440c03af939e775343788a4e9e0fed72df6fd87ee287c771e94494ab3037c790
+    restart: unless-stopped
+    environment:
+      PHOENIX_SQL_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/phoenix
+    ports:
+      - "6006:6006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - /usr/bin/python3.13
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:6006/health', timeout=5)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/dev/Dockerfile
+    restart: unless-stopped
+    environment:
+      AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aiobs
+      AIOBS_ADMIN_API_KEY: admin
+      AIOBS_SEED_PRICING: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: dev/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata: # persistent platform data: Phoenix + backend survive `compose down`

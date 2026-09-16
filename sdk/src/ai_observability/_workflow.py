@@ -31,6 +31,7 @@ from ._attributes import (
     SESSION_ID,
     USER_ID,
 )
+from ._enrichment import push_capture_prompts, reset_capture_prompts
 from ._state import get_state
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class Workflow:
         self._capture_prompts = capture_prompts
         self._span: Optional[Span] = None
         self._token = None
+        self._capture_token = None
 
     def __enter__(self) -> "Workflow":
         span = get_state().get_tracer().start_span(
@@ -78,6 +80,11 @@ class Workflow:
             set_status_on_exception=False,
         )
         self._token.__enter__()
+        # Publish the per-workflow capture setting for streaming enrichment (F14):
+        # children export before the root ends, so the exporter cannot walk up
+        # to the root span's stamp.
+        if self._capture_prompts is not None:
+            self._capture_token = push_capture_prompts(self._capture_prompts)
         return self
 
     def _continued_context(self) -> Optional[Any]:
@@ -106,6 +113,9 @@ class Workflow:
             self._span.set_status(Status(StatusCode.ERROR, description=str(exc)))
         else:
             self._span.set_status(Status(StatusCode.OK))
+        if self._capture_token is not None:
+            reset_capture_prompts(self._capture_token)
+            self._capture_token = None
         if self._token is not None:
             self._token.__exit__(exc_type, exc, tb)
             self._token = None

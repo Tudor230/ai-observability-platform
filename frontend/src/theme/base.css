@@ -1,0 +1,178 @@
+@tailwind base;
+
+/* Global element styles — the app-level reset Phoenix applies on top of its tokens. */
+@layer base {
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  background-color: var(--global-color-gray-100);
+  color: var(--global-text-color-900);
+  font-family: var(--global-font-family-sans);
+  font-optical-sizing: auto;
+  font-size: var(--global-font-size-s);
+  line-height: var(--global-line-height-s);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+input,
+button,
+select,
+textarea {
+  font-family: var(--global-font-family-sans);
+  font-size: var(--global-font-size-s);
+  color: var(--global-text-color-900);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--global-text-color-900);
+}
+
+h1 {
+  font-size: var(--global-font-size-xl);
+  line-height: var(--global-line-height-xl);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: var(--global-font-size-l);
+  line-height: var(--global-line-height-l);
+  font-weight: 600;
+}
+
+h3 {
+  font-size: var(--global-font-size-m);
+  line-height: var(--global-line-height-m);
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+pre,
+code,
+.font-mono {
+  font-family: var(--global-font-family-mono);
+}
+
+a {
+  color: var(--global-link-color);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.theme :where(:focus-visible) {
+  outline: var(--focus-ring-thickness) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.recharts-surface:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Scrollbars — thin, quiet, theme aware. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(var(--global-color-gray-900-rgb), 0.18);
+  border: 3px solid transparent;
+  border-radius: var(--global-rounding-full);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(var(--global-color-gray-900-rgb), 0.3);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+@supports not selector(::-webkit-scrollbar-thumb) {
+  html,
+  html * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--global-color-gray-900-rgb), 0.18) transparent;
+  }
+}
+
+/* Utility classes shared across views. */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--global-text-color-500);
+}
+
+.quiet {
+  color: var(--global-text-color-400);
+}
+
+.text-danger {
+  color: var(--global-color-danger);
+}
+
+.text-success {
+  color: var(--global-color-success);
+}
+
+.text-warning {
+  color: var(--global-color-warning);
+}
+
+.right {
+  text-align: right;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+}

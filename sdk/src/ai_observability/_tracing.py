@@ -81,11 +81,20 @@ def build_headers(config: Config) -> dict[str, str]:
     return headers
 
 
+def traces_endpoint(endpoint: str | None) -> str | None:
+    """Append ``/v1/traces`` once, tolerating endpoints that already include it (F39)."""
+    if not endpoint:
+        return None
+    base = endpoint.rstrip("/")
+    if base.endswith("/v1/traces"):
+        return base
+    return f"{base}/v1/traces"
+
+
 def build_otlp_exporter(config: Config) -> OTLPSpanExporter:
     """The OTLP HTTP exporter the SDK owns (endpoint + routing headers)."""
-    endpoint = f"{config.endpoint}/v1/traces" if config.endpoint else None
     return OTLPSpanExporter(
-        endpoint=endpoint,
+        endpoint=traces_endpoint(config.endpoint),
         headers=build_headers(config) or None,
     )
 
@@ -124,16 +133,22 @@ def build_provider(
 
 
 _atexit_registered = False
+_latest_provider: Optional[TracerProvider] = None
 
 
 def register_atexit_flush(provider: TracerProvider) -> None:
-    global _atexit_registered
+    """Flush the *latest* provider at exit (re-`init()` must not go unflushed, F39)."""
+    global _atexit_registered, _latest_provider
+    _latest_provider = provider
     if _atexit_registered:
         return
 
     def _flush_on_exit() -> None:
+        current = _latest_provider
+        if current is None:
+            return
         try:
-            provider.force_flush(timeout_millis=5_000)
+            current.force_flush(timeout_millis=5_000)
         except Exception:
             logger.exception("SDK atexit flush failed")
 

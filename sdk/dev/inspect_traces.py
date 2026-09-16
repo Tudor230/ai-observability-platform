@@ -6,7 +6,8 @@ Usage:
     uv run python dev/inspect_traces.py --sql      # print sample queries instead
 
 Connect with AI_OBSERVABILITY_PG_DSN or --dsn
-(default: postgresql://postgres:postgres@localhost:5432/phoenix).
+(default: postgresql://postgres:postgres@localhost:5432/phoenix — the shared
+platform Postgres instance, same one Phoenix and the backend use).
 """
 
 from __future__ import annotations

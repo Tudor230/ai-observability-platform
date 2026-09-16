@@ -276,3 +276,25 @@ LangGraph effort (`.scratch/langgraph/`):
 | [06 — Trace-id continuation](../.scratch/langgraph/issues/06-trace-continuation.md) | Langfuse-style deterministic trace id from `workflow_id`; interrupt + resume join ONE trace (no store); compound registry keys; multi-root enricher |
 
 Research findings: `.scratch/sdk/research/01-openinference-coverage.md`, `.scratch/sdk/research/09-retry-observability.md`.
+
+---
+
+## Implementation status (2026-09-15)
+
+Shipped as planned, with these deltas (see `docs/06-project-audit.md` §7):
+
+- **Streaming enrichment (F14)**: the exporter no longer buffers whole traces;
+  retry counts and root failure propagation are inferred from bounded per-trace
+  metadata as spans stream, so long-running workflows hold no span memory.
+  Retries are counted from failed attempts that end **before** their success
+  (the natural framework ordering).
+- **Export health (F13)**: `flush()` reports whether telemetry reached the sink;
+  `export_stats()` exposes exported/failed batches and the last error; unknown
+  `init()` kwargs raise.
+- **Estimated usage (F33)**: backfilled token counts are marked
+  `sdk.tokens.estimated`.
+- **Deferred (unchanged)**: `separate_trace_from_runtime_context=True`
+  background-worker mode; cache/reasoning token validation & backfill beyond
+  prompt/completion; a public kind-override registration API.
+- **Contract**: attribute names/taxonomy/redaction live in
+  `shared/aiobs_contracts` (never re-declared in the SDK).

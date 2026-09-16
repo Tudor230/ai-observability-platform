@@ -45,6 +45,7 @@ import argparse
 import os
 import re
 import sys
+import uuid
 
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.retrievers import BaseRetriever
@@ -172,7 +173,8 @@ def main() -> int:
         description="Run the real RAG order-support demo (LlamaIndex)."
     )
     parser.add_argument("query", nargs="?", default="Where is my order ORD-1234?")
-    parser.add_argument("--order-id", default=None, help="business workflow_id (defaults to the order id found in the query)")
+    parser.add_argument("--order-id", default=None, help="business order id used for lookup/validation (default ORD-1234)")
+    parser.add_argument("--workflow-id", default=None, help="pin the workflow_id (defaults to a random one per run)")
     parser.add_argument("--client-id", default="client-42")
     parser.add_argument("--project-id", default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID", "demo"))
     parser.add_argument("--capture-prompts", action="store_true", default=False)
@@ -197,7 +199,8 @@ def main() -> int:
         capture_prompts=args.capture_prompts,
     )
 
-    workflow_id = args.order_id or "ORD-1234"
+    order_id = args.order_id or "ORD-1234"
+    workflow_id = args.workflow_id or f"ord-{uuid.uuid4().hex[:8]}"
     with workflow(
         name="order-support",
         client_id=args.client_id,
@@ -206,8 +209,9 @@ def main() -> int:
         context={"channel": "web", "ticket_id": "INC-12345", "agentic": "rag", "framework": "llamaindex"},
         capture_prompts=True if args.capture_prompts else None,
     ):
-        composed = run_flow(_build_llm(), args.query, workflow_id)
+        composed = run_flow(_build_llm(), args.query, order_id)
 
+    print(f"\nworkflow_id: {workflow_id}")
     print("\n--- composed response ---")
     print(composed)
     print("\nTrace exported. Inspect with:")

@@ -42,12 +42,14 @@ OTLP headers; Phoenix routes spans to the project via `x-project-name`.
 ## Trace storage: Phoenix + PostgreSQL
 
 ```bash
-cd dev
-docker compose up -d --wait          # Phoenix :6006 + Postgres :5432
+docker compose up -d --wait postgres phoenix   # from the repo root
 ```
 
-Phoenix stores spans in Postgres (`PHOENIX_SQL_DATABASE_URL`), so traces are
-inspectable with SQL or the Phoenix UI (http://localhost:6006):
+Phoenix stores spans in Postgres (`PHOENIX_SQL_DATABASE_URL`) on the **shared
+platform instance** (`:5432`; databases `phoenix` for traces, `aiobs` for the
+backend, `aiobs_test` for backend tests) — the SDK tooling and the backend use
+the same instance. Traces are inspectable with SQL or the Phoenix UI
+(http://localhost:6006):
 
 ```bash
 uv run python dev/inspect_traces.py                # latest workflow roots
@@ -70,6 +72,14 @@ uv run aiobs-mock                      # pass/fail CLI report (18 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
+Point the suite straight at the platform backend's OTLP ingest (it authenticates
+with the project API key and the `x-project-name` header):
+
+```bash
+uv run aiobs-mock --endpoint http://localhost:8000 \
+    --api-key <project-api-key> --project-id proj-1
+```
+
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid
 JSON, retrieval failure, high latency, rate limit, retry-then-success — plus
 LangGraph: basic node tracing, interrupt, resume, and streaming interrupt.
@@ -81,8 +91,8 @@ calls** (LangChain `ChatOpenAI` over HTTP — OpenAI, DeepSeek, Ollama, LM
 Studio, ...), a tool call, a manual validation span, and exports the trace:
 
 ```bash
-cd dev && docker compose up -d --wait
-cd .. && OPENAI_API_KEY=sk-... uv run python examples/checkout_agent.py \
+docker compose up -d --wait postgres phoenix   # from the repo root
+cd sdk && OPENAI_API_KEY=sk-... uv run python examples/checkout_agent.py \
     "Where is my order ORD-1234?" --capture-prompts
 ```
 
@@ -132,7 +142,7 @@ authoritative failure taxonomy and cost engine.
 src/ai_observability/    the SDK (config, tracing, workflow API, enrichment)
 src/mock_workflows/      scenarios + fakes + CLI runner
 tests/                   unit tests, scenario suite, e2e (docker)
-dev/                     docker-compose (postgres + phoenix), inspect tooling
+dev/                     inspect tooling (SQL over the shared platform Postgres)
 ```
 
 ## Development
@@ -140,5 +150,5 @@ dev/                     docker-compose (postgres + phoenix), inspect tooling
 ```bash
 uv sync --group dev
 uv run pytest
-AI_OBSERVABILITY_E2E=1 uv run pytest -m e2e   # requires `docker compose up -d --wait`
+AI_OBSERVABILITY_E2E=1 uv run pytest -m e2e   # requires the shared stack (`docker compose up -d --wait postgres phoenix` at the repo root)
 ```

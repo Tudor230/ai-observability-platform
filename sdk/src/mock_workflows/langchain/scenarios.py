@@ -20,7 +20,7 @@ from langchain_core.tools import tool
 
 import ai_observability  # noqa: F401  (SDK must be initialized by runner)
 from ..assertions import ScenarioAssertions
-from ..scenario import Scenario
+from ..scenario import Scenario, scenario_with_random_workflow_id
 from .fakes import (
     MockRateLimitError,
     MockTimeoutError,
@@ -32,7 +32,6 @@ from .fakes import (
 WORKFLOW = dict(
     name="checkout",
     client_id="client-42",
-    workflow_id="order-123",
     version="v2",
     context={"channel": "web", "ticket_id": "INC-12345"},
 )
@@ -57,7 +56,7 @@ def _build_agent(model) -> RunnableLambda:
     return RunnableLambda(agent_loop).with_config({"run_name": "checkout_agent"})
 
 
-def run_happy_path() -> None:
+def run_happy_path(workflow_id: str) -> None:
     model = ScriptedChatModel(
         responses=[
             tool_calling_message("lookup_stock", {"symbol": "TSLA"}, 5, 9),
@@ -65,20 +64,20 @@ def run_happy_path() -> None:
         ]
     )
     agent = _build_agent(model)
-    with ai_observability.workflow(**WORKFLOW, capture_prompts=True):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id, capture_prompts=True):
         agent.invoke("what is the price of TSLA?")
     return model
 
 
-def assert_happy_path(spans) -> list[str]:
+def assert_happy_path(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
         return checks.failures
     checks.attr_eq(root, "sdk.project_id", "proj-1")
     checks.attr_eq(root, "sdk.client_id", "client-42")
-    checks.attr_eq(root, "sdk.workflow_id", "order-123")
-    checks.attr_eq(root, "session.id", "order-123")
+    checks.attr_eq(root, "sdk.workflow_id", workflow_id)
+    checks.attr_eq(root, "session.id", workflow_id)
     checks.attr_eq(root, "sdk.workflow.version", "v2")
     checks.attr_eq(root, "metadata", json.dumps(WORKFLOW["context"]))
     checks.status_ok(root)
@@ -115,20 +114,20 @@ def assert_happy_path(spans) -> list[str]:
     return checks.failures
 
 
-def run_llm_error() -> None:
+def run_llm_error(workflow_id: str) -> None:
     model = ScriptedChatModel(
         responses=[ai_message("unused", 0, 0)],
         fail_budget=1,
         fail_exception=lambda: ValueError("model exploded"),
     )
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         try:
             model.invoke("hello")
         except ValueError:
             pass
 
 
-def assert_llm_error(spans) -> list[str]:
+def assert_llm_error(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -144,7 +143,7 @@ def assert_llm_error(spans) -> list[str]:
     return checks.failures
 
 
-def run_tool_timeout() -> None:
+def run_tool_timeout(workflow_id: str) -> None:
     state = {"calls": 0}
 
     @tool
@@ -157,11 +156,11 @@ def run_tool_timeout() -> None:
         return "recovered"
 
     retrying_tool = flaky_tool.with_retry(stop_after_attempt=3)
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         retrying_tool.invoke({"query": "q"})
 
 
-def assert_tool_timeout(spans) -> list[str]:
+def assert_tool_timeout(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -181,7 +180,7 @@ def assert_tool_timeout(spans) -> list[str]:
     return checks.failures
 
 
-def run_invalid_json() -> None:
+def run_invalid_json(workflow_id: str) -> None:
     model = FakeMessagesListChatModel(
         responses=[ai_message("not valid json {[", 3, 2)]
     )
@@ -194,14 +193,14 @@ def run_invalid_json() -> None:
         return step.invoke(raw.content, config=config)
 
     runnable = RunnableLambda(flow).with_config({"run_name": "structured_checkout"})
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         try:
             runnable.invoke("book order")
         except json.JSONDecodeError:
             pass
 
 
-def assert_invalid_json(spans) -> list[str]:
+def assert_invalid_json(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -223,21 +222,21 @@ class FailingRetriever(BaseRetriever):
         raise RuntimeError("vector store unavailable")
 
 
-def run_retrieval_failure() -> None:
+def run_retrieval_failure(workflow_id: str) -> None:
     retriever = FailingRetriever()
 
     def flow(query: str, config: dict | None = None):
         return retriever.invoke(query, config=config)
 
     runnable = RunnableLambda(flow).with_config({"run_name": "rag_checkout"})
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         try:
             runnable.invoke("what is order status?")
         except RuntimeError:
             pass
 
 
-def assert_retrieval_failure(spans) -> list[str]:
+def assert_retrieval_failure(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -250,16 +249,16 @@ def assert_retrieval_failure(spans) -> list[str]:
     return checks.failures
 
 
-def run_high_latency() -> None:
+def run_high_latency(workflow_id: str) -> None:
     model = ScriptedChatModel(
         responses=[ai_message("slow answer", 10, 5)],
         sleep=0.2,
     )
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         model.invoke("please be slow")
 
 
-def assert_high_latency(spans) -> list[str]:
+def assert_high_latency(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -272,20 +271,20 @@ def assert_high_latency(spans) -> list[str]:
     return checks.failures
 
 
-def run_rate_limit() -> None:
+def run_rate_limit(workflow_id: str) -> None:
     model = ScriptedChatModel(
         responses=[ai_message("unused", 0, 0)],
         fail_budget=1,
         fail_exception=lambda: MockRateLimitError("429 Too Many Requests"),
     )
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         try:
             model.invoke("hello")
         except MockRateLimitError:
             pass
 
 
-def assert_rate_limit(spans) -> list[str]:
+def assert_rate_limit(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -299,18 +298,18 @@ def assert_rate_limit(spans) -> list[str]:
     return checks.failures
 
 
-def run_retry_then_success() -> None:
+def run_retry_then_success(workflow_id: str) -> None:
     model = ScriptedChatModel(
         responses=[ai_message("finally ok", 4, 3)],
         fail_budget=2,
         fail_exception=lambda: MockTimeoutError("transient failure"),
     )
     retrying = model.with_retry(stop_after_attempt=3)
-    with ai_observability.workflow(**WORKFLOW):
+    with ai_observability.workflow(**WORKFLOW, workflow_id=workflow_id):
         retrying.invoke("hello")
 
 
-def assert_retry_then_success(spans) -> list[str]:
+def assert_retry_then_success(spans, workflow_id: str) -> list[str]:
     checks = ScenarioAssertions(spans)
     root = checks.require_single_root("checkout")
     if root is None:
@@ -329,60 +328,68 @@ def assert_retry_then_success(spans) -> list[str]:
 
 
 SCENARIOS: list[Scenario] = [
-    Scenario(
-        id="lc_happy_path",
-        framework="langchain",
-        description="checkout agent: AGENT span with nested LLM + TOOL calls, fixed tokens",
-        run=run_happy_path,
-        assert_trace=assert_happy_path,
+    scenario_with_random_workflow_id(
+        "lc_happy_path",
+        "langchain",
+        "checkout agent: AGENT span with nested LLM + TOOL calls, fixed tokens",
+        run_happy_path,
+        assert_happy_path,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_llm_error",
-        framework="langchain",
-        description="LLM call fails: ERROR span, exception event, provider_error hint",
-        run=run_llm_error,
-        assert_trace=assert_llm_error,
+    scenario_with_random_workflow_id(
+        "lc_llm_error",
+        "langchain",
+        "LLM call fails: ERROR span, exception event, provider_error hint",
+        run_llm_error,
+        assert_llm_error,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_tool_timeout",
-        framework="langchain",
-        description="tool times out then retries: TOOL ERROR + sdk.retry.count=1",
-        run=run_tool_timeout,
-        assert_trace=assert_tool_timeout,
+    scenario_with_random_workflow_id(
+        "lc_tool_timeout",
+        "langchain",
+        "tool times out then retries: TOOL ERROR + sdk.retry.count=1",
+        run_tool_timeout,
+        assert_tool_timeout,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_invalid_json",
-        framework="langchain",
-        description="structured-output step returns invalid JSON: invalid_output hint",
-        run=run_invalid_json,
-        assert_trace=assert_invalid_json,
+    scenario_with_random_workflow_id(
+        "lc_invalid_json",
+        "langchain",
+        "structured-output step returns invalid JSON: invalid_output hint",
+        run_invalid_json,
+        assert_invalid_json,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_retrieval_failure",
-        framework="langchain",
-        description="retriever fails: RETRIEVER ERROR span + exception event",
-        run=run_retrieval_failure,
-        assert_trace=assert_retrieval_failure,
+    scenario_with_random_workflow_id(
+        "lc_retrieval_failure",
+        "langchain",
+        "retriever fails: RETRIEVER ERROR span + exception event",
+        run_retrieval_failure,
+        assert_retrieval_failure,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_high_latency",
-        framework="langchain",
-        description="controlled fake sleep makes latency visible on the LLM span",
-        run=run_high_latency,
-        assert_trace=assert_high_latency,
+    scenario_with_random_workflow_id(
+        "lc_high_latency",
+        "langchain",
+        "controlled fake sleep makes latency visible on the LLM span",
+        run_high_latency,
+        assert_high_latency,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_rate_limit",
-        framework="langchain",
-        description="429-style error: rate_limit hint on LLM span + workflow root",
-        run=run_rate_limit,
-        assert_trace=assert_rate_limit,
+    scenario_with_random_workflow_id(
+        "lc_rate_limit",
+        "langchain",
+        "429-style error: rate_limit hint on LLM span + workflow root",
+        run_rate_limit,
+        assert_rate_limit,
+        workflow_id_base="order-123",
     ),
-    Scenario(
-        id="lc_retry_then_success",
-        framework="langchain",
-        description="with_retry succeeds on attempt 3: sdk.retry.count=2",
-        run=run_retry_then_success,
-        assert_trace=assert_retry_then_success,
+    scenario_with_random_workflow_id(
+        "lc_retry_then_success",
+        "langchain",
+        "with_retry succeeds on attempt 3: sdk.retry.count=2",
+        run_retry_then_success,
+        assert_retry_then_success,
+        workflow_id_base="order-123",
     ),
 ]

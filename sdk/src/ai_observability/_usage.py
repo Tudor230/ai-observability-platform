@@ -25,6 +25,7 @@ from ._attributes import (
     LLM_TOKEN_COUNT_TOTAL,
     MESSAGE_CONTENT,
     MESSAGE_ROLE,
+    SDK_TOKENS_ESTIMATED,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,20 +103,28 @@ def backfill_token_counts(attributes: dict) -> None:
 
     * Missing counts are estimated from captured messages (tiktoken when
       enabled and the model is known, otherwise a deterministic character
-      estimate).
+      estimate) and marked with ``sdk.tokens.estimated`` (F33) so downstream
+      cost views can distinguish reported from inferred usage.
     * ``total`` is recomputed as prompt + completion when missing or wrong.
     Runs before payload redaction so hidden messages still backfill counts.
     """
     prompt = _as_int(attributes.get(LLM_TOKEN_COUNT_PROMPT))
     completion = _as_int(attributes.get(LLM_TOKEN_COUNT_COMPLETION))
+    estimated = False
     if prompt is None:
         prompt = _estimate_prompt_tokens(attributes)
+        if prompt is not None:
+            estimated = True
     if completion is None:
         completion = _estimate_completion_tokens(attributes)
+        if completion is not None:
+            estimated = True
     if prompt is not None:
         attributes[LLM_TOKEN_COUNT_PROMPT] = prompt
     if completion is not None:
         attributes[LLM_TOKEN_COUNT_COMPLETION] = completion
+    if estimated:
+        attributes[SDK_TOKENS_ESTIMATED] = True
     if prompt is not None and completion is not None:
         total = _as_int(attributes.get(LLM_TOKEN_COUNT_TOTAL))
         if total is None or total != prompt + completion:

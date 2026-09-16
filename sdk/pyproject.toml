@@ -5,6 +5,7 @@ description = "Python observability SDK for the AI Observability Platform (v1: L
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "aiobs-contracts",
     "opentelemetry-api>=1.30",
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
@@ -13,6 +14,9 @@ dependencies = [
     "openinference-instrumentation-langchain>=0.1.73",
     "openinference-instrumentation-llama-index>=4.4.8",
 ]
+
+[tool.uv.sources]
+aiobs-contracts = { path = "../shared/aiobs_contracts", editable = true }
 
 [dependency-groups]
 dev = [
@@ -48,3 +52,4 @@ markers = [
 
 [tool.uv]
 default-groups = ["dev"]
+

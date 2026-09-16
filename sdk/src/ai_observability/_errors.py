@@ -2,13 +2,23 @@
 
 The SDK records raw material (exception type/message, span status, span kind)
 plus best-effort ``sdk.error.kind`` hints. The backend holds the authoritative
-failure taxonomy and may trust or override these hints.
+failure taxonomy and may trust or override these hints. Names and hint patterns
+are shared with the backend via ``aiobs_contracts``.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
+from aiobs_contracts import (
+    KIND_LLM,
+    KIND_PROVIDER_ERROR,
+    KIND_TIMEOUT,
+    KIND_TOOL,
+    KIND_TOOL_ERROR,
+    is_control_flow_exception,
+    match_hint,
+)
 from opentelemetry.sdk.trace import ReadableSpan
 
 from ._attributes import (
@@ -21,27 +31,6 @@ from ._attributes import (
     SDK_ERROR_TYPE,
 )
 
-# Best-effort classification hints (backend may override). Order matters:
-# specific signals first, generic fallbacks last.
-_KIND_RATE_LIMIT = "rate_limit"
-_KIND_TIMEOUT = "timeout"
-_KIND_INVALID_OUTPUT = "invalid_output"
-_KIND_TOOL_ERROR = "tool_error"
-_KIND_PROVIDER_ERROR = "provider_error"
-
-# LangGraph/LangChain control-flow exceptions used to pause/resume agent
-# execution (interrupts, graph-level Commands). They are expected behavior,
-# not failures: an interrupted-for-approval workflow is paused, not broken.
-_CONTROL_FLOW_EXCEPTION_TYPES = frozenset(
-    {
-        "GraphInterrupt",
-        "GraphBubbleUp",
-        "Command",
-        "ParentCommand",
-    }
-)
-
-
 def has_exception_event(span: ReadableSpan) -> bool:
     return any(event.name == EXCEPTION_EVENT_NAME for event in span.events)
 
@@ -50,7 +39,7 @@ def _is_control_flow_event(event) -> bool:
     exc_type = (event.attributes or {}).get(EXCEPTION_TYPE)
     if not isinstance(exc_type, str):
         return False
-    return any(name in exc_type for name in _CONTROL_FLOW_EXCEPTION_TYPES)
+    return is_control_flow_exception(exc_type)
 
 
 def _is_real_exception_event(event) -> bool:
@@ -92,28 +81,14 @@ def exception_type_message(span: ReadableSpan) -> tuple[Optional[str], Optional[
 
 
 def classify_kind(*, exception_type: Optional[str], exception_message: Optional[str], span_kind: Optional[str]) -> Optional[str]:
-    t = (exception_type or "").lower()
-    m = (exception_message or "").lower()
-    if (
-        "ratelimit" in t
-        or "rate limit" in t
-        or "throttl" in t
-        or "429" in m
-    ):
-        return _KIND_RATE_LIMIT
-    if "timeout" in t or "timed out" in t or "deadline" in t:
-        return _KIND_TIMEOUT
-    if (
-        "jsondecodeerror" in t
-        or "outputparser" in t
-        or ("json" in t and ("decode" in t or "parse" in t))
-        or ("json" in m and "expecting value" in m)
-    ):
-        return _KIND_INVALID_OUTPUT
-    if span_kind == "TOOL":
-        return _KIND_TOOL_ERROR
-    if span_kind == "LLM":
-        return _KIND_PROVIDER_ERROR
+    combined = " ".join(p for p in (exception_type or "", exception_message or "") if p)
+    hint = match_hint(combined)
+    if hint is not None:
+        return hint
+    if span_kind == KIND_TOOL:
+        return KIND_TOOL_ERROR
+    if span_kind == KIND_LLM:
+        return KIND_PROVIDER_ERROR
     return None
 
 

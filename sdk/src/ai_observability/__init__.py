@@ -40,6 +40,7 @@ __all__ = [
     "workflow",
     "span",
     "flush",
+    "export_stats",
     "shutdown",
     "Workflow",
     "__version__",
@@ -61,8 +62,9 @@ def init(
 ) -> None:
     """Initialize the SDK: tracing pipeline + framework auto-instrumentation.
 
-    Args override the corresponding env vars. ``capture_prompts`` is opt-in;
-    each workflow may override it per-run.
+    Args:
+        api_key / endpoint / project_id: platform credentials + collector URL.
+        capture_prompts: opt-in payload capture (per-workflow override allowed).
     """
     config = resolve_config(
         {
@@ -77,6 +79,9 @@ def init(
     )
     # Internal test hook: swap the final sink (skips the OTLP exporter).
     final_exporter: Optional[SpanExporter] = kwargs.pop("_final_exporter", None)
+    if kwargs:
+        # Typos like init(project="x") would otherwise silently drop telemetry (F39).
+        raise TypeError(f"unknown init() arguments: {sorted(kwargs)}")
 
     state = get_state()
     with state._lock:
@@ -92,16 +97,37 @@ def init(
 
 
 def flush(timeout_millis: Optional[int] = 5000) -> bool:
-    """Force-export pending spans (app shutdown / short-lived processes)."""
+    """Force-export pending spans; ``False`` if export did not reach the sink.
+
+    Unlike the raw provider flush this also reports the last export failure
+    (F13), so a misconfigured endpoint cannot look like success.
+    """
     state = get_state()
     provider = state.provider
     if provider is None:
         return True
     try:
-        return provider.force_flush(timeout_millis=timeout_millis)
+        ok = provider.force_flush(timeout_millis=timeout_millis)
     except Exception:
         logger.exception("SDK flush failed")
         return False
+    enricher = state.enricher
+    if not ok or (enricher is not None and enricher.last_export_failed):
+        return False
+    return True
+
+
+def export_stats() -> dict:
+    """Export health since init: batches exported/failed, traces dropped, last error."""
+    state = get_state()
+    if state.enricher is None:
+        return {
+            "exported_batches": 0,
+            "failed_batches": 0,
+            "dropped_traces": 0,
+            "last_error": None,
+        }
+    return state.enricher.export_stats()
 
 
 def shutdown() -> None:
