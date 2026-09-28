@@ -38,6 +38,27 @@ def effective_roles(memberships: list[Membership]) -> set[str]:
     return {m.role for m in memberships if m.status == APPROVED}
 
 
+def has_membership(
+    session: Session,
+    *,
+    user_id: str,
+    role: str,
+    scope_type: str,
+    scope_id: str | None,
+) -> bool:
+    """True when the user already holds this exact approved grant."""
+    stmt = select(Membership.id).where(
+        Membership.user_id == user_id,
+        Membership.role == role,
+        Membership.scope_type == scope_type,
+        Membership.status == APPROVED,
+    )
+    stmt = stmt.where(
+        Membership.scope_id.is_(None) if scope_id is None else Membership.scope_id == scope_id
+    )
+    return session.execute(stmt).first() is not None
+
+
 def is_global(memberships: list[Membership], *roles: str) -> bool:
     """True when the user holds an approved global grant with one of ``roles``."""
     wanted = set(roles)

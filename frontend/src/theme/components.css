@@ -1113,21 +1113,19 @@
     position: relative;
   }
 
-  .combobox__trigger {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--global-dimension-size-75);
+  .combobox__input {
     width: 100%;
-    text-align: left;
-    font: inherit;
-    color: var(--global-text-color-900);
-    cursor: pointer;
+    padding-right: 30px;
   }
 
-  .combobox__trigger:disabled {
-    opacity: var(--global-opacity-disabled);
-    cursor: not-allowed;
+  .combobox__chevron {
+    position: absolute;
+    top: 50%;
+    right: var(--global-dimension-size-100);
+    display: inline-flex;
+    transform: translateY(-50%);
+    color: var(--global-text-color-500);
+    pointer-events: none;
   }
 
   .combobox__list {

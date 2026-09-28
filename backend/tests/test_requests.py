@@ -247,6 +247,34 @@ def test_membership_scope_must_match_role(anon, session_factory):
     assert bad.status_code == 422
 
 
+def test_duplicate_membership_request_is_rejected(anon, session_factory):
+    with session_factory() as session:
+        team = seed_team(session)
+        seed_user(
+            session, "eng@x", role="engineer", scope_type="team", scope_id=team.id
+        )
+        session.commit()
+        team_id = team.id
+    _login(anon, "eng@x")
+
+    duplicate = _submit(
+        anon,
+        "membership",
+        {"role": "engineer", "scope_type": "team", "scope_id": team_id},
+    )
+    assert duplicate.status_code == 409, duplicate.text
+    assert "already hold" in duplicate.json()["detail"]
+
+    # A different role on the same scope is still requestable (upgrade path).
+    upgrade = _submit(
+        anon,
+        "membership",
+        {"role": "manager", "scope_type": "team", "scope_id": team_id},
+    )
+    assert upgrade.status_code == 200, upgrade.text
+    assert upgrade.json()["status"] == "pending"
+
+
 def test_non_covering_manager_cannot_approve(app, anon, client, session_factory):
     with session_factory() as session:
         department_a = seed_department(session, "A")

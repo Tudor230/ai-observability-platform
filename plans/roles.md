@@ -139,7 +139,7 @@ configured origins.
 | `create_department` | `{name}` — requester becomes initial manager; **admins/execs/managers only** (engineers and clients get 403) | admin/exec |
 | `create_team` | `{name, department_id}` | managers covering the department |
 | `create_project` | `{project_id, name, team_id}` | managers covering the team or its department |
-| `membership` | `{role, scope_type, scope_id}` | managers covering the scope; **manager grants → admin/exec only** |
+| `membership` | `{role, scope_type, scope_id}` | managers covering the scope; **manager grants → admin/exec only**; exact duplicate grants are rejected `409` |
 
 ### 5.2 Lifecycle
 
@@ -151,6 +151,12 @@ approval re-checks uniqueness and fails cleanly; **rejection reason required**.
 membership may submit `create_department` (engineers and clients get `403`; the
 type is hidden in the UI). Other request types stay open to any authenticated
 user.
+
+**Already-held grants**: the membership scope picker hides scopes where the
+caller already holds the selected role, and `POST /requests` rejects an exact
+`(role, scope)` duplicate with `409` (`has_membership`). A different role on the
+same scope remains requestable — engineer → manager on one's own team stays a
+valid, admin/exec-approved upgrade path.
 
 **Self-approval (ADR-0007)**: when the requester can approve their own request
 (`_can_approve`), `POST /requests` materializes and approves it immediately —
@@ -276,10 +282,10 @@ Tabs: New request / My requests, plus **Approvals only when the user can
 approve** (admin/exec/manager — an engineer+manager sees it, a plain engineer
 does not). Request forms with a type picker; the **Department** type is hidden
 for non-managers, and the membership form is **role-first** (scope options
-filter by role). Department/team/project and membership-scope pickers are
-**searchable, scrollable comboboxes** (`SearchableSelect` in
-`src/components/core/`). One-click approve; **reject via a modal with a
-required reason**. My requests supports cancel, resubmit, and "Open project".
+filter by role and hide scopes where that role is already held).
+Department/team/project and membership-scope pickers are **searchable,
+scrollable comboboxes** (`SearchableSelect` in `src/components/core/`).
+One-click approve; **reject via a modal with a required reason**. My requests supports cancel, resubmit, and "Open project".
 Submitting a self-approvable request reports the immediate approval (with a
 link to add a project key for `create_project`).
 

@@ -83,7 +83,7 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 
 export default function Requests() {
   const queryClient = useQueryClient();
-  const { hasRole, canApprove } = useAuth();
+  const { hasRole, canApprove, profile, refresh } = useAuth();
   const canRequestDepartments = hasRole("admin", "exec", "manager");
   const [tab, setTab] = useState<TabId>("new");
 
@@ -232,6 +232,7 @@ export default function Requests() {
       setProjectName("");
       setScopeKey("");
       invalidateRequests();
+      if (result.status === "approved") void refresh();
     } catch (error) {
       setFeedback({
         variant: "danger",
@@ -284,30 +285,55 @@ export default function Requests() {
     setTab("new");
   }
 
+  // Grants the caller already holds (role+scope), so they aren't offered again.
+  // A different role on the same scope stays requestable (e.g. engineer →
+  // manager), matching the backend guard.
+  const heldGrants = useMemo(() => {
+    const grants = new Set<string>();
+    for (const membership of profile?.memberships ?? []) {
+      if (membership.status === "approved") {
+        grants.add(
+          `${membership.role}:${membership.scope_type}:${membership.scope_id ?? ""}`
+        );
+      }
+    }
+    return grants;
+  }, [profile]);
+
   const scopeOptions = useMemo(() => {
+    const holds = (scopeType: string, scopeId: string) =>
+      heldGrants.has(`${membershipRole}:${scopeType}:${scopeId}`);
     if (membershipRole === "manager") {
       return [
-        ...(departments.data?.items ?? []).map((d) => ({
-          value: `department:${d.id}`,
-          label: `Department — ${d.name}`,
-        })),
-        ...(teams.data?.items ?? []).map((t) => ({
-          value: `team:${t.id}`,
-          label: `Team — ${t.name} (${t.department_name})`,
-        })),
+        ...(departments.data?.items ?? [])
+          .filter((d) => !holds("department", d.id))
+          .map((d) => ({
+            value: `department:${d.id}`,
+            label: `Department — ${d.name}`,
+          })),
+        ...(teams.data?.items ?? [])
+          .filter((t) => !holds("team", t.id))
+          .map((t) => ({
+            value: `team:${t.id}`,
+            label: `Team — ${t.name} (${t.department_name})`,
+          })),
       ];
     }
     if (membershipRole === "client") {
-      return (projects.data?.items ?? []).map((p) => ({
-        value: `project:${p.id}`,
-        label: `Project — ${p.project_id} · ${p.name}`,
-      }));
+      return (projects.data?.items ?? [])
+        .filter((p) => !holds("project", p.id))
+        .map((p) => ({
+          value: `project:${p.id}`,
+          label: `Project — ${p.project_id} · ${p.name}`,
+        }));
     }
-    return (teams.data?.items ?? []).map((t) => ({
-      value: `team:${t.id}`,
-      label: `Team — ${t.name} (${t.department_name})`,
-    }));
-  }, [membershipRole, departments.data, teams.data, projects.data]);
+    return (teams.data?.items ?? [])
+      .filter((t) => !holds("team", t.id))
+      .map((t) => ({
+        value: `team:${t.id}`,
+        label: `Team — ${t.name} (${t.department_name})`,
+      }));
+  }, [membershipRole, departments.data, teams.data, projects.data, heldGrants]);
 
   return (
     <div className="page">
@@ -443,8 +469,12 @@ export default function Requests() {
                 <div className="request-form__hint muted">
                   {activeType === "create_department"
                     ? "Admin/exec approve new departments; you become its initial manager."
-                    : activeType === "membership" && membershipRole === "manager"
-                      ? "Manager grants are approved by admin/exec only."
+                    : activeType === "membership"
+                      ? `${
+                          membershipRole === "manager"
+                            ? "Manager grants are approved by admin/exec only."
+                            : "A manager covering the scope approves this request."
+                        } Scopes where you already hold this role are hidden.`
                       : "A manager covering the scope approves this request."}
                 </div>
                 <div className="row">

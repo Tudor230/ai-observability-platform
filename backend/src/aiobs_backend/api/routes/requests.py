@@ -25,6 +25,7 @@ from ..memberships import (
     approved_memberships,
     covers_scope,
     effective_roles,
+    has_membership,
     is_global,
     normalize_role_scope,
     scope_exists,
@@ -226,6 +227,16 @@ def create_request(
             detail="only managers, executives, and admins can request new departments",
         )
     data = _validate_payload(session, body.type, body.payload)
+    if body.type == "membership" and has_membership(
+        session,
+        user_id=access.user.id,
+        role=data["role"],
+        scope_type=data["scope_type"],
+        scope_id=data.get("scope_id"),
+    ):
+        raise HTTPException(
+            status_code=409, detail="you already hold this membership"
+        )
     pending = session.execute(
         select(AccessRequest).where(
             AccessRequest.requester_id == access.user.id,

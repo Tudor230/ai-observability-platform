@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { IconChevronDown } from "./icons";
 
 export interface SelectOption {
@@ -13,7 +6,7 @@ export interface SelectOption {
   label: string;
 }
 
-/** Combobox with a filterable, scrollable option list (native select for scale). */
+/** Combobox with a filterable, scrollable option list. */
 export function SearchableSelect({
   value,
   onChange,
@@ -46,80 +39,89 @@ export function SearchableSelect({
 
   useEffect(() => {
     if (!open) return;
-    const onClick = (event: MouseEvent) => {
+    const onDocMouseDown = (event: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [open]);
 
   const openList = () => {
+    if (disabled) return;
     setQuery("");
     setHighlight(0);
     setOpen(true);
   };
 
+  const closeList = () => {
+    setOpen(false);
+    setQuery("");
+  };
+
   const choose = (option: SelectOption) => {
     onChange(option.value);
-    setOpen(false);
+    closeList();
+    inputRef.current?.focus();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setHighlight((current) => Math.min(current + 1, filtered.length - 1));
+      if (!open) openList();
+      else setHighlight((current) => Math.min(current + 1, filtered.length - 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setHighlight((current) => Math.max(current - 1, 0));
     } else if (event.key === "Enter") {
       event.preventDefault();
       const option = filtered[highlight];
-      if (option) choose(option);
+      if (open && option) choose(option);
     } else if (event.key === "Escape") {
       event.preventDefault();
-      setOpen(false);
+      closeList();
     }
   };
 
   return (
     <div className="combobox" ref={rootRef}>
+      <input
+        ref={inputRef}
+        className="field__input combobox__input"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-label={ariaLabel}
+        value={open ? query : (selected?.label ?? "")}
+        placeholder={selected ? selected.label : placeholder}
+        disabled={disabled}
+        autoComplete="off"
+        onFocus={() => {
+          if (!open) openList();
+        }}
+        onClick={() => {
+          if (!open) openList();
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setHighlight(0);
+          if (!open) setOpen(true);
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={closeList}
+      />
+      <span className="combobox__chevron">
+        <IconChevronDown size={14} />
+      </span>
       {open ? (
-        <input
-          ref={inputRef}
-          className="field__input"
-          role="combobox"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-label={ariaLabel}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setHighlight(0);
-          }}
-          onKeyDown={onKeyDown}
-          autoComplete="off"
-          autoFocus
-        />
-      ) : (
-        <button
-          type="button"
-          className="field__input combobox__trigger"
-          aria-haspopup="listbox"
-          aria-expanded="false"
-          aria-label={ariaLabel}
-          disabled={disabled}
-          onClick={openList}
+        <ul
+          className="combobox__list"
+          id={listId}
+          role="listbox"
+          onMouseDown={(event) => event.preventDefault()}
         >
-          <span className="truncate">
-            {selected ? selected.label : <span className="muted">{placeholder}</span>}
-          </span>
-          <IconChevronDown size={14} />
-        </button>
-      )}
-      {open ? (
-        <ul className="combobox__list" id={listId} role="listbox">
           {filtered.length ? (
             filtered.map((option, index) => (
               <li
@@ -129,8 +131,7 @@ export function SearchableSelect({
                 className="combobox__option"
                 data-highlighted={index === highlight}
                 onMouseEnter={() => setHighlight(index)}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => choose(option)}
+                onMouseDown={() => choose(option)}
               >
                 {option.label}
               </li>
