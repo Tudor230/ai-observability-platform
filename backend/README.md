@@ -10,6 +10,7 @@ alerts/budgets, and a FastAPI Platform API consumed by the
 
 ```bash
 uv sync --group dev
+export AIOBS_JWT_SECRET=dev-secret-0123456789abcdef   # required by app + alembic
 uv run ruff check .    # lint (E/F/I subset)
 uv run pytest          # needs Postgres; default DSN aiobs_test on :5432
 uv run alembic upgrade head   # schema migrations (fresh database)
