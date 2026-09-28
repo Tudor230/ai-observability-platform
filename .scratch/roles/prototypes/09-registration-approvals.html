@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en" class="theme">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototype — Registration &amp; Approvals (ticket 09)</title>
+<style>
+  /* Rough Phoenix-dark approximation — prototype only, not app code. */
+  :root {
+    --bg: #16181d; --panel: #1e2128; --panel-2: #23262e; --border: #333844;
+    --text: #e8eaf0; --muted: #9aa1b0; --accent: #5b8def; --accent-2: #2e3a55;
+    --ok: #3fb27f; --warn: #d9a441; --bad: #d96a6a; --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between;
+           padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header .brand { font-weight: 600; letter-spacing: .2px; }
+  header .user { color: var(--muted); font-size: 12px; }
+  main { max-width: 1060px; margin: 22px auto; padding: 0 18px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab { padding: 8px 14px; cursor: pointer; color: var(--muted);
+         border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--border);
+          border-radius: var(--radius); margin-bottom: 16px; }
+  .card h2 { font-size: 14px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .card .body { padding: 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius);
+         overflow: hidden; margin-bottom: 16px; }
+  .seg button { background: var(--panel); color: var(--muted); border: 0; padding: 8px 14px;
+                cursor: pointer; border-right: 1px solid var(--border); }
+  .seg button:last-child { border-right: 0; }
+  .seg button.active { background: var(--accent-2); color: var(--text); }
+  .row { display: flex; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 220px; flex: 1; }
+  label { font-size: 12px; color: var(--muted); }
+  input, select, textarea { background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px 10px; font: inherit; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .btn { border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+         border-radius: 6px; padding: 7px 12px; cursor: pointer; font: inherit; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: var(--bad); border-color: #4a3131; }
+  .btn.quiet { background: transparent; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border);
+           font-size: 13px; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+           border: 1px solid; }
+  .b-pending  { color: var(--warn); border-color: #55452a; background: #2a2419; }
+  .b-approved { color: var(--ok);   border-color: #2a4a3b; background: #1b2a24; }
+  .b-rejected { color: var(--bad);  border-color: #4a2e2e; background: #2a1c1c; }
+  .b-cancelled{ color: var(--muted);border-color: var(--border); background: var(--panel-2); }
+  .type { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .rejectbox { margin-top: 8px; display: none; }
+  .rejectbox.open { display: block; }
+  .note { font-size: 12px; color: var(--muted); background: var(--panel-2);
+          border: 1px dashed var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
+  .callout { border-left: 3px solid var(--accent); padding: 8px 12px; color: var(--muted);
+             background: var(--panel-2); border-radius: 0 6px 6px 0; font-size: 12px; margin-bottom: 16px; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+                    align-items: center; justify-content: center; z-index: 100; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border);
+           border-radius: var(--radius); width: 440px; }
+  .modal h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .modal .body { padding: 16px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">AI Observability — prototype</div>
+  <div class="user">dana@acme.io · Manager of “Platform” · <u>Log out</u></div>
+</header>
+<main>
+  <h1>Requests</h1>
+  <div class="sub">Register an organisation unit or request a membership; approvals route to managers covering the scope.</div>
+
+  <div class="tabs">
+    <div class="tab active" data-panel="new">New request</div>
+    <div class="tab" data-panel="approvals">Approvals <span class="badge b-pending">3</span></div>
+    <div class="tab" data-panel="mine">My requests</div>
+  </div>
+
+  <!-- ------------------------------------------------------------ -->
+  <section class="panel active" id="new">
+    <div class="callout">
+      Approver preview: scope-covering managers review this request — except
+      <b>new departments</b>, which admin/exec approve; you become its initial
+      manager.
+    </div>
+
+    <div class="seg" id="typeSeg">
+      <button class="active" data-type="department">Department</button>
+      <button data-type="team">Team</button>
+      <button data-type="project">Project</button>
+      <button data-type="membership">Membership</button>
+    </div>
+
+    <div class="card">
+      <h2 id="formTitle">Register department</h2>
+      <div class="body">
+        <form onsubmit="return false">
+          <div class="row" id="fDepartment">
+            <div class="field"><label>Department name</label>
+              <input placeholder="e.g. Data Platform" />
+            </div>
+            <div class="field"><label>Initial manager</label>
+              <input value="You (dana@acme.io)" disabled />
+              <div class="hint">You become the department's initial manager; admin/exec approve the creation.</div>
+            </div>
+          </div>
+
+          <div class="row" id="fTeam" style="display:none">
+            <div class="field"><label>Team name</label><input placeholder="e.g. Retrieval" /></div>
+            <div class="field"><label>Department</label>
+              <select><option>Platform</option><option>Data Platform</option></select>
+              <div class="hint">No team manager needed — the department manager covers it.</div>
+            </div>
+          </div>
+
+          <div class="row" id="fProject" style="display:none">
+            <div class="field"><label>Project id (slug)</label><input placeholder="e.g. proj-1" /></div>
+            <div class="field"><label>Display name</label><input placeholder="e.g. Demo Project" /></div>
+            <div class="field"><label>Team</label>
+              <select><option>Retrieval</option><option>Agents</option></select>
+              <div class="hint">Approval creates the project keyless; any member can mint a key afterwards.</div>
+            </div>
+          </div>
+
+          <div class="row" id="fMembership" style="display:none">
+            <div class="field"><label>Role</label>
+              <select><option>Engineer</option><option>Manager</option><option>Client</option></select>
+              <div class="hint">Manager grants are admin/exec-approved only.</div>
+            </div>
+            <div class="field"><label>Scope</label>
+              <select><option>Team — Retrieval</option><option>Department — Platform</option><option>Project — proj-1</option></select>
+              <div class="hint">Engineer → team · Client → project · Manager → team or department.</div>
+            </div>
+          </div>
+
+          <div class="actions"><button class="btn primary">Submit request</button>
+            <button class="btn quiet">Discard</button></div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ -->
+  <section class="panel" id="approvals">
+    <div class="card">
+      <h2>Pending approvals — requests you cover</h2>
+      <div class="body">
+        <table>
+          <thead><tr><th>Type</th><th>Request</th><th>Requester</th><th>Scope</th><th>Age</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="type">Team</span></td>
+              <td>Create team “Retrieval”</td>
+              <td>alex@acme.io</td>
+              <td>Department — Platform</td>
+              <td>2h</td>
+              <td>
+                <button class="btn primary">Approve</button>
+                <button class="btn danger" onclick="openReject('Create team “Retrieval”')">Reject</button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="type">Membership</span></td>
+              <td>Join as engineer — Retrieval</td>
+              <td>kim@acme.io</td>
+              <td>Team — Retrieval</td>
+              <td>1d</td>
+              <td>
+                <button class="btn primary">Approve</button>
+                <button class="btn danger" onclick="openReject('Join as engineer — Retrieval')">Reject</button>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="type">Project</span></td>
+              <td>Create project “proj-9 / Billing Agent”</td>
+              <td>alex@acme.io</td>
+              <td>Team — Agents</td>
+              <td>3d</td>
+              <td>
+                <button class="btn primary">Approve</button>
+                <button class="btn danger" onclick="openReject('Create project “proj-9 / Billing Agent”')">Reject</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="note">Admin/exec see an “All requests” filter here; managers only ever see rows their memberships cover.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ -->
+  <section class="panel" id="mine">
+    <div class="card">
+      <h2>My requests</h2>
+      <div class="body">
+        <table>
+          <thead><tr><th>Type</th><th>Request</th><th>Status</th><th>Decided by</th><th>Reason</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="type">Project</span></td>
+              <td>Create project “proj-1 / Demo”</td>
+              <td><span class="badge b-approved">approved</span></td>
+              <td>you</td><td>—</td>
+              <td><button class="btn quiet">Open project →</button></td>
+            </tr>
+            <tr>
+              <td><span class="type">Membership</span></td>
+              <td>Join as engineer — Agents</td>
+              <td><span class="badge b-pending">pending</span></td>
+              <td>—</td><td>—</td>
+              <td><button class="btn quiet">Cancel</button></td>
+            </tr>
+            <tr>
+              <td><span class="type">Team</span></td>
+              <td>Create team “Evals”</td>
+              <td><span class="badge b-rejected">rejected</span></td>
+              <td>sam@acme.io</td>
+              <td>Overlaps with “Quality” team</td>
+              <td><button class="btn">Resubmit</button></td>
+            </tr>
+            <tr>
+              <td><span class="type">Membership</span></td>
+              <td>Join as client — proj-9</td>
+              <td><span class="badge b-cancelled">cancelled</span></td>
+              <td>—</td><td>—</td><td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Project page — proj-1 / Demo (reachable from the request)</h2>
+      <div class="body">
+        <div class="hint">Team Retrieval · Department Platform ·
+          <span class="badge b-approved">enabled</span></div>
+        <div class="actions">
+          <button class="btn primary">Mint API key</button>
+          <span class="hint" style="align-self:center">
+            Plaintext shown once. Any member of the project can mint/rotate.
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal-backdrop" id="rejectModal">
+  <div class="modal">
+    <h2>Reject request</h2>
+    <div class="body">
+      <div class="hint" id="rejectTarget"></div>
+      <textarea rows="3" style="width:100%;margin-top:10px"
+        placeholder="Reason (required — shown to the requester)"></textarea>
+      <div class="actions">
+        <button class="btn danger">Confirm reject</button>
+        <button class="btn quiet" onclick="closeReject()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Ticket 09 prototype · rough stub for discussion · not production code</footer>
+
+<script>
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.panel).classList.add('active');
+  }));
+  const titles = { department: 'Register department', team: 'Register team',
+                   project: 'Register project', membership: 'Request membership' };
+  document.querySelectorAll('#typeSeg button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#typeSeg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    ['Department','Team','Project','Membership'].forEach(k => {
+      document.getElementById('f' + k).style.display = 'none';
+    });
+    const t = b.dataset.type;
+    document.getElementById(t.charAt(0).toUpperCase() + t.slice(1)).style.display = 'flex';
+    document.getElementById('formTitle').textContent = titles[t];
+  }));
+  function openReject(label) {
+    document.getElementById('rejectTarget').textContent = label;
+    document.getElementById('rejectModal').classList.add('open');
+  }
+  function closeReject() {
+    document.getElementById('rejectModal').classList.remove('open');
+  }
+</script>
+</body>
+</html>

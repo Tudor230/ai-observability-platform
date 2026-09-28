@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en" class="theme">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototype — Client view (ticket 10)</title>
+<style>
+  /* Rough Phoenix-dark approximation — prototype only, not app code. */
+  :root {
+    --bg: #16181d; --panel: #1e2128; --panel-2: #23262e; --border: #333844;
+    --text: #e8eaf0; --muted: #9aa1b0; --accent: #5b8def; --accent-2: #2e3a55;
+    --ok: #3fb27f; --warn: #d9a441; --bad: #d96a6a; --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between;
+           padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header .brand { font-weight: 600; }
+  header .user { color: var(--muted); font-size: 12px; }
+  nav.top { display: flex; gap: 4px; padding: 0 18px; background: var(--panel);
+            border-bottom: 1px solid var(--border); }
+  nav.top a { padding: 9px 12px; color: var(--muted); text-decoration: none;
+              border-bottom: 2px solid transparent; font-size: 13px; }
+  nav.top a.active { color: var(--text); border-bottom-color: var(--accent); }
+  main { max-width: 1060px; margin: 22px auto; padding: 0 18px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .callout { border-left: 3px solid var(--accent); padding: 8px 12px; color: var(--muted);
+             background: var(--panel-2); border-radius: 0 6px 6px 0; font-size: 12px; margin-bottom: 18px; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+         padding: 12px 14px; }
+  .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  .kpi .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .kpi .delta { font-size: 11px; color: var(--muted); }
+  .kpi .delta.good { color: var(--ok); } .kpi .delta.bad { color: var(--bad); }
+  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border);
+          border-radius: var(--radius); margin-bottom: 16px; }
+  .card h2 { font-size: 14px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .card .body { padding: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid; }
+  .b-ok { color: var(--ok); border-color: #2a4a3b; background: #1b2a24; }
+  .b-err { color: var(--bad); border-color: #4a2e2e; background: #2a1c1c; }
+  .b-warn { color: var(--warn); border-color: #55452a; background: #2a2419; }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 110px; margin-top: 8px; }
+  .bars div { flex: 1; background: var(--accent-2); border-radius: 2px 2px 0 0; }
+  .bars div.hot { background: var(--bad); }
+  .legend { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .alerts li { margin-bottom: 8px; font-size: 13px; }
+  .alerts .when { color: var(--muted); font-size: 11px; }
+  .hidden-note { border: 1px dashed var(--border); border-radius: 6px; padding: 10px 12px;
+                 color: var(--muted); font-size: 12px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">AI Observability</div>
+  <div class="user">client@customer.io · Client — proj-1 / Demo · <u>Log out</u></div>
+</header>
+<nav class="top">
+  <a href="#">Overview</a>
+  <a class="active" href="#">Client</a>
+</nav>
+<main>
+  <h1>proj-1 / Demo</h1>
+  <div class="sub">Read-only usage view for your project.</div>
+  <div class="callout">Scoped to your project(s). Cost data is not exposed to client accounts.</div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="label">Executions</div><div class="value">1,284</div>
+      <div class="delta">+6% vs prior 30d</div></div>
+    <div class="kpi"><div class="label">Error rate</div><div class="value">4.2%</div>
+      <div class="delta bad">+0.8pt</div></div>
+    <div class="kpi"><div class="label">Avg latency</div><div class="value">3.4s</div>
+      <div class="delta good">−0.3s</div></div>
+    <div class="kpi"><div class="label">P95 latency</div><div class="value">9.1s</div>
+      <div class="delta">stable</div></div>
+    <div class="kpi"><div class="label">Tokens</div><div class="value">12.4M</div>
+      <div class="delta">+9%</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Executions &amp; errors — last 30 days</h2>
+    <div class="body">
+      <div class="bars">
+        <div style="height:38%"></div><div style="height:52%"></div><div style="height:44%"></div>
+        <div style="height:61%"></div><div style="height:55%"></div><div class="hot" style="height:78%"></div>
+        <div style="height:49%"></div><div style="height:58%"></div><div style="height:63%"></div>
+        <div class="hot" style="height:71%"></div><div style="height:57%"></div><div style="height:66%"></div>
+      </div>
+      <div class="legend">bar height = executions · red = elevated error rate</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <h2>Workflows</h2>
+        <div class="body">
+          <table>
+            <thead><tr><th>Workflow</th><th>Executions</th><th>Error rate</th><th>Tokens</th><th>Last seen</th></tr></thead>
+            <tbody>
+              <tr><td>support-triage</td><td>812</td><td>3.1%</td><td>7.9M</td><td>4m ago</td></tr>
+              <tr><td>billing-agent</td><td>318</td><td>6.9%</td><td>3.2M</td><td>22m ago</td></tr>
+              <tr><td>doc-summarizer</td><td>154</td><td>2.4%</td><td>1.3M</td><td>1h ago</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Workflow detail — support-triage</h2>
+        <div class="body">
+          <table>
+            <thead><tr><th>Failure kind</th><th>Count</th><th>Share</th></tr></thead>
+            <tbody>
+              <tr><td>tool_error</td><td>14</td><td>1.7%</td></tr>
+              <tr><td>timeout</td><td>9</td><td>1.1%</td></tr>
+              <tr><td>invalid_output</td><td>2</td><td>0.2%</td></tr>
+            </tbody>
+          </table>
+          <div class="legend">Workflow drill-down: failure-kind breakdown (no spans/prompts).</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Recent executions</h2>
+        <div class="body">
+          <table>
+            <thead><tr><th>Time</th><th>Workflow</th><th>Status</th><th>Duration</th><th>Tokens</th><th>Failure</th></tr></thead>
+            <tbody>
+              <tr><td>10:42</td><td>support-triage</td><td><span class="badge b-ok">ok</span></td><td>2.8s</td><td>9,120</td><td>—</td></tr>
+              <tr><td>10:39</td><td>billing-agent</td><td><span class="badge b-err">failed</span></td><td>11.4s</td><td>14,006</td><td>tool_error</td></tr>
+              <tr><td>10:31</td><td>support-triage</td><td><span class="badge b-ok">ok</span></td><td>3.1s</td><td>8,744</td><td>—</td></tr>
+              <tr><td>10:20</td><td>doc-summarizer</td><td><span class="badge b-warn">partial</span></td><td>6.0s</td><td>11,230</td><td>timeout</td></tr>
+            </tbody>
+          </table>
+          <div class="hidden-note" style="margin-top:12px">
+            Execution detail includes the <b>failure tree</b> (error classification);
+            raw spans/prompts and cost stay hidden.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Open alerts</h2>
+        <div class="body">
+          <ul class="alerts" style="padding-left:18px;margin:0">
+            <li>Error rate above threshold<br/><span class="when">billing-agent · 12m ago</span></li>
+            <li>P95 latency elevated<br/><span class="when">support-triage · 3h ago</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>What clients don't see</h2>
+        <div class="body">
+          <div class="hidden-note">
+            Costs and budgets · other projects · engineering/manager/exec views ·
+            org admin · API-key minting (clients are read-only).
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>Ticket 10 prototype · rough stub for discussion · not production code</footer>
+</body>
+</html>
