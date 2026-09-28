@@ -46,7 +46,7 @@ export default function Executive() {
 
   const data = overview.data;
   const items = trends.data?.items ?? [];
-  const series = items.map((m) => ({ day: m.day, cost: m.total_cost }));
+  const series = items.map((m) => ({ day: m.day, cost: m.total_cost ?? 0 }));
   const forecast = buildForecast(series, FORECAST_DAYS, forecastAsOf());
   const forecastTotal = forecast.reduce((sum, p) => sum + p.cost, 0);
 
@@ -127,7 +127,7 @@ export default function Executive() {
         ) : (
           <EmptyState
             title="Not enough cost history to forecast"
-            description={`At least 3 days with cost are required — currently ${series.filter((p) => p.cost > 0).length}.`}
+            description={`At least 3 days with cost are required — currently ${series.filter((p) => (p.cost ?? 0) > 0).length}.`}
           />
         )}
       </CardPanel>

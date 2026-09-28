@@ -10,7 +10,8 @@ Observability + FinOps platform for agentic AI applications. See
 |---|---|
 | **SDK** (Python; LangChain + LlamaIndex tracing, failure/usage capture, mock-workflow regression suite) | Implemented — [`sdk/`](sdk/) (see [sdk/README.md](sdk/README.md)) |
 | **Backend** (OTLP ingest, trace processing, failure classification, cost engine, analytics, alerts/budgets, FastAPI Platform API) | Implemented — [`backend/`](backend/) (see [backend/README.md](backend/README.md), [plans/backend.md](plans/backend.md)) |
-| **Dashboard** (engineering / manager / executive views) | Implemented — [`frontend/`](frontend/) (see [frontend/README.md](frontend/README.md), [plans/frontend.md](plans/frontend.md)) |
+| **Dashboard** (engineering / manager / executive / client views) | Implemented — [`frontend/`](frontend/) (see [frontend/README.md](frontend/README.md), [plans/frontend.md](plans/frontend.md)) |
+| **Roles & registration** (Department→Team→Project memberships, requests/approvals with self-approval, JWT sessions, multi-key project credentials, admin accounts, scoped reads) | Implemented — [`plans/roles.md`](plans/roles.md), [ADR-0006](docs/adr/0006-membership-rbac-jwt-sessions.md), [ADR-0007](docs/adr/0007-multiple-project-keys-and-admin-self-approval.md) |
 | Phoenix deployment | root [`docker-compose.yml`](docker-compose.yml) — Postgres instance shared with the SDK tooling and the backend |
 
 Audit, known gaps, and the fix history: [`docs/06-project-audit.md`](docs/06-project-audit.md);
@@ -42,14 +43,22 @@ uv run python dev/inspect_traces.py                  # inspect traces in Postgre
 docker compose up -d --build        # one command, everything
 # Phoenix UI: http://localhost:6006
 # Backend API: http://localhost:8000  (docs at /docs)
-# Dashboard:  http://localhost:8080
+# Dashboard:  http://localhost:8080   (login admin@local / admin-pass-123)
 ```
+
+The dashboard requires a session; the compose stack seeds the bootstrap admin
+above. Reads are scoped to the caller's memberships (ADR-0006): log in to see
+the org-wide admin views, then create departments/teams/projects through
+**Requests** (requests you already cover are auto-approved), manage keys from
+**Projects**, and provision logins from **Accounts**. A project can hold several
+labelled ingest keys, each listed redacted and individually rotated or
+soft-revoked.
 
 Load demo data through the running backend:
 
 ```bash
 cd sdk && uv sync --group dev
-# set proj-1's API key (see backend README), then:
+# probe the demo project (seed prints its key, or add one in Projects):
 uv run aiobs-mock --endpoint http://localhost:8000 --api-key <key> --project-id proj-1
 ```
 

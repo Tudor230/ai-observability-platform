@@ -44,7 +44,7 @@ implementation plan is [`plans/roles.md`](../../plans/roles.md).
   requested project returns 404, lists are filtered silently. The admin key and
   the service read key (`AIOBS_READ_API_KEY`) bypass scoping. Implicit demo
   open-reads are removed. The `client` role is read-only, cost-free (cost fields
-  stripped server-side), and cannot mint project keys.
+  stripped server-side), and cannot manage project keys (ADR-0007).
 - **The migration is a destructive reset.** One Alembic revision drops
   trace-derived data and users (pricing is kept), creates the new tables, and
   backfills nothing; the org tree is built through the request flow.
@@ -59,7 +59,8 @@ implementation plan is [`plans/roles.md`](../../plans/roles.md).
 - The org hierarchy and memberships become the source of truth for both access
   control and the existing team attribution dimension.
 - Ingest auth (`x-project-name` + project Bearer key) is untouched; project
-  keys remain the SDK contract, and the project→team→department hierarchy
+  keys remain the SDK contract (extended to multiple keys per project in
+  ADR-0007), and the project→team→department hierarchy
   supplies rollup attribution.
 - Existing dev/prod data is destroyed by the migration: traces must be
   re-ingested and all users re-provisioned. Accepted for the prototype; the

@@ -1,4 +1,4 @@
-"""Read access (F06) and project-scope enforcement (F07)."""
+"""Read access: authentication required, project isolation, service read key."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -30,6 +30,12 @@ def test_unknown_project_scope_is_rejected(client, project):
     assert resp.status_code == 404
 
 
+def test_reads_require_authentication(anon, project):
+    assert anon.get("/api/v1/executions").status_code == 401
+    assert anon.get("/api/v1/metrics").status_code == 401
+    assert anon.get("/api/v1/alerts").status_code == 401
+
+
 def test_scoped_detail_is_isolated(client, session_factory, project):
     client.post("/api/v1/traces", content=build_request(_trace(1200)), headers=_headers())
     with session_factory() as session:
@@ -48,17 +54,19 @@ def test_scoped_detail_is_isolated(client, session_factory, project):
     assert client.get(f"/api/v1/executions/{execution_id}").status_code == 200
 
 
-def test_read_auth_when_configured(client, project, monkeypatch):
+def test_service_read_key_bypasses_membership(anon, project, monkeypatch):
     get_settings.cache_clear()
     monkeypatch.setenv("AIOBS_READ_API_KEY", "read-secret")
     get_settings.cache_clear()
     try:
-        assert client.get("/api/v1/executions").status_code == 401
-        assert client.get("/api/v1/executions", headers={"x-api-key": "wrong"}).status_code == 401
-        assert client.get(
+        assert anon.get("/api/v1/executions").status_code == 401
+        assert anon.get(
+            "/api/v1/executions", headers={"x-api-key": "wrong"}
+        ).status_code == 401
+        assert anon.get(
             "/api/v1/executions", headers={"x-api-key": "read-secret"}
         ).status_code == 200
-        assert client.get(
+        assert anon.get(
             "/api/v1/executions", headers={"x-admin-key": "admin"}
         ).status_code == 200
     finally:

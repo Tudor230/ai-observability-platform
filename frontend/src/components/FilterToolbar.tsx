@@ -1,5 +1,6 @@
 import { Button, Field, Select, TextInput } from "./core";
 import { IconFilter, IconX } from "./core/icons";
+import { useDirectoryProjects } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 
 const DAY_OPTIONS = [1, 7, 14, 30, 90];
@@ -7,6 +8,7 @@ const DAY_OPTIONS = [1, 7, 14, 30, 90];
 /** The global filter toolbar — days and attribution dimensions. */
 export function FilterToolbar() {
   const { filters, setFilters } = useFilters();
+  const projects = useDirectoryProjects();
   const isFiltered = Boolean(filters.project_id || filters.client_id || filters.workflow);
 
   return (
@@ -25,11 +27,18 @@ export function FilterToolbar() {
         </Select>
       </Field>
       <Field label="Project">
-        <TextInput
+        <Select
           value={filters.project_id ?? ""}
-          placeholder="project id"
+          aria-label="Project"
           onChange={(e) => setFilters({ ...filters, project_id: e.target.value || undefined })}
-        />
+        >
+          <option value="">All projects</option>
+          {(projects.data?.items ?? []).map((project) => (
+            <option key={project.id} value={project.project_id}>
+              {project.project_id} · {project.name}
+            </option>
+          ))}
+        </Select>
       </Field>
       <Field label="Client">
         <TextInput

@@ -409,7 +409,7 @@ def test_unpriced_calls_surface_in_reads(client, session_factory, project):
     assert item["total_cost"] is None
 
 
-def test_alert_patch_requires_admin(client, session_factory, project):
+def test_alert_patch_requires_admin(anon, client, session_factory, project):
     """F10: acknowledging an alert is a mutation and needs the admin key."""
 
     with session_factory() as session:
@@ -422,11 +422,8 @@ def test_alert_patch_requires_admin(client, session_factory, project):
         session.add(alert)
         session.commit()
         alert_id = alert.id
-    assert client.patch(f"/api/v1/alerts/{alert_id}?status=acknowledged").status_code == 401
-    ok = client.patch(
-        f"/api/v1/alerts/{alert_id}?status=acknowledged",
-        headers={"x-admin-key": "admin"},
-    )
+    assert anon.patch(f"/api/v1/alerts/{alert_id}?status=acknowledged").status_code == 401
+    ok = client.patch(f"/api/v1/alerts/{alert_id}?status=acknowledged")
     assert ok.status_code == 200
     assert ok.json()["status"] == "acknowledged"
 

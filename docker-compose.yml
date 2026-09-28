@@ -53,6 +53,11 @@ services:
     environment:
       AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/aiobs
       AIOBS_ADMIN_API_KEY: admin
+      # Dev-only session secret; override in any real deployment.
+      AIOBS_JWT_SECRET: dev-secret-change-me-0123456789abcdef
+      # Bootstrap admin for the dashboard login (idempotent seed).
+      AIOBS_ADMIN_EMAIL: admin@local
+      AIOBS_ADMIN_PASSWORD: admin-pass-123
       AIOBS_SEED_PRICING: "true"
     ports:
       - "8000:8000"

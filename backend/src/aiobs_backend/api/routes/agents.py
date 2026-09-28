@@ -8,11 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Execution, Project, Span
-from ..deps import get_db, get_project_scope, require_role
+from ..deps import AccessScope, get_db, require_access
 from ..queries import default_range, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["agents"], dependencies=[Depends(require_role("engineer", "sdm"))])
+router = APIRouter(tags=["agents"])
 
 
 @router.get("/agents")
@@ -22,11 +22,11 @@ def list_agents(
     end: str | None = Query(default=None),
     days: int = Query(default=90, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
-    scope = project_id or project_scope
+    project_ids = access.resolve_project_filter(project_id)
 
     # Distinct (agent, execution) pairs first: an execution with several AGENT
     # spans of the same name must bill its cost/tokens only once (F25), and the
@@ -36,8 +36,8 @@ def list_agents(
         Span.started_at >= start_dt,
         Span.started_at < end_dt,
     ]
-    if scope:
-        conditions.append(Project.project_id == scope)
+    if project_ids is not None:
+        conditions.append(Project.project_id.in_(project_ids))
     distinct = (
         select(
             Span.name.label("name"),
@@ -66,16 +66,17 @@ def list_agents(
     items = []
     for row in session.execute(stmt).all():
         n = row.executions
-        items.append(
-            {
-                "name": row.name or "unknown",
-                "executions": n,
-                "failed_executions": row.failed,
-                "error_rate": round(row.failed / n, 4) if n else 0.0,
-                "total_cost": money(row.total_cost),
-                "total_tokens": row.total_tokens,
-                "last_seen": row.last_seen.isoformat() if row.last_seen else None,
-            }
-        )
-    items.sort(key=lambda i: i["total_cost"] or 0, reverse=True)
+        item = {
+            "name": row.name or "unknown",
+            "executions": n,
+            "failed_executions": row.failed,
+            "error_rate": round(row.failed / n, 4) if n else 0.0,
+            "total_cost": money(row.total_cost),
+            "total_tokens": row.total_tokens,
+            "last_seen": row.last_seen.isoformat() if row.last_seen else None,
+        }
+        if not access.cost_visible:
+            item.pop("total_cost", None)
+        items.append(item)
+    items.sort(key=lambda i: i.get("total_cost") or 0, reverse=True)
     return {"items": items, "total": len(items)}

@@ -12,6 +12,9 @@ from aiobs_backend.db import Base
 from aiobs_backend.models import Pricing
 
 os.environ.setdefault("AIOBS_ADMIN_API_KEY", "admin")
+os.environ.setdefault(
+    "AIOBS_JWT_SECRET", "test-secret-0123456789abcdef0123456789abcdef"
+)
 
 TEST_DATABASE_URL = os.environ.get(
     "AIOBS_TEST_DATABASE_URL",
@@ -71,6 +74,13 @@ def app(session_factory):
 
 @pytest.fixture()
 def client(app):
+    """Admin-authenticated client: most tests exercise data, not auth gates."""
+    return TestClient(app, headers={"x-admin-key": "admin"})
+
+
+@pytest.fixture()
+def anon(app):
+    """Unauthenticated client for auth/scope tests (login, cookies)."""
     return TestClient(app)
 
 

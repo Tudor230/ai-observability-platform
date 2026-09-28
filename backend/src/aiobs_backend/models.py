@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -14,11 +15,24 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+
+# Membership vocabulary (ADR-0006): a role is only meaningful with a scope.
+ROLES = ("admin", "exec", "manager", "engineer", "client")
+SCOPE_TYPES = ("global", "department", "team", "project")
+# Role → scope matrix (plans/roles.md §3.3).
+ROLE_SCOPES: dict[str, tuple[str, ...]] = {
+    "admin": ("global",),
+    "exec": ("global",),
+    "manager": ("department", "team"),
+    "engineer": ("team",),
+    "client": ("project",),
+}
 
 
 def _uuid() -> str:
@@ -29,12 +43,25 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class Department(Base):
+    __tablename__ = "departments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class Team(Base):
     __tablename__ = "teams"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    department_id: Mapped[str] = mapped_column(
+        ForeignKey("departments.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    department: Mapped[Department] = relationship()
 
 
 class Project(Base):
@@ -46,8 +73,6 @@ class Project(Base):
     )
     project_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
-    api_key_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    api_key_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     revoked_at: Mapped[datetime | None] = mapped_column(
@@ -57,17 +82,102 @@ class Project(Base):
     team: Mapped[Team] = relationship()
 
 
+class ProjectKey(Base):
+    """Ingest credential for a project (ADR-0007); several keys may be active."""
+
+    __tablename__ = "project_keys"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    key_hash: Mapped[str] = mapped_column(String(128))
+    # Last 4 plaintext chars, for redacted display in the dashboard.
+    key_hint: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Soft revocation: revoked keys stop authenticating but stay for audit.
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    project: Mapped[Project] = relationship()
+
+
 class User(Base):
-    """Platform user identity for opt-in RBAC reads (F06/F16)."""
+    """Platform user identity (ADR-0006): roles live in memberships, not here."""
 
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(200), unique=True, index=True)
-    role: Mapped[str] = mapped_column(String(20), default="engineer")  # admin|engineer|sdm|finance
+    password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0)
     api_key_hash: Mapped[str] = mapped_column(String(128))
-    enabled: Mapped[bool] = mapped_column(default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Membership(Base):
+    """A role granted to a user within a scope (ADR-0006, plans/roles.md §3)."""
+
+    __tablename__ = "memberships"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20))
+    scope_type: Mapped[str] = mapped_column(String(20))  # global|department|team|project
+    # Polymorphic pointer to departments/teams/projects.id; NULL for global scope.
+    scope_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="approved")  # approved|revoked
+    requested_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_memberships_scope", "scope_type", "scope_id"),
+        # One active grant per (user, role, scope); NULLS NOT DISTINCT so global
+        # scope (scope_id NULL) is deduplicated too.
+        Index(
+            "uq_memberships_active",
+            "user_id",
+            "role",
+            "scope_type",
+            "scope_id",
+            unique=True,
+            postgresql_where=text("status = 'approved'"),
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+
+class AccessRequest(Base):
+    """Self-service request for an org unit or membership (plans/roles.md §5)."""
+
+    __tablename__ = "requests"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    type: Mapped[str] = mapped_column(String(30))
+    requester_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
+    payload: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    approver_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Client(Base):

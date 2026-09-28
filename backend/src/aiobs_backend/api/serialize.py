@@ -14,8 +14,14 @@ def money(value) -> float | None:
     return round(float(value), 6) if value is not None else None
 
 
-def execution_dict(ex: Execution, project_ext: str | None = None, client_ext: str | None = None) -> dict:
-    return {
+def execution_dict(
+    ex: Execution,
+    project_ext: str | None = None,
+    client_ext: str | None = None,
+    *,
+    include_cost: bool = True,
+) -> dict:
+    data = {
         "id": ex.id,
         "trace_id": ex.trace_id,
         "workflow_id": ex.workflow_id,
@@ -44,10 +50,17 @@ def execution_dict(ex: Execution, project_ext: str | None = None, client_ext: st
         "error_count": ex.error_count,
         "retry_count": ex.retry_count,
     }
+    if not include_cost:
+        # Client role: costs are stripped server-side (plans/roles.md §6.3).
+        for key in ("total_cost", "unpriced_calls", "cost_complete"):
+            data.pop(key, None)
+    return data
 
 
-def span_dict(sp: Span) -> dict:
-    return {
+def span_dict(
+    sp: Span, *, include_cost: bool = True, include_attributes: bool = True
+) -> dict:
+    data = {
         "id": sp.id,
         "span_id": sp.span_id,
         "parent_id": sp.parent_id,
@@ -71,3 +84,9 @@ def span_dict(sp: Span) -> dict:
         "cost": money(sp.cost),
         "attributes": sp.attributes,
     }
+    if not include_cost:
+        data.pop("cost", None)
+    if not include_attributes:
+        # Clients see the failure tree but never raw prompt/span attributes.
+        data.pop("attributes", None)
+    return data

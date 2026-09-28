@@ -53,7 +53,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | **Backend: analytics & alerts** (consumption, error rate, budgets; cost thresholds) | **Implemented** (budget rules) | `plans/backend.md` §9–10 → `backend/src/aiobs_backend/analytics.py`, `alerts.py` |
 | **Phoenix deployment** (self-hosted, containerized) | root `docker-compose.yml` (shared Postgres instance) | backend plan |
 | **Dashboard** (engineering / manager / executive views) | **Implemented** | `plans/frontend.md` → `frontend/` |
-| **Roles & registration** (Department→Team→Project, memberships, requests/approvals, JWT sessions, team-scoped reads) | **Planned** | `plans/roles.md` → `backend/`, `frontend/` |
+| **Roles & registration** (Department→Team→Project, memberships, requests/approvals with self-approval, JWT sessions, multi-key project credentials, admin accounts, team-scoped reads) | **Implemented** | `plans/roles.md` → `backend/`, `frontend/` |
 
 ## 6. Phased roadmap
 
@@ -63,7 +63,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | **2 — Backend** | Trace processing, failure classification, cost engine, API keys/registration, Phoenix deployment | **Implemented** (`backend/`, plan in `plans/backend.md`, CI in `.github/workflows/backend.yml`) |
 | **3 — Dashboard** | Engineering view first, then manager, then executive | **Implemented** (`frontend/`, plan in `plans/frontend.md`, CI in `.github/workflows/frontend.yml`) |
 | **4 — Alerts & budgets** | Consumption/cost/latency/error-rate thresholds | Budget-based alerts implemented (backend); rule catalog extensible |
-| **5 — Roles & registration** | Membership RBAC, requests/approvals, JWT auth, scoped reads, dashboard auth swap | **Planned** (`plans/roles.md`; map in `.scratch/roles/`) |
+| **5 — Roles & registration** | Membership RBAC, requests/approvals, JWT auth, scoped reads, dashboard auth swap; multi-key project credentials, admin accounts, Projects/Accounts pages | **Implemented** (`plans/roles.md`; map in `.scratch/roles/`) |
 
 ## 7. Cross-cutting decisions
 

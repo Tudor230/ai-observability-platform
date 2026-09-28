@@ -27,11 +27,16 @@ self-register:
 - `requests` + approval workflow (entity creation and membership changes),
   with scope-covering-manager approval.
 - Email/password auth: PyJWT HS256 in an httpOnly cookie, 24h sliding,
-  `token_version` revocation; admin-provisioned accounts.
+  `token_version` revocation; admin-provisioned accounts (plus password resets
+  and direct membership grants/revocations, §8.7).
 - `require_access(*roles)` dependency deriving allowed projects from
   memberships; team-scoped reads across all read routers.
-- Frontend: login, user menu, union nav, Requests page, Project page, dedicated
-  Client view; persona switcher removed.
+- **Self-approval**: a request the requester could approve is materialized
+  immediately instead of queueing (§5.2).
+- **Multiple ingest keys per project** (`project_keys`): named, redacted,
+  individually rotated and soft-revoked (§3.1, §6.3).
+- Frontend: login, user menu, union nav, Requests page, Projects list + project
+  page, Accounts page (admin), dedicated Client view; persona switcher removed.
 - One destructive Alembic revision (see §7).
 
 **Out of scope** (see §13): SSO/OAuth/2FA, client share-links,
@@ -49,6 +54,7 @@ All models live in `backend/src/aiobs_backend/models.py`.
 | `departments` | `id` (String(32) uuid), `name` (String(120), unique), `created_at` |
 | `memberships` | `id`, `user_id` FK→users, `role` (`admin\|exec\|manager\|engineer\|client`), `scope_type` (`global\|department\|team\|project`), `scope_id` (String(32), nullable), `status` (`approved\|revoked`), `requested_by`, `approved_by`, `created_at`, `decided_at` |
 | `requests` | `id`, `type` (`create_department\|create_team\|create_project\|membership`), `requester_id` FK→users, `payload` JSONB, `status` (`pending\|approved\|rejected\|cancelled`), `approver_id`, `reason`, `created_at`, `decided_at` |
+| `project_keys` | `id`, `project_id` FK→projects, `key_hash`, `key_hint` (last-4 plaintext, for redacted display), `label`, `created_by`, `created_at`, `last_used_at`, `revoked_at` (soft revoke) |
 
 - Scope pointer is **polymorphic** (`scope_type` + `scope_id`, app-validated,
   no DB FK).
@@ -63,7 +69,8 @@ All models live in `backend/src/aiobs_backend/models.py`.
 - `teams` + `department_id` FK→departments (not null after migration).
 - `users` + `password_hash` (nullable until set), + `token_version` (int,
   default 0); **drop `role`**.
-- `projects` unchanged (`team_id` FK already present).
+- `projects` loses `api_key_hash`/`api_key_label`; credentials move to
+  `project_keys` (ADR-0007).
 
 ### 3.3 Role → scope matrix
 
@@ -129,7 +136,7 @@ configured origins.
 
 | Type | Payload | Approver |
 |---|---|---|
-| `create_department` | `{name}` — requester becomes initial manager | admin/exec |
+| `create_department` | `{name}` — requester becomes initial manager; **admins/execs/managers only** (engineers and clients get 403) | admin/exec |
 | `create_team` | `{name, department_id}` | managers covering the department |
 | `create_project` | `{project_id, name, team_id}` | managers covering the team or its department |
 | `membership` | `{role, scope_type, scope_id}` | managers covering the scope; **manager grants → admin/exec only** |
@@ -140,6 +147,17 @@ configured origins.
 per `(requester, type, payload)`; rejected requests can be resubmitted;
 approval re-checks uniqueness and fails cleanly; **rejection reason required**.
 
+**Requester eligibility**: only users holding an `admin`, `exec`, or `manager`
+membership may submit `create_department` (engineers and clients get `403`; the
+type is hidden in the UI). Other request types stay open to any authenticated
+user.
+
+**Self-approval (ADR-0007)**: when the requester can approve their own request
+(`_can_approve`), `POST /requests` materializes and approves it immediately —
+admin creating a department, covering manager creating a team/project or
+granting a membership. Requests the requester cannot approve queue as before;
+`approver_id` records the requester as the decision-maker.
+
 ### 5.3 Materialization on approval
 
 - Department → create `departments` row + approved **department-scoped
@@ -147,7 +165,7 @@ approval re-checks uniqueness and fails cleanly; **rejection reason required**.
 - Team → create `teams` row (no manager nomination; the department manager
   covers it).
 - Project → create `projects` row **without a key**; any engineer/manager
-  member can mint/rotate later (clients cannot).
+  member can add/rotate keys later (clients cannot).
 - Membership → create the approved `memberships` row.
 
 ### 5.4 API surface (`routes/requests.py`)
@@ -189,8 +207,10 @@ one. Computed per request in `require_access`.
 - New non-admin scoped `GET /projects` (plus `GET /departments`,
   `GET /teams`) in a new `routes/directory.py`, feeding the frontend filter and
   forms.
-- `POST /projects/{id}/rotate` becomes member-authorized (coverage check)
-  instead of admin-only; disable/enable stay admin.
+- Key management is member-authorized (coverage check) instead of admin-only:
+  `GET/POST /projects/{id}/keys`, `POST …/keys/{key_id}/rotate` (regenerate in
+  place), `DELETE …/keys/{key_id}` (soft revoke). Ingest accepts **any active
+  key** (ADR-0007); disable/enable stay admin.
 - Removed: implicit demo open-reads when `AIOBS_READ_API_KEY` is unset, and the
   dead `require_read_access`.
 
@@ -245,25 +265,45 @@ return-to redirect; a splash while `/auth/me` loads. TopNav **user menu**
 | `/executive` | exec |
 | `/client` | client |
 | `/requests` | all authenticated (Approvals badge when the user covers pending requests) |
-| `/projects/:id` | members of the project (mint key) |
+| `/projects` | all authenticated — project list with per-project overview |
+| `/projects/:id` | members of the project (keys for engineer/manager) |
+| `/accounts` | admin only |
 | `/login` | anonymous |
 
 ### 8.4 Requests page (`src/pages/Requests.tsx`)
 
-Three tabs: New request / Approvals / My requests. Request forms with a type
-picker; membership form is **role-first** (scope options filter by role). One-
-click approve; **reject via a modal with a required reason** (new dialog
-primitive in `src/components/core/`). My requests supports cancel, resubmit,
-and "Open project".
+Tabs: New request / My requests, plus **Approvals only when the user can
+approve** (admin/exec/manager — an engineer+manager sees it, a plain engineer
+does not). Request forms with a type picker; the **Department** type is hidden
+for non-managers, and the membership form is **role-first** (scope options
+filter by role). Department/team/project and membership-scope pickers are
+**searchable, scrollable comboboxes** (`SearchableSelect` in
+`src/components/core/`). One-click approve; **reject via a modal with a
+required reason**. My requests supports cancel, resubmit, and "Open project".
+Submitting a self-approvable request reports the immediate approval (with a
+link to add a project key for `create_project`).
 
-### 8.5 Client view & project page
+### 8.5 Client view & Projects
 
 `src/pages/Client.tsx`: KPI tiles, executions/errors trend, workflow list with
 failure-kind drill-down, recent executions (failure tree, no spans/prompts), and
-scoped alerts — no costs. `src/pages/Project.tsx`: project identity + **Mint
-API key** (plaintext once).
+scoped alerts — no costs.
 
-### 8.6 Removals
+`src/pages/Projects.tsx` (list): every visible project with team/department,
+per-project usage KPIs, and key count; rows open the project page.
+`src/pages/Project.tsx`: identity + per-project overview KPIs + **key
+management** — redacted list, add key (plaintext once), per-key rotate, and
+soft-delete confirmation; clients see a read-only view.
+
+### 8.7 Admin Accounts page (`src/pages/Accounts.tsx`)
+
+Admin-only: account list (email, roles, memberships, enabled) with create
+account (password shown once), reset password (bumps `token_version`), and
+enable/disable. A per-user **Memberships** dialog grants role+scope directly
+(`POST /users/{id}/memberships`, validated against the role/scope matrix) and
+revokes with `DELETE /users/{id}/memberships/{membership_id}`.
+
+### 8.8 Removals
 
 `RoleContext.tsx`, `RoleSwitcher`, the `aiobs.role` localStorage key, and the
 persona-based `RequireRole` allowances.
@@ -278,6 +318,7 @@ persona-based `RequireRole` allowances.
 | **4 — Frontend auth** | §8.1–8.3 client wrapper, `AuthContext`, login, nav/route map | 1 |
 | **5 — Frontend features** | §8.4 Requests page + dialog, §8.5 client/project pages, filter from `GET /projects` | 3, 4 |
 | **6 — Verify & document** | §10 tests, compose/README/env updates, remove dead paths | 1–5 |
+| **7 — Post-v1 refinements** | Multi-key `project_keys` + key CRUD/rotate/soft-revoke, request self-approval, admin Accounts page (provision/reset/direct grants), separate Projects list page | 1–6 |
 
 ## 10. Testing & verification
 
@@ -286,15 +327,19 @@ is not exercised by the suite):
 
 - New: `test_auth.py` (login/logout/me, TTL/`token_version`, disabled user,
   CSRF/secure flags), `test_requests.py` (submit/approve/reject/cancel,
-  approver resolution, materialization, dedupe), `test_scope.py` (union access,
-  404 out-of-scope, client cost stripping).
+  approver resolution, materialization, dedupe, **self-approval**),
+  `test_scope.py` (union access, 404 out-of-scope, client cost stripping),
+  `test_projects_keys.py` (multi-key list/add/rotate/soft-revoke, ingest with
+  any active key, coverage checks), `test_users_admin.py` (password reset,
+  direct grant/revoke).
 - Rework: `test_rbac.py`, `test_read_access.py`, `tests/conftest.py` seeds;
   `scripts/e2e_smoke.py` updated for login + scoped reads.
-- Gates: `uv run ruff check`, `uv run mypy`, full pytest.
+- Gates: `uv run ruff check`, `uv run mypy`, full pytest; migration
+  upgrade/downgrade + `alembic check`.
 
 **Frontend** (`frontend/`): `npm run test` (Vitest), `npm run build`,
-`npm run lint`; manual flows — login → submit request → approve → scoped views
-→ client view → project key mint.
+`npm run lint`; manual flows — login → submit request (auto-approve) → scoped
+views → client view → project key add/rotate/delete → admin accounts.
 
 ## 11. Config & deployment changes
 
@@ -304,15 +349,17 @@ is not exercised by the suite):
 | `AIOBS_ADMIN_EMAIL` / `AIOBS_ADMIN_PASSWORD` | new, optional bootstrap admin |
 | `AIOBS_READ_API_KEY` | stays as the service read key (scoping bypass); implicit demo open-reads removed |
 | `docker-compose.yml` | add the three env vars (dev defaults for admin) |
-| `backend/README.md` | document auth, scoping, bootstrap admin, new env table rows |
-| `README.md` | quickstart: login credentials + how to mint the demo project key |
+| `backend/README.md` | document auth, scoping, bootstrap admin, key CRUD, accounts, env table rows |
+| `README.md` | quickstart: login credentials + how to add a project key |
 
 ## 12. Deferred / not yet specified
 
 - Approval notifications (email/webhook) and request editing UX.
-- Membership lifecycle: revocation, manager reassignment, dept/team rename.
+- Membership lifecycle beyond the admin override: manager reassignment,
+  dept/team rename, non-admin revocation flows.
 - SDK ingest keys scoped above project level (team/department keys).
 - Admin combined "all views" dashboard.
+- Retention/cleanup of soft-revoked project keys.
 
 ## 13. Out of scope
 
@@ -337,3 +384,5 @@ is not exercised by the suite):
 - [`10 — Client role view`](../.scratch/roles/issues/10-client-role-view.md) ·
   [prototype](../.scratch/roles/prototypes/10-client-view.html)
 - [`docs/adr/0006-membership-rbac-jwt-sessions.md`](../docs/adr/0006-membership-rbac-jwt-sessions.md)
+- [`docs/adr/0007-multiple-project-keys-and-admin-self-approval.md`](../docs/adr/0007-multiple-project-keys-and-admin-self-approval.md)
+  — multi-key ingest, request self-approval, admin direct grants, Accounts page

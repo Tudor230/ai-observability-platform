@@ -17,6 +17,19 @@ class Settings(BaseSettings):
     admin_api_key: str | None = None
     # Read access (F06): when set, read endpoints require `x-api-key` (or the admin key)
     read_api_key: str | None = None
+    # Auth sessions (ADR-0006): JWT secret is required — fail fast when missing.
+    jwt_secret: str
+    jwt_ttl_s: int = 86400
+    cookie_secure: bool = False
+    # Browser origins allowed to call the API with credentials.
+    cors_origins: list[str] = [
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+    # Optional bootstrap admin, seeded at startup (idempotent).
+    admin_email: str | None = None
+    admin_password: str | None = None
     # Ingest body cap (F21)
     max_ingest_bytes: int = 10 * 1024 * 1024
     # Pricing seed
@@ -39,4 +52,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore[call-arg]  # env-provided fields

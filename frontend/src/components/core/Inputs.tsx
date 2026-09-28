@@ -1,4 +1,9 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -25,4 +30,8 @@ export function Select({
       {children}
     </select>
   );
+}
+
+export function Textarea({ ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className="field__input field__textarea" {...rest} />;
 }

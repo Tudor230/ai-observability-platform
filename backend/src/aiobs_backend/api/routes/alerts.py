@@ -6,20 +6,26 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Alert
-from ..deps import get_admin_key, get_db, require_role
+from ..deps import AccessScope, get_admin_key, get_db, require_access
+from ..queries import alert_scope_clause
 
 router = APIRouter(tags=["alerts"])
 
 
-@router.get("/alerts", dependencies=[Depends(require_role())])
+@router.get("/alerts")
 def list_alerts(
     session: Session = Depends(get_db),
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    access: AccessScope = Depends(require_access()),
 ) -> dict:
+    # Rule alerts are global; budget alerts follow their budget's project.
+    scope_clause = alert_scope_clause(access.resolve_project_filter(None))
     stmt = select(Alert)
+    if scope_clause is not None:
+        stmt = stmt.where(scope_clause)
     if status:
         stmt = stmt.where(Alert.status == status)
     if severity:
@@ -28,6 +34,8 @@ def list_alerts(
         stmt.order_by(Alert.triggered_at.desc()).limit(limit).offset(offset)
     ).scalars().all()
     count_stmt = select(func.count()).select_from(Alert)
+    if scope_clause is not None:
+        count_stmt = count_stmt.where(scope_clause)
     if status:
         count_stmt = count_stmt.where(Alert.status == status)
     if severity:

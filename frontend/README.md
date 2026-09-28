@@ -36,10 +36,20 @@ src/components/
   agent-prism/    vendored AgentPrism UI/data/types (see its LOCAL.md)
   TraceExplorer   AgentPrism tree + span details for the execution page
   AppShell.tsx    side nav, top nav, breadcrumbs
-src/pages/        Overview, Engineering (+ ExecutionDetail), Manager, Executive
-src/state/        filters, role and theme contexts
+src/pages/        Overview, Engineering (+ ExecutionDetail), Manager, Executive,
+                  Client, Projects (+ Project), Requests, Accounts, Login
+src/state/        filters, auth and theme contexts
 src/lib/          formatting, forecast, chart theming, span→AgentPrism adapter
 ```
+
+## Roles & registration UI
+
+- `AuthContext` (session from `/auth/me`) drives the union nav and route guards;
+  see [`plans/roles.md`](../plans/roles.md) and ADR-0006/0007.
+- The Requests page hides the **Department** type and the **Approvals** tab for
+  users who lack admin/exec/manager rights (an engineer+manager sees both).
+- Membership scopes and the department/team/project pickers use
+  `SearchableSelect` — a filterable, scrollable combobox.
 
 ## Design system
 
