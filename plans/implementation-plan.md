@@ -53,6 +53,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | **Backend: analytics & alerts** (consumption, error rate, budgets; cost thresholds) | **Implemented** (budget rules) | `plans/backend.md` §9–10 → `backend/src/aiobs_backend/analytics.py`, `alerts.py` |
 | **Phoenix deployment** (self-hosted, containerized) | root `docker-compose.yml` (shared Postgres instance) | backend plan |
 | **Dashboard** (engineering / manager / executive views) | **Implemented** | `plans/frontend.md` → `frontend/` |
+| **Roles & registration** (Department→Team→Project, memberships, requests/approvals with self-approval, JWT sessions, multi-key project credentials, admin accounts, team-scoped reads) | **Implemented** | `plans/roles.md` → `backend/`, `frontend/` |
 
 ## 6. Phased roadmap
 
@@ -62,6 +63,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | **2 — Backend** | Trace processing, failure classification, cost engine, API keys/registration, Phoenix deployment | **Implemented** (`backend/`, plan in `plans/backend.md`, CI in `.github/workflows/backend.yml`) |
 | **3 — Dashboard** | Engineering view first, then manager, then executive | **Implemented** (`frontend/`, plan in `plans/frontend.md`, CI in `.github/workflows/frontend.yml`) |
 | **4 — Alerts & budgets** | Consumption/cost/latency/error-rate thresholds | Budget-based alerts implemented (backend); rule catalog extensible |
+| **5 — Roles & registration** | Membership RBAC, requests/approvals, JWT auth, scoped reads, dashboard auth swap; multi-key project credentials, admin accounts, Projects/Accounts pages | **Implemented** (`plans/roles.md`; map in `.scratch/roles/`) |
 
 ## 7. Cross-cutting decisions
 
@@ -70,6 +72,10 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 - **SDK manual workflow wrapper** provides business context (`client_id`, `project_id`, `workflow_id`, free-form context) — the foundation for cost attribution per client/workflow.
 - **Mock workflows as the acceptance path**: deterministic scenarios with fixed tokens/inputs/outputs validate SDK capture now, and backend classification + cost computation when they exist (KPIs in `docs/05`).
 - **No sampling in v1** — mock workflows require complete traces.
+- **Authorization is membership-derived**: role+scope live in one `memberships`
+  table; reads are scoped to the union of approved memberships; JWT sessions
+  identify the user but roles are never embedded in the token
+  (`plans/roles.md`, ADR-0006).
 
 ## 8. Deferred items
 
@@ -88,4 +94,6 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 
 - `docs/01` problem definition · `docs/02` process analysis · `docs/03` to-be solution · `docs/04` high-level architecture · `docs/05` KPIs
 - `plans/sdk.md` — detailed SDK plan
+- `plans/roles.md` — detailed roles & registration plan
 - `.scratch/sdk/` — wayfinder map and decision tickets
+- `.scratch/roles/` — wayfinder map and decision tickets

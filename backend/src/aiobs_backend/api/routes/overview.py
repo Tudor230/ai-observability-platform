@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 
 from ...models import Alert, Execution
 from ...stats import percentile
-from ..deps import get_db, get_project_scope, require_role
-from ..queries import default_range, exec_rows, parse_dt
+from ..deps import AccessScope, get_db, require_access
+from ..queries import alert_scope_clause, default_range, exec_rows, parse_dt
 
-router = APIRouter(tags=["overview"], dependencies=[Depends(require_role())])
+router = APIRouter(tags=["overview"])
 
 
 def _window_stats(session: Session, start, end, **extra) -> dict:
@@ -63,25 +63,38 @@ def overview(
     project_id: str | None = Query(default=None),
     client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access()),
 ) -> dict:
     now = parse_dt(end) if end else None
     now = now or default_range(days)[1]
     window_start = parse_dt(start)
     if window_start is None:
         window_start = now - timedelta(days=days)
-    project_id = project_id or project_scope
+    project_ids = access.resolve_project_filter(project_id)
 
     current = _window_stats(
-        session, window_start, now, project_id=project_id, client_id=client_id, workflow=workflow
+        session,
+        window_start,
+        now,
+        project_ids=project_ids,
+        client_id=client_id,
+        workflow=workflow,
     )
     span = now - window_start
     previous = _window_stats(
-        session, window_start - span, window_start,
-        project_id=project_id, client_id=client_id, workflow=workflow,
+        session,
+        window_start - span,
+        window_start,
+        project_ids=project_ids,
+        client_id=client_id,
+        workflow=workflow,
     )
-    open_alerts = session.execute(select(Alert).where(Alert.status == "open")).scalars().all()
-    return {
+    alert_stmt = select(Alert).where(Alert.status == "open")
+    alert_clause = alert_scope_clause(project_ids)
+    if alert_clause is not None:
+        alert_stmt = alert_stmt.where(alert_clause)
+    open_alerts = session.execute(alert_stmt).scalars().all()
+    result = {
         **current,
         "deltas": {
             "total_cost_pct": _pct(current["total_cost"], previous["total_cost"]),
@@ -90,3 +103,7 @@ def overview(
         },
         "open_alerts": len(open_alerts),
     }
+    if not access.cost_visible:
+        result.pop("total_cost", None)
+        result["deltas"].pop("total_cost_pct", None)
+    return result

@@ -138,7 +138,7 @@ export default function Engineering() {
                       </Td>
                       <Td align="right" className="num">
                         {formatMoney(e.total_cost)}
-                        {!e.cost_complete && e.unpriced_calls > 0 ? (
+                        {!e.cost_complete && (e.unpriced_calls ?? 0) > 0 ? (
                           <span className="muted" title="Some calls have no configured price">
                             {" "}
                             *

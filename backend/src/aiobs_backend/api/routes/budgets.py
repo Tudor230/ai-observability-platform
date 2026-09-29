@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from ...alerts import budget_spend, budget_window
 from ...models import Budget, Client, Project
-from ..deps import get_admin_key, get_db, require_role
+from ..deps import AccessScope, get_admin_key, get_db, require_access
+from ..queries import budget_scope_clause
 
 router = APIRouter(tags=["budgets"])
 
@@ -109,14 +110,22 @@ def delete_budget(budget_id: str, session: Session = Depends(get_db)) -> dict:
     return {"deleted": budget_id}
 
 
-@router.get("/budgets/status", dependencies=[Depends(require_role("sdm", "finance"))])
-def budget_status(session: Session = Depends(get_db)) -> dict:
+@router.get("/budgets/status")
+def budget_status(
+    session: Session = Depends(get_db),
+    access: AccessScope = Depends(require_access("manager", "exec")),
+) -> dict:
     """Read-only budget utilization for dashboards (no admin key needed).
 
     ``utilization`` is the true ratio (can exceed 1.0); clients must clamp only
-    the bar width, never the number (F23).
+    the bar width, never the number (F23). Budgets are scoped by their project;
+    global budgets are exec/admin-only (ADR-0006).
     """
-    rows = session.execute(select(Budget).order_by(Budget.period.desc())).scalars().all()
+    stmt = select(Budget)
+    scope_clause = budget_scope_clause(access.resolve_project_filter(None))
+    if scope_clause is not None:
+        stmt = stmt.where(scope_clause)
+    rows = session.execute(stmt.order_by(Budget.period.desc())).scalars().all()
     items = []
     for b in rows:
         spend = budget_spend(session, b)

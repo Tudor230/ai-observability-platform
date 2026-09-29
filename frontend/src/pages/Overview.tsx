@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAlerts, useMetrics, useOverview } from "../api/hooks";
+import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterToolbar } from "../components/FilterToolbar";
@@ -19,6 +20,7 @@ import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
 
 export default function Overview() {
   const { filters } = useFilters();
+  const { costVisible } = useAuth();
   const overview = useOverview(filters);
   const metrics = useMetrics("total", filters);
   const alerts = useAlerts();
@@ -60,11 +62,13 @@ export default function Overview() {
       ) : (
         <>
           <div className="grid grid-4">
-            <Metric
-              label="Total cost"
-              value={formatMoney(data?.total_cost)}
-              sub={<Delta pct={data?.deltas?.total_cost_pct} polarity="up-is-bad" />}
-            />
+            {costVisible ? (
+              <Metric
+                label="Total cost"
+                value={formatMoney(data?.total_cost)}
+                sub={<Delta pct={data?.deltas?.total_cost_pct} polarity="up-is-bad" />}
+              />
+            ) : null}
             <Metric
               label="Executions"
               value={data?.executions ?? 0}
@@ -95,16 +99,18 @@ export default function Overview() {
           </div>
 
           <div className="grid grid-2">
-            <CardPanel title="Cost over time" subTitle="USD per day">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
-                  valueFormatter={(v) => formatMoney(v)}
-                  height={240}
-                />
-              </div>
-            </CardPanel>
+            {costVisible ? (
+              <CardPanel title="Cost over time" subTitle="USD per day">
+                <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                  <TrendChart
+                    data={series}
+                    series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
+                    valueFormatter={(v) => formatMoney(v)}
+                    height={240}
+                  />
+                </div>
+              </CardPanel>
+            ) : null}
             <CardPanel title="Executions over time" subTitle="Completed workflow roots per day">
               <div style={{ padding: "var(--global-dimension-size-100)" }}>
                 <TrendChart

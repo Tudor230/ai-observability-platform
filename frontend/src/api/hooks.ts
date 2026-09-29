@@ -66,10 +66,63 @@ export function useMetrics(dimension: string, f: Filters, key?: string) {
   });
 }
 
-export function useAlerts() {
-  return useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts() });
+export function useAlerts(enabled = true) {
+  return useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts(), enabled });
 }
 
 export function useBudgetStatus() {
   return useQuery({ queryKey: ["budgets", "status"], queryFn: () => api.budgetStatus() });
+}
+
+export function useDirectoryProjects() {
+  return useQuery({
+    queryKey: ["directory", "projects"],
+    queryFn: () => api.directory.projects(),
+  });
+}
+
+export function useDepartments() {
+  return useQuery({
+    queryKey: ["directory", "departments"],
+    queryFn: () => api.directory.departments(),
+  });
+}
+
+export function useTeams() {
+  return useQuery({
+    queryKey: ["directory", "teams"],
+    queryFn: () => api.directory.teams(),
+  });
+}
+
+export function useRequests(view: "all" | "mine" | "to_approve", enabled = true) {
+  return useQuery({
+    queryKey: ["requests", view],
+    queryFn: () => api.requests.list(view),
+    enabled,
+  });
+}
+
+export function usePendingApprovals(enabled: boolean) {
+  return useQuery({
+    queryKey: ["requests", "to_approve"],
+    queryFn: () => api.requests.list("to_approve"),
+    enabled,
+  });
+}
+
+export function useProjectKeys(projectId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["project-keys", projectId],
+    queryFn: () => api.projects.keys(projectId),
+    enabled: enabled && !!projectId,
+  });
+}
+
+export function useUsers(enabled = true) {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.users.list(),
+    enabled,
+  });
 }

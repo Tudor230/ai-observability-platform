@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ...models import Client
-from ..deps import get_db, get_project_scope, require_role
+from ..deps import AccessScope, get_db, require_access
 from ..queries import default_range, exec_aggregates, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["clients"], dependencies=[Depends(require_role("sdm", "finance"))])
+router = APIRouter(tags=["clients"])
 
 
 @router.get("/clients")
@@ -21,7 +21,7 @@ def list_clients(
     end: str | None = Query(default=None),
     days: int = Query(default=90, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("manager", "exec")),
 ) -> dict:
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
@@ -30,7 +30,7 @@ def list_clients(
         group_col=Client.external_key,
         start=start_dt,
         end=end_dt,
-        project_id=project_id or project_scope,
+        project_ids=access.resolve_project_filter(project_id),
     )
     items = []
     for row in rows:

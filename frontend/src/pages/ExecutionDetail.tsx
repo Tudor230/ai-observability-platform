@@ -5,6 +5,7 @@ import { PageHeader } from "../components/PageHeader";
 import { RefreshButton } from "../components/RefreshButton";
 import { TraceExplorer } from "../components/TraceExplorer";
 import { KindBadge, KindIcon, StatusBadge } from "../components/domain";
+import { useAuth } from "../state/AuthContext";
 import {
   Alert,
   Badge,
@@ -30,10 +31,12 @@ type TabId = "spans" | "failures" | "metadata";
 
 export default function ExecutionDetail() {
   const { id = "" } = useParams();
+  const { costVisible } = useAuth();
+  const canSeeSpans = costVisible; // client accounts never see raw spans/prompts
   const execution = useExecution(id);
   const spans = useSpans(id);
   const failures = useFailures(id);
-  const [tab, setTab] = useState<TabId>("spans");
+  const [tab, setTab] = useState<TabId>(canSeeSpans ? "spans" : "failures");
 
   const ex = execution.data;
   const spanItems = useMemo(() => spans.data?.items ?? [], [spans.data]);
@@ -65,8 +68,12 @@ export default function ExecutionDetail() {
           message={notFound ? "Execution not found." : "Failed to load the execution."}
           detail={notFound ? `No execution with id ${id}.` : message}
           extra={
-            <Link to="/engineering" className="button" data-size="S">
-              Back to traces
+            <Link
+              to={canSeeSpans ? "/engineering" : "/client"}
+              className="button"
+              data-size="S"
+            >
+              {canSeeSpans ? "Back to traces" : "Back to client view"}
             </Link>
           }
         />
@@ -105,17 +112,19 @@ export default function ExecutionDetail() {
       />
 
       <div className="grid grid-4">
-        <Metric
-          label="Cost"
-          value={formatMoney(ex.total_cost)}
-          sub={
-            !ex.cost_complete && ex.unpriced_calls > 0 ? (
-              <Badge variant="warning">{ex.unpriced_calls} unpriced</Badge>
-            ) : (
-              "fully priced"
-            )
-          }
-        />
+        {costVisible ? (
+          <Metric
+            label="Cost"
+            value={formatMoney(ex.total_cost)}
+            sub={
+              !ex.cost_complete && (ex.unpriced_calls ?? 0) > 0 ? (
+                <Badge variant="warning">{ex.unpriced_calls} unpriced</Badge>
+              ) : (
+                "fully priced"
+              )
+            }
+          />
+        ) : null}
         <Metric
           label="Tokens"
           value={formatTokens(ex.total_tokens)}
@@ -138,11 +147,18 @@ export default function ExecutionDetail() {
 
       <CardPanel title="Trace" subTitle={`${spanItems.length} spans`}>
         <Tabs
-          tabs={[
-            { id: "spans", label: "Spans", counter: spanItems.length },
-            { id: "failures", label: "Failures", counter: failureNodes.length },
-            { id: "metadata", label: "Business context" },
-          ]}
+          tabs={
+            canSeeSpans
+              ? [
+                  { id: "spans" as const, label: "Spans", counter: spanItems.length },
+                  { id: "failures" as const, label: "Failures", counter: failureNodes.length },
+                  { id: "metadata" as const, label: "Business context" },
+                ]
+              : [
+                  { id: "failures" as const, label: "Failures", counter: failureNodes.length },
+                  { id: "metadata" as const, label: "Business context" },
+                ]
+          }
           selected={tab}
           onSelect={setTab}
         >

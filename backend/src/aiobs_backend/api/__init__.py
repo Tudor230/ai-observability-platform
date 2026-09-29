@@ -6,9 +6,11 @@ from fastapi import APIRouter
 from .routes import (
     agents,
     alerts,
+    auth,
     budgets,
     clients,
     costs,
+    directory,
     executions,
     ingest,
     maintenance,
@@ -16,6 +18,7 @@ from .routes import (
     overview,
     pricing,
     projects,
+    requests,
     users,
     workflows,
 )
@@ -25,9 +28,11 @@ api = APIRouter(prefix="/api/v1")
 for module in (
     agents,
     alerts,
+    auth,
     budgets,
     clients,
     costs,
+    directory,
     executions,
     ingest,
     maintenance,
@@ -35,6 +40,7 @@ for module in (
     overview,
     pricing,
     projects,
+    requests,
     users,
     workflows,
 ):

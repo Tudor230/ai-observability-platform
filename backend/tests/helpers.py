@@ -11,8 +11,20 @@ from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.resource.v1.resource_pb2 import Resource
 from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
 
-from aiobs_backend.models import Project, Team
-from aiobs_backend.security import hash_api_key
+from aiobs_backend.models import (
+    Department,
+    Membership,
+    Project,
+    ProjectKey,
+    Team,
+    User,
+)
+from aiobs_backend.security import (
+    generate_api_key,
+    hash_api_key,
+    hash_password,
+    key_hint,
+)
 
 STATUS_OK = Status.STATUS_CODE_OK
 STATUS_ERROR = Status.STATUS_CODE_ERROR
@@ -83,20 +95,80 @@ def build_request(spans: list[Span], resource_attrs: dict | None = None) -> byte
     return request.SerializeToString()
 
 
-def seed_project(session, *, project_id="proj-1", api_key="test-key", name="Test Project") -> Project:
-    team = Team(name="Test")
+def seed_department(session, name: str = "Test Department") -> Department:
+    existing = session.query(Department).filter_by(name=name).one_or_none()
+    if existing is not None:
+        return existing
+    department = Department(name=name)
+    session.add(department)
+    session.flush()
+    return department
+
+
+def seed_team(
+    session, *, name: str = "Test", department: Department | None = None
+) -> Team:
+    department = department or seed_department(session)
+    team = Team(name=name, department_id=department.id)
     session.add(team)
     session.flush()
-    project = Project(
-        team_id=team.id,
-        project_id=project_id,
-        name=name,
-        api_key_hash=hash_api_key(api_key),
-        api_key_label="test",
-    )
+    return team
+
+
+def seed_project(
+    session,
+    *,
+    project_id="proj-1",
+    api_key="test-key",
+    name="Test Project",
+    team: Team | None = None,
+) -> Project:
+    team = team or seed_team(session)
+    project = Project(team_id=team.id, project_id=project_id, name=name)
     session.add(project)
     session.flush()
+    session.add(
+        ProjectKey(
+            project_id=project.id,
+            key_hash=hash_api_key(api_key),
+            key_hint=key_hint(api_key),
+            label="test",
+        )
+    )
+    session.flush()
     return project
+
+
+def seed_user(
+    session,
+    email: str,
+    *,
+    password: str = "test-pass-123",
+    role: str | None = None,
+    scope_type: str | None = None,
+    scope_id: str | None = None,
+) -> tuple[User, str]:
+    """Create a user with an API key and (optionally) one approved membership."""
+    key = generate_api_key()
+    user = User(
+        email=email,
+        password_hash=hash_password(password),
+        api_key_hash=hash_api_key(key),
+    )
+    session.add(user)
+    session.flush()
+    if role:
+        session.add(
+            Membership(
+                user_id=user.id,
+                role=role,
+                scope_type=scope_type or "global",
+                scope_id=scope_id,
+                status="approved",
+            )
+        )
+        session.flush()
+    return user, key
 
 
 def build_app(session_factory) -> FastAPI:

@@ -38,6 +38,9 @@ KPI_KEY = "kpi-test-key"
 UV = os.environ.get("UV_EXE", "uv")
 ADMIN_KEY = os.environ.get("AIOBS_ADMIN_API_KEY") or "kpi-admin"
 os.environ["AIOBS_ADMIN_API_KEY"] = ADMIN_KEY
+os.environ.setdefault(
+    "AIOBS_JWT_SECRET", "kpi-gate-secret-0123456789abcdef0123456789abcdef"
+)
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 SCENARIO_ROW = re.compile(r"^(?P<id>\S+)\s+(?P<fw>\S+)\s+(?P<spans>\d+)\s+(?P<result>PASS|FAIL)\s*$")
@@ -61,7 +64,11 @@ def _assert_disposable(db_url: str) -> None:
 
 
 def _api(path: str):
-    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/api/v1{path}", timeout=30) as r:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{PORT}/api/v1{path}",
+        headers={"x-admin-key": ADMIN_KEY},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read().decode())
 
 
@@ -115,7 +122,7 @@ def main() -> int:
 
     from aiobs_backend import db, seed
     from aiobs_backend.config import get_settings
-    from aiobs_backend.models import Project
+    from aiobs_backend.models import Project, ProjectKey
     from aiobs_backend.security import hash_api_key
 
     get_settings.cache_clear()
@@ -135,7 +142,18 @@ def main() -> int:
             project = session.execute(
                 select(Project).where(Project.project_id == PROJECT_ID)
             ).scalar_one()
-        project.api_key_hash = hash_api_key(KPI_KEY)
+        for existing in session.execute(
+            select(ProjectKey).where(ProjectKey.project_id == project.id)
+        ).scalars():
+            session.delete(existing)
+        session.add(
+            ProjectKey(
+                project_id=project.id,
+                key_hash=hash_api_key(KPI_KEY),
+                key_hint=KPI_KEY[-4:],
+                label="kpi",
+            )
+        )
         session.flush()
     key = KPI_KEY
 

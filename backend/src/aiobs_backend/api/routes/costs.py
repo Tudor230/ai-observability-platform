@@ -9,11 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...models import Client, CostRecord, Execution, Project, Team
-from ..deps import get_db, get_project_scope, require_role
+from ..deps import AccessScope, get_db, require_access
 from ..queries import default_range, exec_aggregates, parse_dt
 from ..serialize import money
 
-router = APIRouter(tags=["costs"], dependencies=[Depends(require_role("sdm", "finance"))])
+router = APIRouter(tags=["costs"])
 
 DIMENSIONS = {"project", "client", "workflow", "model", "team"}
 
@@ -35,7 +35,7 @@ def get_costs(
     project_id: str | None = Query(default=None),
     client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("manager", "exec")),
 ) -> dict:
     if dimension not in DIMENSIONS:
         raise HTTPException(
@@ -43,7 +43,7 @@ def get_costs(
         )
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
-    project_id = project_id or project_scope
+    project_ids = access.resolve_project_filter(project_id)
 
     if dimension == "model":
         stmt = (
@@ -51,10 +51,10 @@ def get_costs(
             .join(Execution, Execution.id == CostRecord.execution_id)
             .where(Execution.started_at >= start_dt, Execution.started_at < end_dt)
         )
-        if project_id or client_id or workflow:
+        if project_ids is not None or client_id or workflow:
             stmt = stmt.join(Project, Project.id == Execution.project_id)
-            if project_id:
-                stmt = stmt.where(Project.project_id == project_id)
+            if project_ids is not None:
+                stmt = stmt.where(Project.project_id.in_(project_ids))
             if workflow:
                 stmt = stmt.where(Execution.workflow_name == workflow)
             if client_id:
@@ -81,7 +81,7 @@ def get_costs(
         group_col=_GROUP_COLUMNS[dimension],
         start=start_dt,
         end=end_dt,
-        project_id=project_id,
+        project_ids=project_ids,
         client_id=client_id,
         workflow=workflow,
     )

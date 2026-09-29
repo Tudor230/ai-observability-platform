@@ -1,14 +1,46 @@
 """Shared query/filter helpers for the read API."""
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, false, func, select
 from sqlalchemy.orm import Session
 
-from ..models import Client, Execution, Project, Team
+from ..models import Alert, Budget, Client, Execution, Project, Team
 
 EXTERNAL = (Execution, Project.project_id, Client.external_key)
+
+
+def _project_scope_clause(project_ids: Collection[str] | None):
+    """Filter clause for an allowed-project set; ``None`` means unrestricted."""
+    if project_ids is None:
+        return None
+    return Project.project_id.in_(project_ids)
+
+
+def alert_scope_clause(project_ids: Collection[str] | None):
+    """Clause selecting alerts visible to a scoped caller.
+
+    Rule alerts are global (exec/admin only); budget alerts follow the budget's
+    project, so they can be attributed to a team scope (plans/roles.md §6.3).
+    """
+    if project_ids is None:
+        return None
+    if not project_ids:
+        return false()
+    allowed = select(Project.id).where(Project.project_id.in_(project_ids))
+    return and_(Alert.dimension == "budget", Alert.dimension_key.in_(allowed))
+
+
+def budget_scope_clause(project_ids: Collection[str] | None):
+    """Clause selecting budgets visible to a scoped caller (global ones excluded)."""
+    if project_ids is None:
+        return None
+    if not project_ids:
+        return false()
+    allowed = select(Project.id).where(Project.project_id.in_(project_ids))
+    return Budget.project_id.in_(allowed)
 
 
 def parse_dt(value: str | None, *, end_of_day: bool = False) -> datetime | None:
@@ -41,6 +73,7 @@ def exec_rows(
     start: datetime | None = None,
     end: datetime | None = None,
     project_id: str | None = None,
+    project_ids: Collection[str] | None = None,
     client_id: str | None = None,
     workflow: str | None = None,
     status: str | None = None,
@@ -55,6 +88,9 @@ def exec_rows(
         stmt = stmt.where(Execution.started_at < end)
     if project_id:
         stmt = stmt.where(Project.project_id == project_id)
+    scope_clause = _project_scope_clause(project_ids)
+    if scope_clause is not None:
+        stmt = stmt.where(scope_clause)
     if client_id:
         stmt = stmt.where(Client.external_key == client_id)
     if workflow:
@@ -77,6 +113,7 @@ def exec_aggregates(
     start: datetime | None = None,
     end: datetime | None = None,
     project_id: str | None = None,
+    project_ids: Collection[str] | None = None,
     client_id: str | None = None,
     workflow: str | None = None,
 ):
@@ -107,6 +144,9 @@ def exec_aggregates(
         stmt = stmt.where(Execution.started_at < end)
     if project_id:
         stmt = stmt.where(Project.project_id == project_id)
+    scope_clause = _project_scope_clause(project_ids)
+    if scope_clause is not None:
+        stmt = stmt.where(scope_clause)
     if client_id:
         stmt = stmt.where(Client.external_key == client_id)
     if workflow:

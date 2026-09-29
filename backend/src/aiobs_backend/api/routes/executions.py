@@ -8,28 +8,26 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Client, Execution, Project, Span
-from ..deps import get_db, get_project_scope, require_role
+from ..deps import AccessScope, get_db, require_access
 from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
-router = APIRouter(tags=["executions"], dependencies=[Depends(require_role("engineer", "sdm"))])
+router = APIRouter(tags=["executions"])
 
 
 def _scoped_execution(
-    session: Session, execution_id: str, project_scope: str | None
+    session: Session, execution_id: str, access: AccessScope
 ) -> Execution:
-    """Load an execution, hiding rows outside the caller's project scope (F07)."""
+    """Load an execution, hiding rows outside the caller's scope (F07/ADR-0006)."""
     row = session.execute(
         select(Execution).where(Execution.id == execution_id)
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="execution not found")
-    if project_scope:
-        project_ext = session.execute(
-            select(Project.project_id).where(Project.id == row.project_id)
-        ).scalar_one_or_none()
-        if project_ext != project_scope:
-            raise HTTPException(status_code=404, detail="execution not found")
+    project_ext = session.execute(
+        select(Project.project_id).where(Project.id == row.project_id)
+    ).scalar_one_or_none()
+    access.ensure_visible(project_ext, "execution not found")
     return row
 
 
@@ -45,7 +43,7 @@ def list_executions(
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
     # `days` is a relative window; explicit start/end win when both are given (F15).
     start_dt = parse_dt(start)
@@ -55,7 +53,7 @@ def list_executions(
         session,
         start=start_dt,
         end=parse_dt(end, end_of_day=True),
-        project_id=project_id or project_scope,
+        project_ids=access.resolve_project_filter(project_id),
         client_id=client_id,
         workflow=workflow,
         status=status,
@@ -64,7 +62,10 @@ def list_executions(
         select(func.count()).select_from(base.subquery())
     ).scalar_one()
     rows = session.execute(base.limit(limit).offset(offset)).all()
-    items = [execution_dict(ex, project_ext, client_ext) for ex, project_ext, client_ext in rows]
+    items = [
+        execution_dict(ex, project_ext, client_ext, include_cost=access.cost_visible)
+        for ex, project_ext, client_ext in rows
+    ]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
@@ -72,9 +73,9 @@ def list_executions(
 def get_execution(
     execution_id: str,
     session: Session = Depends(get_db),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
-    row = _scoped_execution(session, execution_id, project_scope)
+    row = _scoped_execution(session, execution_id, access)
     project_ext = session.execute(
         select(Project.project_id).where(Project.id == row.project_id)
     ).scalar_one_or_none()
@@ -83,32 +84,42 @@ def get_execution(
         client_ext = session.execute(
             select(Client.external_key).where(Client.id == row.client_id)
         ).scalar_one_or_none()
-    return execution_dict(row, project_ext, client_ext)
+    return execution_dict(
+        row, project_ext, client_ext, include_cost=access.cost_visible
+    )
 
 
 @router.get("/executions/{execution_id}/spans")
 def get_spans(
     execution_id: str,
     session: Session = Depends(get_db),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
-    _scoped_execution(session, execution_id, project_scope)
+    _scoped_execution(session, execution_id, access)
     spans = session.execute(
         select(Span)
         .where(Span.execution_id == execution_id)
         .order_by(Span.started_at)
     ).scalars().all()
-    return {"items": [span_dict(s) for s in spans], "total": len(spans)}
+    items = [
+        span_dict(
+            s,
+            include_cost=access.cost_visible,
+            include_attributes=access.cost_visible,
+        )
+        for s in spans
+    ]
+    return {"items": items, "total": len(items)}
 
 
 @router.get("/executions/{execution_id}/failures")
 def get_failure_tree(
     execution_id: str,
     session: Session = Depends(get_db),
-    project_scope: str | None = Depends(get_project_scope),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
     """Failure tree: failing spans + parent/child relationships + root cause."""
-    _scoped_execution(session, execution_id, project_scope)
+    _scoped_execution(session, execution_id, access)
     spans = session.execute(
         select(Span).where(Span.execution_id == execution_id)
     ).scalars().all()

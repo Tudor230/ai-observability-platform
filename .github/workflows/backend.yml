@@ -38,6 +38,8 @@ jobs:
       AIOBS_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
       AIOBS_E2E_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
       AIOBS_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
+      # Required by Settings (ADR-0006); Alembic loads the app config.
+      AIOBS_JWT_SECRET: ci-secret-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -77,6 +79,7 @@ jobs:
     env:
       AIOBS_KPI_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/aiobs_test
       AIOBS_KPI_PORT: 8000
+      AIOBS_JWT_SECRET: ci-secret-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

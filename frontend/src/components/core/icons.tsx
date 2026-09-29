@@ -242,3 +242,57 @@ export const IconExternalLink = (p: { size?: number }) => (
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
   </Icon>
 );
+
+export const IconInbox = (p: { size?: number }) => (
+  <Icon {...p}>
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+  </Icon>
+);
+
+export const IconKey = (p: { size?: number }) => (
+  <Icon {...p}>
+    <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4" />
+  </Icon>
+);
+
+export const IconLogOut = (p: { size?: number }) => (
+  <Icon {...p}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" x2="9" y1="12" y2="12" />
+  </Icon>
+);
+
+export const IconUsers = (p: { size?: number }) => (
+  <Icon {...p}>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </Icon>
+);
+
+export const IconBuilding = (p: { size?: number }) => (
+  <Icon {...p}>
+    <rect width="16" height="20" x="4" y="2" rx="2" />
+    <path d="M9 22v-4h6v4" />
+    <path d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01" />
+  </Icon>
+);
+
+export const IconUserCog = (p: { size?: number }) => (
+  <Icon {...p}>
+    <circle cx="9" cy="7" r="4" />
+    <path d="M2 21v-2a4 4 0 0 1 4-4h5" />
+    <circle cx="18" cy="16" r="3" />
+    <path d="M18 10v3M18 19v3M13 16h3M22 16h-3M14.5 12.5l1.5 1.5M20 18l1.5 1.5M20 14l1.5-1.5M14.5 19.5l1.5-1.5" />
+  </Icon>
+);
+
+export const IconCopy = (p: { size?: number }) => (
+  <Icon {...p}>
+    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </Icon>
+);
