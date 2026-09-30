@@ -2,9 +2,9 @@
 
 Python observability SDK for the AI Observability Platform (phase 1).
 Implements [`plans/sdk.md`](../plans/sdk.md): manual workflow boundaries,
-LangChain + LlamaIndex auto-instrumentation, failure/usage capture, OTLP HTTP
-export into Phoenix (PostgreSQL-backed), and a deterministic mock-workflow
-regression suite.
+LangChain + LlamaIndex + raw Ollama client auto-instrumentation, failure/usage
+capture, OTLP HTTP export into Phoenix (PostgreSQL-backed), and a deterministic
+mock-workflow regression suite.
 
 ## Quickstart
 
@@ -71,8 +71,8 @@ Deterministic scenarios through the real SDK + instrumentors with framework
 fake models (fixed responses, fixed token counts, scripted failures):
 
 ```bash
-uv run pytest                          # 97 tests, offline (in-memory export)
-uv run aiobs-mock                      # pass/fail CLI report (18 scenarios)
+uv run pytest                          # 139 tests, offline (in-memory export)
+uv run aiobs-mock                      # pass/fail CLI report (22 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
@@ -88,7 +88,8 @@ uv run aiobs-mock --endpoint http://localhost:6006 --project-id proj-1
 
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid
 JSON, retrieval failure, high latency, rate limit, retry-then-success — plus
-LangGraph: basic node tracing, interrupt, resume, and streaming interrupt.
+LangGraph: basic node tracing, interrupt, resume, and streaming interrupt; plus
+raw Ollama chat: happy path, rate-limit error, redaction, and streaming.
 
 ## Real demo (not mocked)
 
@@ -135,6 +136,12 @@ See `examples/README.md`.
   id, interrupting node, checkpoint id. Interrupts are not errors — a
   paused-for-approval workflow stays OK with no `sdk.error.*`. For Phoenix
   session grouping, pass the LangGraph `thread_id` as `workflow_id`.
+* **Raw Ollama client**: plain `ollama.chat` / `Client.chat` / `AsyncClient.chat`
+  calls (streaming included) become OpenInference **LLM** spans with
+  `llm.provider=ollama`, model, token counts (`prompt_eval_count`/`eval_count`),
+  input/output messages, and exception events. Instrument before the first chat
+  call; skipped silently when the `ollama` package is not installed. Local
+  models price at $0 via the backend's seeded zero-rate default row.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).

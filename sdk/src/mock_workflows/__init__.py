@@ -3,6 +3,7 @@
 from .langchain.scenarios import SCENARIOS as LANGCHAIN_SCENARIOS
 from .langgraph.scenarios import SCENARIOS as LANGGRAPH_SCENARIOS
 from .llamaindex.scenarios import SCENARIOS as LLAMAINDEX_SCENARIOS
+from .ollama.scenarios import SCENARIOS as OLLAMA_SCENARIOS
 from .runner import SCENARIOS, run_all, run_scenario
 from .scenario import Scenario, ScenarioResult
 
@@ -11,6 +12,7 @@ __all__ = [
     "LANGCHAIN_SCENARIOS",
     "LANGGRAPH_SCENARIOS",
     "LLAMAINDEX_SCENARIOS",
+    "OLLAMA_SCENARIOS",
     "Scenario",
     "ScenarioResult",
     "run_scenario",

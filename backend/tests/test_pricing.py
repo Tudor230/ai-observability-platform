@@ -72,6 +72,26 @@ def test_provider_default_fallback(client, session_factory, project):
     assert resp.json()["traces"][0]["total_cost"] == pytest.approx(0.002)  # 1000*1 + 500*2 / 1e6
 
 
+def test_local_model_cost_is_zero_via_provider_default(client, session_factory, project):
+    """The seeded ollama default row prices local models at $0 (ADR-independent)."""
+    attrs = {
+        "llm.model_name": "granite4.2:3b",
+        "llm.provider": "ollama",
+        "llm.token_count.prompt": 1234,
+        "llm.token_count.completion": 567,
+    }
+    resp = client.post(
+        "/api/v1/traces", content=build_request(_llm_trace(4, attrs)), headers=_headers()
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["traces"][0]["total_cost"] == 0.0
+    with session_factory() as session:
+        span = session.execute(select(Span).where(Span.kind == "LLM")).scalar_one()
+        ex = session.execute(select(Execution)).scalar_one()
+        assert float(span.cost) == 0.0
+        assert float(ex.total_cost) == 0.0
+
+
 def test_cache_and_reasoning_tokens_costed(client, session_factory, project):
     # gpt-4o-mini: input 0.15, output 0.60, cache_read 0.075, cache_write 0.15, reasoning = output price.
     attrs = {

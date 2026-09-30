@@ -15,7 +15,7 @@ Teams register an AI project, get an API key, install the SDK, and automatically
 ## 2. Scope (v1)
 
 - Python only.
-- Reuses OpenInference instrumentors for LangChain and LlamaIndex; no custom tracing of frameworks.
+- Reuses OpenInference instrumentors for LangChain, LlamaIndex, and the raw **Ollama** client; no custom tracing of frameworks.
 - LangGraph traces via the LangChain instrumentor, with automatic human-in-the-loop (HITL) capture from the SDK (`sdk.hitl.*`).
 - Manual workflow boundary API (no auto-detection).
 - Prompt/response capture opt-in.
@@ -191,6 +191,15 @@ Attributes (`sdk.hitl.*`, always captured, outside payload redaction):
 
 Correlation: set `workflow(workflow_id=thread_id)` so the interrupt and resume runs share one deterministic trace id (and `session.id`). The enricher warns when an interrupt trace has no `session.id`.
 
+### 7.4 Ollama (raw client)
+
+Reuse `openinference-instrumentation-ollama` (v0.1.9+, `ollama >= 0.4.0`) with our TracerProvider, so apps that call the Ollama Python client directly — no LangChain/LlamaIndex wrapper — are traced too. All instrumented frameworks are **optional**: a missing package (`ollama`, `langchain_core`, `llama_index.core`) is skipped at debug level, and an instrumentor that fails for any other reason warns without propagating into `init()` (plan §8).
+
+- **Coverage**: `ollama.chat`, `ollama.Client.chat`, and `ollama.AsyncClient.chat` (sync + async, `stream=True` included) as OpenInference **LLM** spans (`Chat`/`AsyncChat`); input/output messages, tool definitions, `llm.invocation_parameters`, `llm.provider = "ollama"` (request-side, so errored calls carry it), `llm.model_name` (request and response side), token counts from `prompt_eval_count` → `prompt` and `eval_count` → `completion` (total derived), streaming output reconstructed when the stream drains, errors as exception events + ERROR status. Not covered upstream: `generate`, `embed`/`embeddings`.
+- **Enrichment**: nothing Ollama-specific — the LLM-kind paths (provider normalization, token backfill, failure hints, payload redaction) are instrumentor-agnostic; `llm.provider=ollama` is never overwritten, and capture stays governed by `capture_prompts`.
+- **Call order**: the instrumentor must be active before the first chat call (the module-level `ollama.chat` helper is re-bound at instrument time). `init()` at app startup satisfies this; aliases captured earlier remain untraced.
+- **Cost**: local models are unpriced by default; the backend seeds an explicit zero-rate `("ollama", "*", "default")` row so local executions price at $0.00 instead of "unpriced" (`plans/backend.md` §8) — a real price of zero, not a fabricated one.
+
 ## 8. Export reliability
 
 Observability must never break the app:
@@ -231,6 +240,10 @@ Validates that capture and (later) classification actually work. Runs through th
 | LangGraph interrupt | `interrupt()` pauses: root OK, `sdk.hitl.*` stamped, no `sdk.error.*` |
 | LangGraph resume | `Command(resume=...)` continues the same thread AND trace: `sdk.hitl.resume_value`, one trace |
 | LangGraph stream | Streaming interrupt captured via the lifecycle hook |
+| Ollama chat | Raw `ollama.chat` yields an LLM span with provider/model/tokens + messages |
+| Ollama error | 429-style `ResponseError`: ERROR LLM span, `rate_limit` hint, root ERROR |
+| Ollama redaction | capture off: messages stripped at export, token counts kept |
+| Ollama stream | `stream=True`: one span with accumulated output and final token counts |
 
 ### 9.3 Fixed cost
 
@@ -238,7 +251,7 @@ Fake providers return fixed token counts → token/cost math is deterministic. v
 
 ## 10. Deferred / future work
 
-- Plain OpenAI/Anthropic client auto-instrumentation (pending framework-coverage gaps)
+- Plain OpenAI/Anthropic client auto-instrumentation (the raw **Ollama** client is covered — §7.4)
 - Packaging/distribution (PyPI, versioning) and the public package/import name (sketched as `ai_observability`)
 - Async/streaming support specifics beyond instrumentor behavior
 - Redaction mechanics for opt-in prompt capture
@@ -279,6 +292,16 @@ LangGraph effort (`.scratch/langgraph/`):
 | [04 — LangGraph mock scenarios](../.scratch/langgraph/issues/04-langgraph-mock-scenarios.md) | `langgraph>=1.1.9` dev dep; `lg_basic`/`lg_hitl_interrupt`/`lg_hitl_resume`/`lg_hitl_stream` |
 | [05 — Assemble the LangGraph plan](../.scratch/langgraph/issues/05-assemble-langgraph-plan.md) | plan/sdk.md + implementation-plan updates |
 | [06 — Trace-id continuation](../.scratch/langgraph/issues/06-trace-continuation.md) | Langfuse-style deterministic trace id from `workflow_id`; interrupt + resume join ONE trace (no store); compound registry keys; multi-root enricher |
+
+Ollama effort (`.scratch/ollama/`):
+
+| Ticket | Decision |
+|---|---|
+| [01 — Ollama instrumentation](../.scratch/ollama/issues/01-ollama-instrumentation.md) | Reuse `openinference-instrumentation-ollama`; `chat`-only coverage; dev-dep-only `ollama`; skip when absent; no ADR |
+| [02 — Ollama wiring](../.scratch/ollama/issues/02-ollama-wiring.md) | Dependency + `_instrumentation.py` wiring; double-instrument guard; uninstrument restores the raw client |
+| [03 — Ollama tests](../.scratch/ollama/issues/03-ollama-tests.md) | Offline `_request`-patched unit tests + `oll_chat*` mock scenarios |
+| [04 — Assemble the Ollama plan](../.scratch/ollama/issues/04-assemble-ollama-plan.md) | plan/sdk.md §2/§7.4/§9.2/§10/§12 + README updates |
+| [05 — Ollama pricing](../.scratch/ollama/issues/05-ollama-pricing.md) | Zero-rate `ollama` provider-default row: local models price at $0, not unpriced |
 
 Research findings: `.scratch/sdk/research/01-openinference-coverage.md`, `.scratch/sdk/research/09-retry-observability.md`.
 

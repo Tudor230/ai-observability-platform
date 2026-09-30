@@ -62,6 +62,17 @@ def _seed_pricing(session):
                 effective_from=now,
             )
         )
+    # Local runtimes are free: explicit zero rate (priced $0, not unpriced).
+    session.add(
+        Pricing(
+            provider="ollama",
+            model="*",
+            model_match="default",
+            input_price_per_1m=0.0,
+            output_price_per_1m=0.0,
+            effective_from=now,
+        )
+    )
     session.commit()
 
 

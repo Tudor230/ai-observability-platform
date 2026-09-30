@@ -13,12 +13,16 @@ from ai_observability import flush
 from .langchain.scenarios import SCENARIOS as LANGCHAIN_SCENARIOS
 from .langgraph.scenarios import SCENARIOS as LANGGRAPH_SCENARIOS
 from .llamaindex.scenarios import SCENARIOS as LLAMAINDEX_SCENARIOS
+from .ollama.scenarios import SCENARIOS as OLLAMA_SCENARIOS
 from .scenario import Scenario, ScenarioResult
 
 logger = logging.getLogger(__name__)
 
 SCENARIOS: list[Scenario] = (
-    LANGCHAIN_SCENARIOS + LLAMAINDEX_SCENARIOS + LANGGRAPH_SCENARIOS
+    LANGCHAIN_SCENARIOS
+    + LLAMAINDEX_SCENARIOS
+    + LANGGRAPH_SCENARIOS
+    + OLLAMA_SCENARIOS
 )
 
 

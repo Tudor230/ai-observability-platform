@@ -238,7 +238,10 @@ cost        = input_cost + output_cost
 ```
 
 Cache-read/write and reasoning-token pricing applied when the pricing row defines them.
-Unpriced models → cost `NULL` (visible as "unpriced"), never fabricated.
+Unpriced models → cost `NULL` (visible as "unpriced"), never fabricated. Local runtimes
+ship a seeded provider-default row with a zero rate (`ollama`), so their calls price at
+`$0.00` — an explicit price of zero, not a fabricated one; delete the row to return to
+unpriced.
 
 ### 8.2 Attribution
 

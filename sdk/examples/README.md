@@ -237,3 +237,45 @@ Then open http://localhost:6006 → Traces (`--project-id` routes to a named
 project; the default project is used otherwise): the `ORD-1234` session shows
 one trace containing both runs (interrupt + resume), or inspect via
 `uv run python dev/inspect_traces.py`.
+
+---
+
+# Demo: raw Ollama client (no framework)
+
+`ollama_chat.py` traces plain **`ollama.chat(...)`** calls — the shape apps use
+when they talk to Ollama directly (e.g. OnboardingFulfillment's planning nodes)
+instead of going through LangChain/LlamaIndex. It runs one structured planning
+call inside a workflow root, with a simulated retrieval step and a validation
+span, producing:
+
+```
+CHAIN  ollama-onboarding      (workflow root, sdk.* business attrs)
+├─ CHAIN fetch_policies       (manual span for non-framework retrieval)
+├─ LLM   Chat                 (llm.provider=ollama, model, tokens, messages)
+└─ CHAIN validate_plan
+```
+
+Runs against a real local Ollama server, or fully offline with `--mock`
+(only the HTTP boundary is scripted — same fake as the regression suite, so the
+real client + real instrumentor emit the spans):
+
+```bash
+cd sdk
+
+# offline (no Ollama server needed):
+uv run python examples/ollama_chat.py --mock --capture-prompts \
+    --endpoint http://localhost:8000 --api-key <project-api-key>
+
+# real local Ollama (model from OLLAMA_MODEL, default granite4.2:3b):
+uv run python examples/ollama_chat.py --capture-prompts \
+    --endpoint http://localhost:8000 --api-key <project-api-key>
+
+# streaming (chunks are reconstructed into ONE LLM span with final counts):
+uv run python examples/ollama_chat.py --mock --stream --capture-prompts
+```
+
+`--api-key` (key-only ingest, ADR-0008) is all the platform needs; `--project-id`
+remains available for Phoenix routing. `--endpoint` defaults to the platform
+backend on `http://localhost:8000` (dashboard executions/costs); point it at
+`http://localhost:6006` for Phoenix. Local models are priced at **$0.00** by the
+backend's seeded `ollama` provider-default row.
