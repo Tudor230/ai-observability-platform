@@ -41,7 +41,8 @@ def main():
     )
 
     client = TestClient(app)
-    headers = {"x-project-name": "proj-e2e", "authorization": f"Bearer {key}"}
+    # Key-first ingest (ADR-0008): no x-project-name needed.
+    headers = {"authorization": f"Bearer {key}"}
 
     from datetime import datetime, timedelta, timezone
 

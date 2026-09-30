@@ -46,7 +46,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | Component | Status | Owner |
 |---|---|---|
 | **SDK** (Python; config, trace model, failure/usage capture, LangChain+LlamaIndex instrumentation, export reliability, mock workflows) | **Implemented** | `plans/sdk.md` → `sdk/` |
-| **Project registration & API keys** (teams register project → get API key; SDK sends key + project id as OTLP headers) | **Implemented** | `plans/backend.md` §4 → `backend/src/aiobs_backend/api/routes/projects.py` |
+| **Project registration & API keys** (teams register project → get API key; the key is the ingest identity — ADR-0008) | **Implemented** | `plans/backend.md` §4 → `backend/src/aiobs_backend/api/routes/projects.py` |
 | **Backend: trace processing** (validate, normalize, enrich with business context, build workflow-level info) | **Implemented** | `plans/backend.md` §6 → `backend/src/aiobs_backend/ingest/pipeline.py` |
 | **Backend: failure classification** (consume `sdk.error.*` + exception events + span status → failure tree) | **Implemented** | `plans/backend.md` §7 → `backend/src/aiobs_backend/classify.py` |
 | **Backend: cost engine** (Phoenix pricing + attribution by client/project/workflow/agent/team) | **Implemented** | `plans/backend.md` §8 → `backend/src/aiobs_backend/cost.py` |

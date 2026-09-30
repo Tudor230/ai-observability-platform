@@ -48,8 +48,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--project-id",
-        default="proj-1",
-        help="Project id sent as the x-project-name header.",
+        default=None,
+        help=(
+            "Deprecated. Project id for Phoenix routing (x-project-name header + "
+            "openinference.project.name resource attribute). The API key identifies "
+            "the project for the platform backend, so omit it there."
+        ),
     )
     args = parser.parse_args(argv)
 

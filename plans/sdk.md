@@ -37,7 +37,7 @@ Phoenix (ingest, storage, token counts, server-side cost)
 ```
 
 - SDK owns the `TracerProvider`, passed into both OpenInference instrumentors.
-- Resource attributes: `service.name`, `service.version`, `deployment.environment` (OTel env conventions).
+- Resource attributes: `service.name`, `service.version`, `deployment.environment` (OTel env conventions), plus `openinference.project.name` when the deprecated `project_id` is configured (Phoenix routing).
 - Never double-instrument: SDK warns at init if another LangChain/LlamaIndex/provider instrumentor is already active (OpenInference issue #2268).
 
 ## 4. Configuration & initialization
@@ -48,13 +48,18 @@ from ai_observability import init
 init(
     api_key="...",        # env: AI_OBSERVABILITY_API_KEY
     endpoint="http://localhost:6006",   # env: AI_OBSERVABILITY_ENDPOINT
-    project_id="proj-1",  # env: AI_OBSERVABILITY_PROJECT_ID
+    project_id="proj-1",  # env: AI_OBSERVABILITY_PROJECT_ID — optional, DEPRECATED
     capture_prompts=False,
 )
 ```
 
 - Explicit args override env vars (12-factor).
-- API key + project id ride as **custom OTLP headers** — the platform's ingest authenticates and routes by them; works with Phoenix today.
+- The **API key is the ingest identity** (ADR-0008): sent as `authorization:
+  Bearer`, and the platform resolves the project from it.
+- `project_id` is **optional and deprecated** — the key identifies the project,
+  so only set it for Phoenix routing/dev. When set, it is sent as
+  `x-project-name` and as the `openinference.project.name` resource attribute;
+  the SDK warns at `init()`. Removal is targeted at a future major version.
 - Transport: OTLP HTTP `/v1/traces`.
 - `capture_prompts` gates payload capture globally (see §7); per-workflow override available.
 
@@ -87,7 +92,7 @@ async def run_checkout(order_id):
 - **Nesting**: workflows can nest (child CHAIN under parent CHAIN) for multi-stage pipelines.
 - **Identity**: span name = provided workflow name; `session.id` = `workflow_id` automatically; `user.id` only when explicitly passed.
 - **Attributes**:
-  - Predefined, namespaced: `client_id`, `project_id` (from init), `workflow_id`, `version` — structured input for the backend's cost attribution.
+  - Predefined, namespaced: `client_id`, `workflow_id`, `version`, plus `project_id` from init (optional, deprecated) — structured input for the backend's cost attribution. Ingest stores the authenticated project's id as the authoritative `sdk.project_id` (ADR-0008).
   - Flexible: `context` (any JSON-serializable dict) → OpenInference `metadata`.
 
 ### 5.2 Manual span helper
@@ -104,7 +109,7 @@ with span("validate_output", context={"checks": 3}):
 ### 5.3 Trace hierarchy (OTLP)
 
 ```text
-workflow (CHAIN)                       <- session.id, client_id, project_id, workflow_id, version, metadata
+workflow (CHAIN)                       <- session.id, client_id, workflow_id, version, metadata (project_id optional, stored server-authoritative)
 ├── agent run (AGENT)                  <- from instrumentors
 │   ├── LLM call (LLM)                 <- model, provider, tokens, messages, error material
 │   └── Tool call (TOOL)               <- tool name, parameters, error material

@@ -59,7 +59,7 @@ Load demo data through the running backend:
 ```bash
 cd sdk && uv sync --group dev
 # probe the demo project (seed prints its key, or add one in Projects):
-uv run aiobs-mock --endpoint http://localhost:8000 --api-key <key> --project-id proj-1
+uv run aiobs-mock --endpoint http://localhost:8000 --api-key <key>
 ```
 
 ### Run the pieces individually
@@ -78,5 +78,6 @@ npm install && npm run dev                               # dashboard on :5173 (p
 ```
 
 The SDK's mock workflows can be pointed straight at the backend ingest
-(`POST /api/v1/traces`, headers `x-project-name` + `authorization: Bearer <key>`) —
-traces are processed, classified, costed, and appear in the dashboard.
+(`POST /api/v1/traces`, header `authorization: Bearer <key>`; the key alone
+identifies the project — ADR-0008) — traces are processed, classified, costed,
+and appear in the dashboard.

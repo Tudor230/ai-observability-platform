@@ -72,7 +72,8 @@ uv run python dev/inspect_traces.py                 # latest workflow roots
 uv run python dev/inspect_traces.py --trace <id>    # full span list
 ```
 
-or open the Phoenix UI at http://localhost:6006 (project `demo`).
+or open the Phoenix UI at http://localhost:6006 (traces land in the default
+project unless you pass the deprecated `--project-id <name>` for routing).
 
 To intentionally see failure capture, pass an unreachable endpoint or invalid
 key — the workflow root will be `ERROR` with `sdk.error.*` attributes.
@@ -232,6 +233,7 @@ OPENAI_API_KEY=sk-... uv run python examples/langgraph_refund_approval.py \
     --request-id ORD-1234 --capture-prompts
 ```
 
-Then open http://localhost:6006 → Traces → project `demo`: the `ORD-1234`
-session shows one trace containing both runs (interrupt + resume), or inspect
-via `uv run python dev/inspect_traces.py`.
+Then open http://localhost:6006 → Traces (`--project-id` routes to a named
+project; the default project is used otherwise): the `ORD-1234` session shows
+one trace containing both runs (interrupt + resume), or inspect via
+`uv run python dev/inspect_traces.py`.

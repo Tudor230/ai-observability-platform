@@ -12,9 +12,9 @@ regression suite.
 from ai_observability import init, workflow, span
 
 init(
-    api_key="...",             # env: AI_OBSERVABILITY_API_KEY
+    api_key="...",             # env: AI_OBSERVABILITY_API_KEY — the ingest identity
     endpoint="http://localhost:6006",   # env: AI_OBSERVABILITY_ENDPOINT
-    project_id="proj-1",       # env: AI_OBSERVABILITY_PROJECT_ID
+    project_id="proj-1",       # env: AI_OBSERVABILITY_PROJECT_ID — optional, DEPRECATED (Phoenix routing only)
     capture_prompts=False,     # opt-in payload capture
 )
 
@@ -36,8 +36,12 @@ with span("validate_output", context={"checks": 3}):
 ai_observability.flush()
 ```
 
-Explicit args override env vars. The API key and project id ride as custom
-OTLP headers; Phoenix routes spans to the project via `x-project-name`.
+Explicit args override env vars. The **API key is the ingest identity**
+(ADR-0008) — the platform resolves the project from it. `project_id` is
+optional and **deprecated**: set it only for Phoenix routing/dev, where it is
+sent as `x-project-name` and as the `openinference.project.name` resource
+attribute (so Phoenix routes correctly on any version); the SDK warns when it
+is used.
 
 ## Trace storage: Phoenix + PostgreSQL
 
@@ -72,12 +76,14 @@ uv run aiobs-mock                      # pass/fail CLI report (18 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
-Point the suite straight at the platform backend's OTLP ingest (it authenticates
-with the project API key and the `x-project-name` header):
+Point the suite straight at the platform backend's OTLP ingest (key-only is all
+it needs) or at Phoenix with project routing via the deprecated `--project-id`:
 
 ```bash
-uv run aiobs-mock --endpoint http://localhost:8000 \
-    --api-key <project-api-key> --project-id proj-1
+uv run aiobs-mock --endpoint http://localhost:8000 --api-key <project-api-key>
+# Phoenix routing: --project-id sets the openinference.project.name resource
+# attribute (deprecated; also still sends the x-project-name header):
+uv run aiobs-mock --endpoint http://localhost:6006 --project-id proj-1
 ```
 
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid

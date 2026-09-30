@@ -11,9 +11,10 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   workflow step). Carries an OpenInference `openinference.span.kind`
   (`LLM`/`TOOL`/`RETRIEVER`/`AGENT`/`CHAIN`/…).
 - **Workflow root** — the CHAIN span that bounds a business execution; the SDK
-  stamps it with `sdk.client_id`, `sdk.project_id`, `sdk.workflow_id` and
-  `session.id` (= `workflow_id`). The backend turns each workflow root into one
-  **execution**.
+  stamps it with `sdk.client_id`, `sdk.workflow_id` and `session.id`
+  (= `workflow_id`), and optionally `sdk.project_id` — ingest always stores the
+  authenticated project's id there (ADR-0008). The backend turns each workflow
+  root into one **execution**.
 - **Execution** — the backend's normalized record of a workflow root (status,
   cost, tokens, call counts, latency, failure info).
 - **Failure kind** — the backend's authoritative classification of a failing
@@ -34,8 +35,10 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   names, failure taxonomy, redaction rules, hint patterns); never re-declare
   them in one side.
 - **OTLP ingest** — the backend's `POST /v1/traces` (and `/api/v1/traces`)
-  receiver that decodes SDK OTLP protobuf and validates
-  `x-project-name` + `authorization: Bearer <api_key>`.
+  receiver that decodes SDK OTLP protobuf and resolves the project from
+  `authorization: Bearer <api_key>` (ADR-0008). The `x-project-name` header and
+  the root's `sdk.project_id` are optional assertions: a conflict is rejected,
+  and stored root identity is server-authoritative.
 
 ## Explicitly avoided synonyms
 

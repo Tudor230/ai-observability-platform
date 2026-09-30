@@ -60,7 +60,8 @@ implementation plan is [`plans/roles.md`](../../plans/roles.md).
   control and the existing team attribution dimension.
 - Ingest auth (`x-project-name` + project Bearer key) is untouched; project
   keys remain the SDK contract (extended to multiple keys per project in
-  ADR-0007), and the project→team→department hierarchy
+  ADR-0007; the key became the sole ingest identity in ADR-0008), and the
+  project→team→department hierarchy
   supplies rollup attribution.
 - Existing dev/prod data is destroyed by the migration: traces must be
   re-ingested and all users re-provisioned. Accepted for the prototype; the

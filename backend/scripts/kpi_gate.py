@@ -33,7 +33,7 @@ DB_URL = os.environ.get(
     "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/aiobs_test",
 )
 PORT = int(os.environ.get("AIOBS_KPI_PORT", "8000"))
-PROJECT_ID = "proj-1"  # the SDK mock scenarios hard-assert sdk.project_id == proj-1
+PROJECT_ID = "proj-1"  # seeded project; the key alone identifies it (ADR-0008)
 KPI_KEY = "kpi-test-key"
 UV = os.environ.get("UV_EXE", "uv")
 ADMIN_KEY = os.environ.get("AIOBS_ADMIN_API_KEY") or "kpi-admin"
@@ -173,7 +173,7 @@ def main() -> int:
         root = build_span(
             name="checkout", oi_kind="CHAIN", span_id=1, trace_id=7001,
             start=now, end=now + timedelta(seconds=1),
-            attrs={"sdk.project_id": PROJECT_ID, "sdk.client_id": "client-kpi"},
+            attrs={"sdk.client_id": "client-kpi"},
         )
         llm = build_span(
             name="llm", oi_kind="LLM", span_id=2, trace_id=7001, parent_span_id=1,
@@ -185,7 +185,7 @@ def main() -> int:
         req = urllib.request.Request(
             f"http://127.0.0.1:{PORT}/api/v1/traces",
             data=build_request([root, llm]),
-            headers={"x-project-name": PROJECT_ID, "authorization": f"Bearer {key}",
+            headers={"authorization": f"Bearer {key}",
                      "Content-Type": "application/x-protobuf"},
             method="POST",
         )
@@ -204,7 +204,7 @@ def main() -> int:
         mock_started = datetime.now(timezone.utc)
         result = subprocess.run(
             [UV, "run", "aiobs-mock", "--endpoint", f"http://127.0.0.1:{PORT}",
-             "--api-key", key, "--project-id", PROJECT_ID],
+             "--api-key", key],
             cwd=str(SDK_DIR),
             capture_output=True,
             text=True,

@@ -15,13 +15,14 @@ records exceptions as span errors.
 
 Env vars (12-factor, explicit init() args override):
     AI_OBSERVABILITY_API_KEY, AI_OBSERVABILITY_ENDPOINT,
-    AI_OBSERVABILITY_PROJECT_ID, OTEL_SERVICE_NAME, OTEL_SERVICE_VERSION,
-    OTEL_DEPLOYMENT_ENVIRONMENT
+    AI_OBSERVABILITY_PROJECT_ID (deprecated; Phoenix routing only),
+    OTEL_SERVICE_NAME, OTEL_SERVICE_VERSION, OTEL_DEPLOYMENT_ENVIRONMENT
 """
 
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any, Optional
 
 from opentelemetry.sdk.trace.export import SpanExporter
@@ -48,6 +49,24 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+_PROJECT_ID_DEPRECATION_WARNED = False
+
+
+def _warn_project_id_deprecated(project_id: Optional[str]) -> None:
+    """Warn once per process: the API key identifies the project (ADR-0008)."""
+    global _PROJECT_ID_DEPRECATION_WARNED
+    if not project_id or _PROJECT_ID_DEPRECATION_WARNED:
+        return
+    _PROJECT_ID_DEPRECATION_WARNED = True
+    warnings.warn(
+        "project_id / AI_OBSERVABILITY_PROJECT_ID is deprecated: the API key "
+        "identifies the project. project_id is now only used for Phoenix project "
+        "routing (x-project-name header + openinference.project.name resource "
+        "attribute) and will be removed in a future major version.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
 
 def init(
     *,
@@ -63,7 +82,9 @@ def init(
     """Initialize the SDK: tracing pipeline + framework auto-instrumentation.
 
     Args:
-        api_key / endpoint / project_id: platform credentials + collector URL.
+        api_key / endpoint: platform credential + collector URL.
+        project_id: optional, deprecated — only for Phoenix project routing
+            (the API key identifies the platform project; ADR-0008).
         capture_prompts: opt-in payload capture (per-workflow override allowed).
     """
     config = resolve_config(
@@ -82,6 +103,7 @@ def init(
     if kwargs:
         # Typos like init(project="x") would otherwise silently drop telemetry (F39).
         raise TypeError(f"unknown init() arguments: {sorted(kwargs)}")
+    _warn_project_id_deprecated(config.project_id)
 
     state = get_state()
     with state._lock:

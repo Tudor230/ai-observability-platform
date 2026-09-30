@@ -54,7 +54,7 @@ def assert_happy_path(spans, workflow_id: str) -> list[str]:
     root = checks.require_single_root("order-status")
     if root is None:
         return checks.failures
-    checks.attr_eq(root, "sdk.project_id", "proj-1")
+    checks.project_attr_matches_config(root)
     checks.attr_eq(root, "sdk.client_id", "client-42")
     checks.attr_eq(root, "sdk.workflow_id", workflow_id)
     checks.attr_eq(root, "session.id", workflow_id)

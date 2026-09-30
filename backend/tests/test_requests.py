@@ -169,14 +169,14 @@ def test_manager_creates_team_project_and_mints_key(anon, session_factory):
     listing = anon.get("/api/v1/projects").json()["items"]
     assert listing and listing[0]["project_id"] == "core-api"
     assert listing[0]["has_keys"] is False
-    # No key exists yet: ingest is rejected until a member adds one.
+    # No key exists yet: ingest is rejected until a member adds one (key-first, ADR-0008).
     blocked = anon.post(
         "/api/v1/traces",
         content=b"",
         headers={"x-project-name": "core-api", "authorization": "Bearer nope"},
     )
     assert blocked.status_code == 401
-    assert "no API keys yet" in blocked.json()["detail"]
+    assert "invalid API key" in blocked.json()["detail"]
 
     minted = anon.post(
         "/api/v1/projects/core-api/keys", json={"label": "demo"}, headers=CSRF

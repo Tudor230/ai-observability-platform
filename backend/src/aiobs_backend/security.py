@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -61,10 +60,3 @@ def decode_session_token(token: str, secret: str) -> dict | None:
 
 def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
-
-
-def verify_api_key(key: str, key_hash: str | None) -> bool:
-    if not key_hash:
-        return False
-    candidate = hash_api_key(key)
-    return hmac.compare_digest(candidate, key_hash)
