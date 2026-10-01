@@ -112,6 +112,76 @@ describe("toTraceSpans", () => {
     );
     expect(JSON.parse(node.raw).statusMessage).toBe("boom");
   });
+
+  it("rebuilds flattened retrieval documents as the output", () => {
+    const [node] = toTraceSpans([
+      span({
+        span_id: "retriever",
+        kind: "RETRIEVER",
+        attributes: {
+          "input.value": "hardware policy",
+          "retrieval.documents.1.document.id": "POL-SEC-03",
+          "retrieval.documents.1.document.content": "security keys",
+          "retrieval.documents.1.document.metadata": '{"section":"credentials"}',
+          "retrieval.documents.0.document.id": "POL-HW-01",
+          "retrieval.documents.0.document.content": "workstation tier",
+          "retrieval.documents.0.document.score": 0.1,
+          "retrieval.documents.0.document.metadata": '{"section":"workstations"}',
+        },
+      }),
+    ]);
+
+    expect(node.input).toBe("hardware policy");
+    expect(JSON.parse(node.output!)).toEqual([
+      {
+        id: "POL-HW-01",
+        content: "workstation tier",
+        score: 0.1,
+        metadata: { section: "workstations" },
+      },
+      {
+        id: "POL-SEC-03",
+        content: "security keys",
+        metadata: { section: "credentials" },
+      },
+    ]);
+  });
+
+  it("prefers exact output.value over flattened retrieval documents", () => {
+    const [node] = toTraceSpans([
+      span({
+        span_id: "retriever",
+        kind: "RETRIEVER",
+        attributes: {
+          "output.value": '"explicit output"',
+          "retrieval.documents.0.document.content": "flattened doc",
+        },
+      }),
+    ]);
+    expect(JSON.parse(node.output!)).toBe("explicit output");
+  });
+
+  it("falls back to flattened LLM messages for input and output", () => {
+    const [node] = toTraceSpans([
+      span({
+        span_id: "llm",
+        kind: "LLM",
+        attributes: {
+          "llm.input_messages.0.message.role": "user",
+          "llm.input_messages.0.message.content": "plan my hardware",
+          "llm.output_messages.0.message.role": "assistant",
+          "llm.output_messages.0.message.content": "Laptop: ThinkPad T14",
+        },
+      }),
+    ]);
+
+    expect(JSON.parse(node.input!)).toEqual([
+      { role: "user", content: "plan my hardware" },
+    ]);
+    expect(JSON.parse(node.output!)).toEqual([
+      { role: "assistant", content: "Laptop: ThinkPad T14" },
+    ]);
+  });
 });
 
 describe("toTraceRecord", () => {
