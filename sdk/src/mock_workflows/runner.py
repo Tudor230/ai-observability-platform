@@ -11,6 +11,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from ai_observability import flush
 
 from .chroma.scenarios import SCENARIOS as CHROMA_SCENARIOS
+from .groq.scenarios import SCENARIOS as GROQ_SCENARIOS
 from .langchain.scenarios import SCENARIOS as LANGCHAIN_SCENARIOS
 from .langgraph.scenarios import SCENARIOS as LANGGRAPH_SCENARIOS
 from .llamaindex.scenarios import SCENARIOS as LLAMAINDEX_SCENARIOS
@@ -25,6 +26,7 @@ SCENARIOS: list[Scenario] = (
     + LLAMAINDEX_SCENARIOS
     + LANGGRAPH_SCENARIOS
     + OLLAMA_SCENARIOS
+    + GROQ_SCENARIOS
 )
 
 

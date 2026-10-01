@@ -1,4 +1,4 @@
-"""Framework instrumentation wiring (LangChain + LlamaIndex + Ollama + ChromaDB).
+"""Framework instrumentation wiring (LangChain + LlamaIndex + Ollama + Groq + ChromaDB).
 
 Reuses the OpenInference instrumentors with the SDK-owned TracerProvider and
 the SDK's own minimal ChromaDB interceptor (OpenInference has no ChromaDB
@@ -6,9 +6,9 @@ instrumentor). Never double-instrument: warn at init when another instrumentor
 is active.
 
 The instrumented packages (``langchain_core``, ``llama_index.core``,
-``ollama``, ``chromadb``) are **optional**: each is skipped quietly (debug log)
-when not importable. An instrumentor that fails for any other reason warns and
-never propagates into ``init()`` (plan §8).
+``ollama``, ``groq``, ``chromadb``) are **optional**: each is skipped quietly
+(debug log) when not importable. An instrumentor that fails for any other
+reason warns and never propagates into ``init()`` (plan §8).
 
 Payload capture is left ON at the instrumentor level; the enrichment layer
 enforces the SDK's opt-in ``capture_prompts`` policy at export time (that is
@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 _langchain_instrumentor: Optional[object] = None
 _llamaindex_instrumentor: Optional[object] = None
 _ollama_instrumentor: Optional[object] = None
+_groq_instrumentor: Optional[object] = None
 
 
 def _module_available(name: str) -> bool:
@@ -55,6 +56,10 @@ def _llamaindex_available() -> bool:
 
 def _ollama_available() -> bool:
     return _module_available("ollama")
+
+
+def _groq_available() -> bool:
+    return _module_available("groq")
 
 
 def _chroma_available() -> bool:
@@ -97,6 +102,18 @@ def _already_instrumented_ollama() -> bool:
     )
 
 
+def _already_instrumented_groq() -> bool:
+    try:
+        import wrapt
+        from groq.resources.chat.completions import Completions
+    except ImportError:
+        return False
+    return isinstance(
+        Completions.create,
+        (wrapt.ObjectProxy, wrapt.BoundFunctionWrapper),
+    )
+
+
 def _already_instrumented_chroma() -> bool:
     """True when ``Collection.query`` is wrapped, by us or another instrumentor
     (e.g. Traceloop's ``opentelemetry-instrumentation-chromadb``)."""
@@ -129,6 +146,7 @@ def instrument_frameworks(provider: TracerProvider) -> None:
     _instrument_langchain(provider)
     _instrument_llamaindex(provider)
     _instrument_ollama(provider)
+    _instrument_groq(provider)
     _instrument_chroma(provider)
     _instrument_langgraph()
 
@@ -216,6 +234,32 @@ def _instrument_ollama(provider: TracerProvider) -> None:
         _ollama_instrumentor = instrumentor
 
 
+def _instrument_groq(provider: TracerProvider) -> None:
+    """Raw ``groq`` client coverage (plan §7.6).
+
+    The upstream instrumentor patches ``Completions.create`` (sync + async);
+    the SDK calls it from ``init()``, before the app's first completion.
+    """
+    global _groq_instrumentor
+    if not _groq_available():
+        logger.debug("groq is not installed; skipping Groq instrumentation")
+        return
+    try:
+        from openinference.instrumentation.groq import GroqInstrumentor
+    except ImportError as error:
+        logger.warning("Groq instrumentor unavailable: %s", error)
+        return
+    if _already_instrumented_groq():
+        logger.warning(
+            "Groq is already instrumented by another instrumentor; "
+            "skipping to avoid double instrumentation."
+        )
+        return
+    instrumentor = GroqInstrumentor()
+    if _safe_instrument(instrumentor, provider):
+        _groq_instrumentor = instrumentor
+
+
 def _instrument_chroma(provider: TracerProvider) -> None:
     """Raw ``chromadb`` client coverage (plan §7.5).
 
@@ -242,6 +286,7 @@ def _instrument_chroma(provider: TracerProvider) -> None:
 
 def uninstrument_frameworks() -> None:
     global _langchain_instrumentor, _llamaindex_instrumentor, _ollama_instrumentor
+    global _groq_instrumentor
     if _langchain_instrumentor is not None:
         try:
             _langchain_instrumentor.uninstrument()
@@ -260,5 +305,11 @@ def uninstrument_frameworks() -> None:
         except Exception:
             logger.exception("Failed to uninstrument Ollama")
         _ollama_instrumentor = None
+    if _groq_instrumentor is not None:
+        try:
+            _groq_instrumentor.uninstrument()
+        except Exception:
+            logger.exception("Failed to uninstrument Groq")
+        _groq_instrumentor = None
     uninstrument_chroma()
     uninstrument_langgraph()

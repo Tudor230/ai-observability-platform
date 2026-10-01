@@ -15,7 +15,7 @@ Teams register an AI project, get an API key, install the SDK, and automatically
 ## 2. Scope (v1)
 
 - Python only.
-- Reuses OpenInference instrumentors for LangChain, LlamaIndex, and the raw **Ollama** client; the raw **ChromaDB** client uses a minimal SDK-owned RETRIEVER interceptor (§7.5) because OpenInference ships none.
+- Reuses OpenInference instrumentors for LangChain, LlamaIndex, and the raw **Ollama**/**Groq** clients; the raw **ChromaDB** client uses a minimal SDK-owned RETRIEVER interceptor (§7.5) because OpenInference ships none.
 - LangGraph traces via the LangChain instrumentor, with automatic human-in-the-loop (HITL) capture from the SDK (`sdk.hitl.*`).
 - Manual workflow boundary API (no auto-detection).
 - Prompt/response capture opt-in.
@@ -38,7 +38,7 @@ Phoenix (ingest, storage, token counts, server-side cost)
 
 - SDK owns the `TracerProvider`, passed into the OpenInference instrumentors and the SDK-owned ChromaDB interceptor.
 - Resource attributes: `service.name`, `service.version`, `deployment.environment` (OTel env conventions), plus `openinference.project.name` when the deprecated `project_id` is configured (Phoenix routing).
-- Never double-instrument: SDK warns at init if another LangChain/LlamaIndex/Ollama/ChromaDB/provider instrumentor is already active (OpenInference issue #2268).
+- Never double-instrument: SDK warns at init if another LangChain/LlamaIndex/Ollama/Groq/ChromaDB/provider instrumentor is already active (OpenInference issue #2268).
 
 ## 4. Configuration & initialization
 
@@ -193,7 +193,7 @@ Correlation: set `workflow(workflow_id=thread_id)` so the interrupt and resume r
 
 ### 7.4 Ollama (raw client)
 
-Reuse `openinference-instrumentation-ollama` (v0.1.9+, `ollama >= 0.4.0`) with our TracerProvider, so apps that call the Ollama Python client directly — no LangChain/LlamaIndex wrapper — are traced too. All instrumented frameworks are **optional**: a missing package (`ollama`, `langchain_core`, `llama_index.core`) is skipped at debug level, and an instrumentor that fails for any other reason warns without propagating into `init()` (plan §8).
+Reuse `openinference-instrumentation-ollama` (v0.1.9+, `ollama >= 0.4.0`) with our TracerProvider, so apps that call the Ollama Python client directly — no LangChain/LlamaIndex wrapper — are traced too. All instrumented frameworks are **optional**: a missing package (`ollama`, `groq`, `chromadb`, `langchain_core`, `llama_index.core`) is skipped at debug level, and an instrumentor that fails for any other reason warns without propagating into `init()` (plan §8).
 
 - **Coverage**: `ollama.chat`, `ollama.Client.chat`, and `ollama.AsyncClient.chat` (sync + async, `stream=True` included) as OpenInference **LLM** spans (`Chat`/`AsyncChat`); input/output messages, tool definitions, `llm.invocation_parameters`, `llm.provider = "ollama"` (request-side, so errored calls carry it), `llm.model_name` (request and response side), token counts from `prompt_eval_count` → `prompt` and `eval_count` → `completion` (total derived), streaming output reconstructed when the stream drains, errors as exception events + ERROR status. Not covered upstream: `generate`, `embed`/`embeddings`.
 - **Enrichment**: nothing Ollama-specific — the LLM-kind paths (provider normalization, token backfill, failure hints, payload redaction) are instrumentor-agnostic; `llm.provider=ollama` is never overwritten, and capture stays governed by `capture_prompts`.
@@ -208,6 +208,16 @@ OpenInference ships **no** ChromaDB instrumentor (its OpenLLMetry bridge does no
 - **Errors**: exceptions record the exception event + ERROR status and re-raise unchanged; the backend classifies RETRIEVER failures as `retrieval_error`.
 - **Capture**: the interceptor records payload unconditionally; the enrichment layer strips `input.value` / `retrieval.documents.*` at export when `capture_prompts` is off (`chroma.query.result_count` survives).
 - **Scope**: sync `Collection.query` only — the runtime retrieval path. Ingestion (`add`/`upsert`/`get`) and the async client are not instrumented. `chromadb` is a dev dependency of this repo; the interceptor is skipped quietly when it is absent, and a foreign wrapper on `Collection.query` (e.g. Traceloop's) triggers the double-instrumentation warning and is left untouched.
+
+### 7.6 Groq (raw client)
+
+Reuse `openinference-instrumentation-groq` (v0.1.30+, `groq >= 0.9.0`) with our TracerProvider, so apps that call the Groq SDK directly (`Groq().chat.completions.create(...)`) are traced too. Same optional-framework policy as §7.4: an absent `groq` package skips at debug level, and an instrumentor failure warns without escaping `init()`.
+
+- **Span shape**: OpenInference **LLM** span named `Completions`; `llm.provider=groq`, `llm.model_name` + `llm.token_count.*` from the response `usage`, `input.value` + `llm.input_messages.N.message.*` (request) and `output.value` + `llm.output_messages.N.message.*` (response), `llm.invocation_parameters` (model, temperature, ...). Nested under the active workflow root. Sync and async `Completions.create` are both patched.
+- **Errors**: upstream records the exception event + ERROR status and re-raises; `groq.RateLimitError` classifies as `rate_limit` via the shared hint patterns and propagates to the root. The request side does not record `llm.model_name`, so errored spans carry provider + invocation parameters only (unlike the Ollama instrumentor).
+- **Capture**: the instrumentor records payload unconditionally; the enrichment layer strips `input.value` / `output.value` / `llm.input_messages.*` / `llm.output_messages.*` at export when `capture_prompts` is off (token counts and `llm.invocation_parameters` survive).
+- **Coverage**: non-streaming `chat.completions.create`. `stream=True` produces one LLM span but upstream does not accumulate the streamed content or usage (verified against 0.1.30), so streams carry provider only; no scenario.
+- **Cost**: Groq is a hosted provider with published rates, so there is **no** zero-rate row; the backend seeds exact list rates for `openai/gpt-oss-120b` and `openai/gpt-oss-20b` (the models hosted apps default to) so they are priced out of the box (`plans/backend.md` §8.1).
 
 ## 8. Export reliability
 
@@ -256,6 +266,9 @@ Validates that capture and (later) classification actually work. Runs through th
 | Chroma query | Raw `collection.query` yields a RETRIEVER span with query text + documents |
 | Chroma error | Invalid `where` filter: ERROR RETRIEVER span, exception event, root ERROR |
 | Chroma redaction | capture off: query/documents stripped at export, result count kept |
+| Groq chat | Raw `Groq().chat.completions.create` yields an LLM span with provider/model/tokens + messages |
+| Groq error | 429 rate limit: ERROR LLM span, exception event, `rate_limit` hint, root ERROR |
+| Groq redaction | capture off: messages and IO stripped at export, token counts kept |
 
 ### 9.3 Fixed cost
 
@@ -263,7 +276,7 @@ Fake providers return fixed token counts → token/cost math is deterministic. v
 
 ## 10. Deferred / future work
 
-- Plain OpenAI/Anthropic client auto-instrumentation (the raw **Ollama** client and raw **ChromaDB** retrieval are covered — §7.4/§7.5)
+- Plain OpenAI/Anthropic client auto-instrumentation (the raw **Ollama**/**Groq** clients and raw **ChromaDB** retrieval are covered — §7.4–§7.6)
 - Other vector stores (Qdrant, pgvector, Weaviate, ...) — the same interceptor pattern when needed
 - Packaging/distribution (PyPI, versioning) and the public package/import name (sketched as `ai_observability`)
 - Async/streaming support specifics beyond instrumentor behavior
@@ -322,6 +335,14 @@ ChromaDB effort (`.scratch/chroma/`):
 |---|---|
 | [01 — ChromaDB instrumentation](../.scratch/chroma/issues/01-chromadb-instrumentation.md) | Options (Traceloop bridge, app-side manual span) rejected for the SDK-owned `Collection.query` interceptor emitting OpenInference RETRIEVER spans |
 | [02 — ChromaDB tests & demo](../.scratch/chroma/issues/02-chromadb-tests-and-demo.md) | Offline `EphemeralClient` fixtures, `chroma_*` mock scenarios, demo retrieval step, plan/README updates |
+
+Groq effort (`.scratch/groq/`):
+
+| Ticket | Decision |
+|---|---|
+| [01 — Groq instrumentation](../.scratch/groq/issues/01-groq-instrumentation.md) | Reuse `openinference-instrumentation-groq`; sync + async completions; streams not accumulated upstream; dev-dep-only `groq`; no ADR |
+| [02 — Groq wiring & tests](../.scratch/groq/issues/02-groq-wiring-and-tests.md) | `_instrumentation.py` guards + `httpx.MockTransport` fakes + `groq_chat*` mock scenarios |
+| [03 — Groq pricing & docs](../.scratch/groq/issues/03-groq-pricing-and-docs.md) | Seeded gpt-oss list rates (no zero row — hosted, billed provider); plan/README updates |
 
 Research findings: `.scratch/sdk/research/01-openinference-coverage.md`, `.scratch/sdk/research/09-retry-observability.md`.
 

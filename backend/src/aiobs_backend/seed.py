@@ -25,6 +25,9 @@ DEFAULT_PRICING: list[tuple[str, str, str, float, float, float | None, float | N
     ("xai", "grok-", "prefix", 0.30, 1.50, None, None, None),
     ("google", "gemini-", "prefix", 0.50, 1.50, 0.50, 1.00, None),
     ("groq", "llama-", "prefix", 0.59, 0.79, None, None, None),
+    # Groq's gpt-oss list rates (the model the RCA demo defaults to).
+    ("groq", "openai/gpt-oss-120b", "exact", 0.15, 0.60, 0.075, None, None),
+    ("groq", "openai/gpt-oss-20b", "exact", 0.075, 0.30, None, None, None),
     # Local runtimes are free: an explicit zero rate prices them at $0 instead
     # of leaving them unpriced (NULL). Delete the row to go back to unpriced.
     ("ollama", "*", "default", 0.0, 0.0, None, None, None),

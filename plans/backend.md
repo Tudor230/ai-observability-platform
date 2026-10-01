@@ -241,7 +241,9 @@ Cache-read/write and reasoning-token pricing applied when the pricing row define
 Unpriced models → cost `NULL` (visible as "unpriced"), never fabricated. Local runtimes
 ship a seeded provider-default row with a zero rate (`ollama`), so their calls price at
 `$0.00` — an explicit price of zero, not a fabricated one; delete the row to return to
-unpriced.
+unpriced. Hosted models ship seeded list-rate rows (e.g. `groq` +
+`openai/gpt-oss-120b`/`openai/gpt-oss-20b`), so open-weight deployments are priced out
+of the box.
 
 ### 8.2 Attribution
 

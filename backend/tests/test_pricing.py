@@ -92,6 +92,21 @@ def test_local_model_cost_is_zero_via_provider_default(client, session_factory, 
         assert float(ex.total_cost) == 0.0
 
 
+def test_groq_gpt_oss_uses_seeded_list_rate(client, session_factory, project):
+    """Seeded Groq list rate for gpt-oss-120b: $0.15/M in, $0.60/M out."""
+    attrs = {
+        "llm.model_name": "openai/gpt-oss-120b",
+        "llm.provider": "groq",
+        "llm.token_count.prompt": 1000,
+        "llm.token_count.completion": 500,
+    }
+    resp = client.post(
+        "/api/v1/traces", content=build_request(_llm_trace(5, attrs)), headers=_headers()
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["traces"][0]["total_cost"] == pytest.approx(0.00045)  # 150 + 300 / 1e6
+
+
 def test_cache_and_reasoning_tokens_costed(client, session_factory, project):
     # gpt-4o-mini: input 0.15, output 0.60, cache_read 0.075, cache_write 0.15, reasoning = output price.
     attrs = {

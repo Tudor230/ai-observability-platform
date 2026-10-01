@@ -45,7 +45,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 
 | Component | Status | Owner |
 |---|---|---|
-| **SDK** (Python; config, trace model, failure/usage capture, LangChain+LlamaIndex+Ollama+ChromaDB instrumentation, export reliability, mock workflows) | **Implemented** | `plans/sdk.md` → `sdk/` |
+| **SDK** (Python; config, trace model, failure/usage capture, LangChain+LlamaIndex+Ollama+Groq+ChromaDB instrumentation, export reliability, mock workflows) | **Implemented** | `plans/sdk.md` → `sdk/` |
 | **Project registration & API keys** (teams register project → get API key; the key is the ingest identity — ADR-0008) | **Implemented** | `plans/backend.md` §4 → `backend/src/aiobs_backend/api/routes/projects.py` |
 | **Backend: trace processing** (validate, normalize, enrich with business context, build workflow-level info) | **Implemented** | `plans/backend.md` §6 → `backend/src/aiobs_backend/ingest/pipeline.py` |
 | **Backend: failure classification** (consume `sdk.error.*` + exception events + span status → failure tree) | **Implemented** | `plans/backend.md` §7 → `backend/src/aiobs_backend/classify.py` |
@@ -79,7 +79,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 
 ## 8. Deferred items
 
-- Plain OpenAI/Anthropic client auto-instrumentation (the raw **Ollama** client and **ChromaDB** retrieval are covered); other vector stores; LangChain memory/reranker tracing; CrewAI and other frameworks.
+- Plain OpenAI/Anthropic client auto-instrumentation (the raw **Ollama**/**Groq** clients and **ChromaDB** retrieval are covered); other vector stores; LangChain memory/reranker tracing; CrewAI and other frameworks.
 - Automated evaluation beyond mock workflows (LLM-as-judge style).
 - Rate sampling; SDK packaging/naming decisions (PyPI, import name).
 - Exact per-attempt retry counts (httpx event-hook client).

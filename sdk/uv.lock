@@ -16,6 +16,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiobs-contracts" },
     { name = "openinference-instrumentation" },
+    { name = "openinference-instrumentation-groq" },
     { name = "openinference-instrumentation-langchain" },
     { name = "openinference-instrumentation-llama-index" },
     { name = "openinference-instrumentation-ollama" },
@@ -33,6 +34,7 @@ tiktoken = [
 [package.dev-dependencies]
 dev = [
     { name = "chromadb" },
+    { name = "groq" },
     { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
@@ -49,6 +51,7 @@ dev = [
 requires-dist = [
     { name = "aiobs-contracts", editable = "../shared/aiobs_contracts" },
     { name = "openinference-instrumentation", specifier = ">=0.1.14" },
+    { name = "openinference-instrumentation-groq", specifier = ">=0.1.30" },
     { name = "openinference-instrumentation-langchain", specifier = ">=0.1.73" },
     { name = "openinference-instrumentation-llama-index", specifier = ">=4.4.8" },
     { name = "openinference-instrumentation-ollama", specifier = ">=0.1.9" },
@@ -63,6 +66,7 @@ provides-extras = ["tiktoken"]
 [package.metadata.requires-dev]
 dev = [
     { name = "chromadb", specifier = ">=1.5.9" },
+    { name = "groq", specifier = ">=0.9.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "langchain-core", specifier = ">=1.0" },
     { name = "langchain-openai", specifier = ">=0.3" },
@@ -1014,6 +1018,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/27/af/018c10bc9edd42b6ef6db2e96b09542050d5253f9b195e74bc910b2d13ab/griffelib-2.3.0.tar.gz", hash = "sha256:7b0952caf5bca6afa4bb5ee8c6a2d183fe3f21b62efc5f6c7243cb2b26d2d115", size = 234534, upload-time = "2026-09-04T15:08:17.472Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/63/e876e789525063c840ccfa8857febdabd6523bcef9ce7eb979b9305ea895/griffelib-2.3.0-py3-none-any.whl", hash = "sha256:1b8f9cd525681c26b1d6d574faa1371651e8459ca51d209684f50b8096ae06e0", size = 169423, upload-time = "2026-09-04T15:08:12.956Z" },
+]
+
+[[package]]
+name = "groq"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0c/c1/20cb719bc21aa22df185c4aa60abc17680d7067d41fe0ca3fda98b75822b/groq-1.7.0.tar.gz", hash = "sha256:d582dbb3f071b92ca339baba83af9f57ba6f46a51c34b04565d7cb9badb2785b", size = 158918, upload-time = "2026-08-26T02:36:19.734Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/f6/c3d8ea3194d7d7d8292edd4dbb4b6832d29c2eab04887dda4a742e83902c/groq-1.7.0-py3-none-any.whl", hash = "sha256:cb1518f823423d4e52445859eb7d2918a927794cec12f8d5e50d9161e3690fc8", size = 143797, upload-time = "2026-08-26T02:36:18.497Z" },
 ]
 
 [[package]]
@@ -2534,7 +2555,7 @@ wheels = [
 
 [[package]]
 name = "openinference-instrumentation"
-version = "0.1.61"
+version = "0.1.67"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "openinference-semantic-conventions" },
@@ -2542,9 +2563,27 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/eb/15/a0e849bca3994fe503ce695dfc2da844ef51ca400813f1d171cd39538286/openinference_instrumentation-0.1.61.tar.gz", hash = "sha256:eb5aaad5b377cad7f3454b87b1a00444a8ae3be03e00ded350499bd99f98fbf4", size = 43268, upload-time = "2026-09-04T20:16:12.351Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/9f/e13920b612006fac7fb949b0d8b18e0e269f850774dd85eb848a58eb4bb7/openinference_instrumentation-0.1.67.tar.gz", hash = "sha256:cf348bd936bf9409a7e68bc158c929406126d48f4b77e5aa364b1affb1f3df5c", size = 44175, upload-time = "2026-10-01T02:33:15.143Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/35/f1e9968eaf99f3097a57e55734a7494d4124663a1da2547acc5fa26d3dd2/openinference_instrumentation-0.1.61-py3-none-any.whl", hash = "sha256:e5b52563e2fffbe95da6979369b085aeaa22ec429e8b0350d991c373b148a3cb", size = 50962, upload-time = "2026-09-04T20:16:10.69Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/89/43cd91ea31a1b2c0b16de4538ffcb45030672aa5fbd9b403a3c5dfaa134b/openinference_instrumentation-0.1.67-py3-none-any.whl", hash = "sha256:7793706bb0e91231ede2f5556dd263d9a411514237a662a34aedc09df2f50468", size = 51953, upload-time = "2026-10-01T02:33:13.776Z" },
+]
+
+[[package]]
+name = "openinference-instrumentation-groq"
+version = "0.1.30"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "typing-extensions" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/7a/c6ea11a6268abf8528c1d6173435bc0c93789933b698468d7fd7df628ba8/openinference_instrumentation_groq-0.1.30.tar.gz", hash = "sha256:0276d36867b7cbc9c157bd7f140c3c658b3dee477fe5d817812e8fb0a030b637", size = 13323, upload-time = "2026-10-01T02:33:13.445Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/75/c92ffe3927f546b2d8f71cd68fab35b52e87360edae31efee935425af2c8/openinference_instrumentation_groq-0.1.30-py3-none-any.whl", hash = "sha256:13a4de66a001b68b7606292f45102fd36eefc75ffaff128c177756f45c729039", size = 17425, upload-time = "2026-10-01T02:33:11.379Z" },
 ]
 
 [[package]]
