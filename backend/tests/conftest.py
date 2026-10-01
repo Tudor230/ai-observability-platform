@@ -48,6 +48,7 @@ def _seed_pricing(session):
         ("openai", "gpt-4o", 2.50, 10.00, 1.25, 2.50, None),
         ("anthropic", "claude", 3.00, 15.00, 0.30, 3.00, 15.00),
         ("deepseek", "deepseek-chat", 0.27, 1.10, None, None, None),
+        ("groq", "openai/gpt-oss-120b", 0.15, 0.60, 0.075, None, None),
     ):
         session.add(
             Pricing(
@@ -62,6 +63,17 @@ def _seed_pricing(session):
                 effective_from=now,
             )
         )
+    # Local runtimes are free: explicit zero rate (priced $0, not unpriced).
+    session.add(
+        Pricing(
+            provider="ollama",
+            model="*",
+            model_match="default",
+            input_price_per_1m=0.0,
+            output_price_per_1m=0.0,
+            effective_from=now,
+        )
+    )
     session.commit()
 
 

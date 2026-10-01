@@ -67,12 +67,15 @@ Authorization is membership-based; see
   department, covering manager creating a team/project). New departments can
   only be requested by users holding an `admin`, `exec`, or `manager`
   membership — engineers and clients get `403`.
-- **Ingest keys (ADR-0007)**: an approved project starts keyless; any
+- **Ingest keys (ADR-0007/ADR-0008)**: an approved project starts keyless; any
   engineer/manager member can manage its keys — `GET/POST
   /api/v1/projects/{project_id}/keys`, `POST …/keys/{key_id}/rotate`
   (regenerates in place), `DELETE …/keys/{key_id}` (soft revoke). Keys are
   listed redacted (`••••<hint>`), several may be active, and ingest accepts any
-  active key (the plaintext is shown once).
+  active key (the plaintext is shown once). The key alone identifies the
+  project; `x-project-name` is an optional assertion (conflict → 409), and a
+  root whose `sdk.project_id` conflicts with the key is skipped — a batch with
+  no acceptable traces answers 409.
 - **Accounts (admin)**: `POST /api/v1/users` provisions a login (password shown
   once), `POST /users/{id}/reset-password` rotates it, and
   `POST/DELETE /users/{id}/memberships[/{id}]` grant or revoke memberships

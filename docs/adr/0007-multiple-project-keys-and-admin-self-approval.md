@@ -21,7 +21,9 @@ from the Requests page, with no per-project overview.
   `last_used_at`, `revoked_at`) replaces `projects.api_key_hash` /
   `api_key_label`; the migration carries existing hashes over. Ingest
   (`x-project-name` + `Bearer`) authenticates against **any active key** and
-  records `last_used_at` on the matched row. The SDK contract is unchanged.
+  records `last_used_at` on the matched row. The SDK contract is unchanged
+  *at that point*; ADR-0008 later made the key the sole ingest identity and
+  the `x-project-name` header an optional assertion.
 - **Keys are managed per credential**, member-authorized (covering
   engineer/manager) or admin: list (redacted `••••<hint>`), add (plaintext shown
   once), rotate (regenerate one key's secret in place, keeping its label), and
@@ -59,3 +61,5 @@ from the Requests page, with no per-project overview.
 - `plans/roles.md` — implementation plan
 - `.scratch/roles/map.md` — the roles decision map
 - `docs/adr/0006-membership-rbac-jwt-sessions.md` — the base RBAC/auth design
+- `docs/adr/0008-ingest-identity-key-authoritative.md` — supersedes the
+  "SDK contract is unchanged" sentence above

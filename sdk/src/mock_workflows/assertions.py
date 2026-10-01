@@ -111,6 +111,21 @@ class ScenarioAssertions:
         value = self.attrs(span).get(key)
         self.require(value == expected, f"{span.name!r}.{key} = {value!r}, expected {expected!r}")
 
+    def attr_absent(self, span: ReadableSpan, key: str) -> None:
+        value = self.attrs(span).get(key)
+        self.require(value is None, f"{span.name!r}.{key} = {value!r}, expected no value")
+
+    def project_attr_matches_config(self, span: ReadableSpan) -> None:
+        """sdk.project_id reflects the deprecated config; absent when key-only (ADR-0008)."""
+        from ai_observability._state import get_state
+
+        config = get_state().config
+        configured = config.project_id if config is not None else None
+        if configured:
+            self.attr_eq(span, "sdk.project_id", configured)
+        else:
+            self.attr_absent(span, "sdk.project_id")
+
     def attr_is_int(self, span: ReadableSpan, key: str) -> None:
         value = self.attrs(span).get(key)
         self.require(

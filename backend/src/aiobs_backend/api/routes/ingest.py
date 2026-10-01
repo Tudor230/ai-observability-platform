@@ -28,6 +28,18 @@ async def _ingest(request: Request, session: Session, project: Project) -> dict:
     except InvalidOtlpPayload as exc:
         raise HTTPException(status_code=400, detail=f"invalid OTLP payload: {exc}") from exc
     summaries = process_trace_batch(session, project, raw_spans)
+    # A batch whose only traces assert a different project is a misconfiguration and
+    # must not vanish silently: 409 is permanent for the OTel exporter, so the SDK
+    # logs it (ADR-0008). Partial mismatches still answer 200 with a per-trace skip.
+    if summaries and all(s.get("skipped") == "project_mismatch" for s in summaries):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "project_mismatch",
+                "detail": "no trace in the batch matches the API key's project",
+                "traces": [s["trace_id"] for s in summaries],
+            },
+        )
     # Commit before the response is sent: FastAPI runs yield-dependency teardown
     # (where session_scope commits) *after* the response, and an exporter that
     # sends the next batch immediately must be able to see this one.

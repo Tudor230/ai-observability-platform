@@ -11,6 +11,7 @@ import atexit
 import logging
 from typing import Optional
 
+from openinference.semconv.resource import ResourceAttributes
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -30,6 +31,7 @@ SERVICE_VERSION = "service.version"
 DEPLOYMENT_ENVIRONMENT = "deployment.environment"
 
 _PROJECT_HEADER = "x-project-name"
+PROJECT_RESOURCE_ATTR = ResourceAttributes.PROJECT_NAME
 
 
 class _FanOutExporter(SpanExporter):
@@ -71,8 +73,9 @@ class _FanOutExporter(SpanExporter):
 
 
 def build_headers(config: Config) -> dict[str, str]:
-    """Custom OTLP headers: the platform's ingest authenticates and routes by
-    these. Phoenix reads ``x-project-name`` for project routing (>=15.5.0)."""
+    """Custom OTLP headers: the platform's ingest authenticates by the API key.
+    ``x-project-name`` comes from the deprecated ``project_id`` and only feeds
+    Phoenix's project routing (>=15.5.0)."""
     headers: dict[str, str] = {}
     if config.api_key:
         headers["authorization"] = f"Bearer {config.api_key}"
@@ -105,6 +108,10 @@ def build_resource(config: Config) -> Resource:
         attributes[SERVICE_VERSION] = config.service_version
     if config.deployment_environment:
         attributes[DEPLOYMENT_ENVIRONMENT] = config.deployment_environment
+    if config.project_id:
+        # Canonical OpenInference project routing for Phoenix (ADR-0008); the
+        # platform backend ignores resource attributes on purpose.
+        attributes[PROJECT_RESOURCE_ATTR] = config.project_id
     return Resource.create(attributes)
 
 

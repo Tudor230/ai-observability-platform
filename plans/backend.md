@@ -44,7 +44,7 @@ dashboard. They never touch Phoenix, Postgres, or the API internals.
 ```text
 SDK (LangChain / LlamaIndex)
         |  OTLP HTTP /v1/traces
-        |  headers: authorization: Bearer <api_key>, x-project-name: <project_id>
+        |  headers: authorization: Bearer <api_key> (x-project-name optional, ADR-0008)
         v
 Phoenix (trace ingest + storage; server-side token cost from pricing table)
         |
@@ -74,30 +74,40 @@ The backend is written in Python (FastAPI), matching the proposed stack in `docs
 
 ## 4. Project registration & API keys
 
-The SDK sends `authorization: Bearer <api_key>` and `x-project-name: <project_id>` on every
-OTLP export (`sdk/src/ai_observability/_tracing.py`). The backend is the authority for keys.
+The SDK sends `authorization: Bearer <api_key>` on every OTLP export
+(`sdk/src/ai_observability/_tracing.py`); the **API key is the ingest identity**
+(ADR-0008). `x-project-name` and the root's `sdk.project_id` are optional
+assertions. The backend is the authority for keys.
 
 ### 4.1 Entities
 
 - **Team** — owning group for one or more projects.
-- **Project** — a registered application that holds an API key + `project_id`
-  (stable identifier matching the SDK's `x-project-name` / `sdk.project_id`).
-- **APIKey** — `project_id`, secret hash, created/revoked timestamps, optional label.
+- **Project** — a registered application identified by its external `project_id`
+  (routing/attribution key); `name` is display-only.
+- **APIKey** — `project_keys` row: project FK, secret hash, hint, label,
+  created/revoked timestamps, `last_used_at`.
 
 ### 4.2 Key lifecycle
 
 - Admin (or bootstrap) creates a project → generates an API key (random, high-entropy).
-- Only a **hash** of the key is stored (e.g. SHA-256); the plaintext is shown once.
-- Keys are revoked by disabling; revoked keys reject ingest.
+- Only a **hash** of the key is stored (SHA-256); the plaintext is shown once.
+- Keys are revoked individually (soft); revoked keys reject ingest.
+- `key_hash` is globally indexed (unique) so the key alone resolves its project.
 
 ### 4.3 Ingest validation
 
-On each received trace, the backend:
+On each received batch, the backend:
 
-1. Reads `x-project-name` → looks up the project; rejects unknown/disabled projects.
-2. Validates `authorization: Bearer <key>` against the project's key hash.
-3. Asserts `sdk.project_id` on the root span matches the authenticated project.
-4. Rejects malformed/non-OpenInference payloads with a structured error; never crashes the
+1. Resolves the project from the `authorization: Bearer <key>` hash lookup over
+   active keys; missing/unknown/revoked → 401, disabled project → 403.
+2. If `x-project-name` is present, asserts it equals the key's project — else 409.
+3. Per trace, asserts the root's `sdk.project_id` (when present) matches the key's
+   project; a mismatch skips that trace. If the batch yields zero acceptable
+   traces for this reason, the request answers 409 (non-retryable, so the SDK's
+   exporter logs it).
+4. Stores the authenticated project's id as `sdk.project_id` on root spans
+   (server-authoritative; the SDK-sent value is overwritten).
+5. Rejects malformed/non-OpenInference payloads with a structured error; never crashes the
    ingest path.
 
 ## 5. Data model (PostgreSQL)
@@ -228,7 +238,12 @@ cost        = input_cost + output_cost
 ```
 
 Cache-read/write and reasoning-token pricing applied when the pricing row defines them.
-Unpriced models → cost `NULL` (visible as "unpriced"), never fabricated.
+Unpriced models → cost `NULL` (visible as "unpriced"), never fabricated. Local runtimes
+ship a seeded provider-default row with a zero rate (`ollama`), so their calls price at
+`$0.00` — an explicit price of zero, not a fabricated one; delete the row to return to
+unpriced. Hosted models ship seeded list-rate rows (e.g. `groq` +
+`openai/gpt-oss-120b`/`openai/gpt-oss-20b`), so open-weight deployments are priced out
+of the box.
 
 ### 8.2 Attribution
 
@@ -362,7 +377,7 @@ Also recorded as [ADR-0001](../docs/adr/0001-backend-ingest-otlp-direct.md).
 
 ## Implementation status (2026-09-15)
 
-Shipped as planned, with these deltas (see `docs/06-project-audit.md` �7 and
+Shipped as planned, with these deltas (see `docs/06-project-audit.md` §7 and
 `docs/adr/`):
 
 - **Alert engine**: budget rules **plus** threshold rules (error rate, daily

@@ -91,7 +91,7 @@ class ProjectKey(Base):
     project_id: Mapped[str] = mapped_column(
         ForeignKey("projects.id"), nullable=False, index=True
     )
-    key_hash: Mapped[str] = mapped_column(String(128))
+    key_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     # Last 4 plaintext chars, for redacted display in the dashboard.
     key_hint: Mapped[str | None] = mapped_column(String(8), nullable=True)
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)

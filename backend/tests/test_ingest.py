@@ -169,7 +169,7 @@ def test_metrics_rollup(client, session_factory, project):
     assert m["total_cost"] > 0
 
 
-def test_project_mismatch_skipped(client, session_factory, project):
+def test_project_mismatch_answers_409(client, session_factory, project):
     now = _now()
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=300,
@@ -177,10 +177,116 @@ def test_project_mismatch_skipped(client, session_factory, project):
         attrs={"sdk.project_id": "other-proj", "sdk.client_id": "client-42"},
     )
     resp = client.post("/api/v1/traces", content=build_request([root]), headers=_headers())
-    assert resp.status_code == 200
-    assert resp.json()["traces"][0]["skipped"] == "project_mismatch"
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "project_mismatch"
     with session_factory() as session:
         assert session.execute(select(Execution)).first() is None
+
+
+def test_key_alone_identifies_project(client, session_factory, project):
+    """ADR-0008: no x-project-name, no sdk.project_id — the key is the identity."""
+    now = _now()
+    root = build_span(
+        name="key-only", oi_kind="CHAIN", span_id=1, trace_id=1300,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.client_id": "client-42"},
+    )
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request([root]),
+        headers={"authorization": f"Bearer {KEY}"},
+    )
+    assert resp.status_code == 200, resp.text
+    with session_factory() as session:
+        execution = session.execute(select(Execution)).scalar_one()
+        assert execution.project_id == project.id
+        span = session.execute(select(Span)).scalar_one()
+        # Stored root identity is server-authoritative.
+        assert span.attributes["sdk.project_id"] == "proj-1"
+
+
+def test_continued_trace_roots_both_get_injected_identity(
+    client, session_factory, project
+):
+    """A continued trace (two roots, one trace id) is keyed on the second root too."""
+    now = _now()
+    first = build_span(
+        name="approval", oi_kind="CHAIN", span_id=1, trace_id=1600,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.workflow_id": "thread-1", "session.id": "thread-1"},
+    )
+    resumed = build_span(
+        name="approval", oi_kind="CHAIN", span_id=2, trace_id=1600,
+        start=now + timedelta(seconds=2), end=now + timedelta(seconds=3),
+        attrs={"sdk.workflow_id": "thread-1", "session.id": "thread-1"},
+    )
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request([first, resumed]),
+        headers={"authorization": f"Bearer {KEY}"},
+    )
+    assert resp.status_code == 200, resp.text
+    with session_factory() as session:
+        roots = session.execute(select(Span).where(Span.kind == "CHAIN")).scalars().all()
+        assert len(roots) == 2
+        assert all(s.attributes["sdk.project_id"] == "proj-1" for s in roots)
+
+
+def test_conflicting_second_root_answers_409(client, session_factory, project):
+    """Every workflow root in the batch is validated, not just the selected one."""
+    now = _now()
+    first = build_span(
+        name="approval", oi_kind="CHAIN", span_id=1, trace_id=1601,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.workflow_id": "thread-2", "session.id": "thread-2"},
+    )
+    resumed = build_span(
+        name="approval", oi_kind="CHAIN", span_id=2, trace_id=1601,
+        start=now + timedelta(seconds=2), end=now + timedelta(seconds=3),
+        attrs={
+            "sdk.workflow_id": "thread-2",
+            "session.id": "thread-2",
+            "sdk.project_id": "other-proj",
+        },
+    )
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request([first, resumed]),
+        headers={"authorization": f"Bearer {KEY}"},
+    )
+    assert resp.status_code == 409
+    with session_factory() as session:
+        assert session.execute(select(Execution)).first() is None
+
+
+def test_header_conflict_answers_409(client, project):
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request(_happy_trace()),
+        headers={"x-project-name": "other-proj", "authorization": f"Bearer {KEY}"},
+    )
+    assert resp.status_code == 409
+    assert "does not match the key's project" in resp.json()["detail"]
+
+
+def test_partial_project_mismatch_stays_200(client, session_factory, project):
+    good = _single_root(1400)
+    bad = _single_root(1401, project_id="other-proj")
+    resp = client.post(
+        "/api/v1/traces", content=build_request(good + bad), headers=_headers()
+    )
+    assert resp.status_code == 200, resp.text
+    summaries = resp.json()["traces"]
+    assert summaries[0]["status"] == "ok"
+    assert summaries[1]["skipped"] == "project_mismatch"
+    with session_factory() as session:
+        assert len(session.execute(select(Execution)).scalars().all()) == 1
+
+
+def test_missing_api_key_is_401(client, project):
+    resp = client.post("/api/v1/traces", content=build_request(_happy_trace()))
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "missing API key"
 
 
 def test_project_scope_header(client, session_factory, project):
@@ -356,7 +462,8 @@ def test_project_mismatch_preserves_existing_rows(client, session_factory, proje
     resp = client.post(
         "/api/v1/traces", content=build_request([bad_root]), headers=_headers()
     )
-    assert resp.json()["traces"][0]["skipped"] == "project_mismatch"
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "project_mismatch"
     with session_factory() as session:
         ex = session.execute(select(Execution)).scalar_one()
         assert ex.workflow_name == "checkout"

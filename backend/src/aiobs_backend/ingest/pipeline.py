@@ -218,15 +218,31 @@ def process_trace(
         return _provisional_batch(session, project, derived, trace_id)
 
     root_a = root.raw.attributes
-    # Ingest validation: the authenticated project must match the root's identity.
-    # Rows are only deleted *after* this check, so a rejected batch is a no-op.
-    root_project = attrs.as_str(root_a, attrs.SDK_PROJECT_ID)
-    if root_project and root_project != project.project_id:
-        return {
-            "trace_id": trace_id,
-            "skipped": "project_mismatch",
-            "detail": f"root sdk.project_id={root_project!r} != {project.project_id!r}",
-        }
+    # Ingest validation: the authenticated project must match the identity of every
+    # workflow root in the batch — a continued trace (LangGraph interrupt/resume)
+    # carries two roots sharing one trace id. Rows are only deleted *after* this
+    # check, so a rejected batch is a no-op.
+    for d in derived:
+        if not _is_workflow_root(d):
+            continue
+        asserted = attrs.as_str(d.raw.attributes, attrs.SDK_PROJECT_ID)
+        if asserted and asserted != project.project_id:
+            return {
+                "trace_id": trace_id,
+                "skipped": "project_mismatch",
+                "detail": (
+                    f"root sdk.project_id={asserted!r} != {project.project_id!r}"
+                ),
+            }
+    # Server-authoritative identity (ADR-0008): stored workflow roots always carry
+    # the authenticated project, whatever the SDK sent (or omitted).
+    for d in derived:
+        if _is_workflow_root(d) or d.raw.span_id == root.raw.span_id:
+            d.raw.attributes = {
+                **d.raw.attributes,
+                attrs.SDK_PROJECT_ID: project.project_id,
+            }
+    root_a = root.raw.attributes
 
     # Validated root in hand: idempotent recompute may safely replace old rows,
     # unless the stored execution is *provisional* (children arrived first) —

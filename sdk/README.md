@@ -2,9 +2,10 @@
 
 Python observability SDK for the AI Observability Platform (phase 1).
 Implements [`plans/sdk.md`](../plans/sdk.md): manual workflow boundaries,
-LangChain + LlamaIndex auto-instrumentation, failure/usage capture, OTLP HTTP
-export into Phoenix (PostgreSQL-backed), and a deterministic mock-workflow
-regression suite.
+LangChain + LlamaIndex + raw Ollama + raw Groq + raw ChromaDB client
+auto-instrumentation, failure/usage
+capture, OTLP HTTP export into Phoenix (PostgreSQL-backed), and a deterministic
+mock-workflow regression suite.
 
 ## Quickstart
 
@@ -12,9 +13,9 @@ regression suite.
 from ai_observability import init, workflow, span
 
 init(
-    api_key="...",             # env: AI_OBSERVABILITY_API_KEY
+    api_key="...",             # env: AI_OBSERVABILITY_API_KEY — the ingest identity
     endpoint="http://localhost:6006",   # env: AI_OBSERVABILITY_ENDPOINT
-    project_id="proj-1",       # env: AI_OBSERVABILITY_PROJECT_ID
+    project_id="proj-1",       # env: AI_OBSERVABILITY_PROJECT_ID — optional, DEPRECATED (Phoenix routing only)
     capture_prompts=False,     # opt-in payload capture
 )
 
@@ -26,7 +27,7 @@ with workflow(
     version="v2",
     context={"channel": "web"},
 ) as wf:
-    run_agent()                # LangChain/LlamaIndex spans nest under it
+    run_agent()                # LangChain/LlamaIndex/Ollama/Groq/ChromaDB spans nest under it
 
 # Manual step for non-framework code
 with span("validate_output", context={"checks": 3}):
@@ -36,8 +37,12 @@ with span("validate_output", context={"checks": 3}):
 ai_observability.flush()
 ```
 
-Explicit args override env vars. The API key and project id ride as custom
-OTLP headers; Phoenix routes spans to the project via `x-project-name`.
+Explicit args override env vars. The **API key is the ingest identity**
+(ADR-0008) — the platform resolves the project from it. `project_id` is
+optional and **deprecated**: set it only for Phoenix routing/dev, where it is
+sent as `x-project-name` and as the `openinference.project.name` resource
+attribute (so Phoenix routes correctly on any version); the SDK warns when it
+is used.
 
 ## Trace storage: Phoenix + PostgreSQL
 
@@ -67,22 +72,27 @@ Deterministic scenarios through the real SDK + instrumentors with framework
 fake models (fixed responses, fixed token counts, scripted failures):
 
 ```bash
-uv run pytest                          # 97 tests, offline (in-memory export)
-uv run aiobs-mock                      # pass/fail CLI report (18 scenarios)
+uv run pytest                          # 160 tests, offline (in-memory export)
+uv run aiobs-mock                      # pass/fail CLI report (28 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
-Point the suite straight at the platform backend's OTLP ingest (it authenticates
-with the project API key and the `x-project-name` header):
+Point the suite straight at the platform backend's OTLP ingest (key-only is all
+it needs) or at Phoenix with project routing via the deprecated `--project-id`:
 
 ```bash
-uv run aiobs-mock --endpoint http://localhost:8000 \
-    --api-key <project-api-key> --project-id proj-1
+uv run aiobs-mock --endpoint http://localhost:8000 --api-key <project-api-key>
+# Phoenix routing: --project-id sets the openinference.project.name resource
+# attribute (deprecated; also still sends the x-project-name header):
+uv run aiobs-mock --endpoint http://localhost:6006 --project-id proj-1
 ```
 
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid
 JSON, retrieval failure, high latency, rate limit, retry-then-success — plus
-LangGraph: basic node tracing, interrupt, resume, and streaming interrupt.
+LangGraph: basic node tracing, interrupt, resume, and streaming interrupt; plus
+raw Ollama chat: happy path, rate-limit error, redaction, and streaming; plus
+raw ChromaDB query: retrieval span, invalid filter, and redaction; plus raw
+Groq chat: happy path, rate-limit error, and redaction.
 
 ## Real demo (not mocked)
 
@@ -129,6 +139,27 @@ See `examples/README.md`.
   id, interrupting node, checkpoint id. Interrupts are not errors — a
   paused-for-approval workflow stays OK with no `sdk.error.*`. For Phoenix
   session grouping, pass the LangGraph `thread_id` as `workflow_id`.
+* **Raw Ollama client**: plain `ollama.chat` / `Client.chat` / `AsyncClient.chat`
+  calls (streaming included) become OpenInference **LLM** spans with
+  `llm.provider=ollama`, model, token counts (`prompt_eval_count`/`eval_count`),
+  input/output messages, and exception events. Instrument before the first chat
+  call; skipped silently when the `ollama` package is not installed. Local
+  models price at $0 via the backend's seeded zero-rate default row.
+* **Raw Groq client**: plain `Groq().chat.completions.create(...)` calls
+  become OpenInference **LLM** spans (`Completions`) with `llm.provider=groq`,
+  model, token counts from the response `usage`, input/output messages, and
+  exception events (`groq.RateLimitError` → `rate_limit`). Streaming yields one
+  span but upstream does not accumulate content/usage. Skipped silently when
+  the `groq` package is not installed; the backend seeds Groq's gpt-oss list
+  rates so they price out of the box.
+* **Raw ChromaDB client**: plain `collection.query(...)` calls become
+  OpenInference **RETRIEVER** spans (`chroma.query`) with `input.value` (query
+  text), `retrieval.documents.*` (id/content/metadata/distance), `output.value`
+  (the documents as a JSON array, like upstream retriever spans), and
+  `db.system=chroma` / `db.operation` / `db.collection.name`, plus an exception
+  event + ERROR status on failure. The SDK owns this interceptor (OpenInference
+  has no ChromaDB instrumentor); sync `Collection.query` only, skipped silently
+  when `chromadb` is not installed.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).

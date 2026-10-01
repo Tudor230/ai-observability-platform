@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
 from ..db import session_scope
@@ -17,7 +17,6 @@ from ..security import (
     SESSION_COOKIE,
     decode_session_token,
     hash_api_key,
-    verify_api_key,
 )
 from .memberships import (
     allowed_project_ids,
@@ -209,33 +208,36 @@ def get_project_from_headers(
     x_project_name: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
 ) -> Project:
-    """Validate the SDK ingest headers: `x-project-name` + `authorization: Bearer <key>`."""
-    if not x_project_name:
-        raise HTTPException(status_code=401, detail="missing x-project-name header")
-    project = session.execute(
-        select(Project).where(Project.project_id == x_project_name)
-    ).scalar_one_or_none()
-    if project is None:
-        raise HTTPException(status_code=404, detail="unknown project")
-    if not project.enabled:
-        raise HTTPException(status_code=403, detail="project disabled")
-    active_keys = session.execute(
-        select(ProjectKey).where(
-            ProjectKey.project_id == project.id,
-            ProjectKey.revoked_at.is_(None),
-        )
-    ).scalars().all()
-    if not active_keys:
-        raise HTTPException(
-            status_code=401,
-            detail="project has no API keys yet — add one from the project page",
-        )
+    """Resolve the ingest project from the API key alone (ADR-0008).
+
+    The key is the sole identity; ``x-project-name`` is an optional assertion.
+    """
     key = ""
     if authorization and authorization.lower().startswith("bearer "):
-        key = authorization[7:]
-    for candidate in active_keys:
-        if verify_api_key(key, candidate.key_hash):
-            candidate.last_used_at = datetime.now(timezone.utc)
-            session.flush()
-            return project
-    raise HTTPException(status_code=401, detail="invalid API key")
+        key = authorization[7:].strip()
+    if not key:
+        raise HTTPException(status_code=401, detail="missing API key")
+    matched = session.execute(
+        select(ProjectKey)
+        .options(joinedload(ProjectKey.project))
+        .where(
+            ProjectKey.key_hash == hash_api_key(key),
+            ProjectKey.revoked_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if matched is None:
+        raise HTTPException(status_code=401, detail="invalid API key")
+    project = matched.project
+    if not project.enabled:
+        raise HTTPException(status_code=403, detail="project disabled")
+    if x_project_name and x_project_name != project.project_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"x-project-name {x_project_name!r} does not match the key's "
+                f"project {project.project_id!r}"
+            ),
+        )
+    matched.last_used_at = datetime.now(timezone.utc)
+    session.flush()
+    return project

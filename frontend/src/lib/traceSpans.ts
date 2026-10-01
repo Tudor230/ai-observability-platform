@@ -31,6 +31,76 @@ const ERROR_STACK_KEYS = ["error.stack", "exception.stacktrace", "exception.stac
 const INPUT_KEYS = ["input.value", "input", "llm.input_messages", "gen_ai.prompt"];
 const OUTPUT_KEYS = ["output.value", "output", "llm.output_messages", "gen_ai.completion"];
 
+const LLM_INPUT_PREFIX = "llm.input_messages.";
+const LLM_OUTPUT_PREFIX = "llm.output_messages.";
+const RETRIEVAL_DOCUMENTS_PREFIX = "retrieval.documents.";
+
+type JsonObject = Record<string, unknown>;
+
+/**
+ * Rebuilds a JSON array from flattened `retrieval.documents.N.document.*`
+ * attributes — the Python OpenInference convention emitted by LangChain,
+ * LlamaIndex, and the SDK's ChromaDB interceptor. Exact `output.value` wins
+ * when present; this fallback keeps spans that only carry the flattened form
+ * readable in the Input/Output tab.
+ */
+function readRetrievalDocuments(
+  attributes: Record<string, unknown>
+): string | undefined {
+  const documents = new Map<number, JsonObject>();
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!key.startsWith(RETRIEVAL_DOCUMENTS_PREFIX)) continue;
+    const match = /^(\d+)\.document\.(\w+)$/.exec(
+      key.slice(RETRIEVAL_DOCUMENTS_PREFIX.length)
+    );
+    if (!match) continue;
+    const index = Number(match[1]);
+    const document = documents.get(index) ?? {};
+    const field = match[2];
+    document[field] = field === "metadata" ? parseJsonOrValue(value) : value;
+    documents.set(index, document);
+  }
+  return orderedJson(documents);
+}
+
+/**
+ * Same for flattened `llm.input_messages.N.message.role/content` attributes
+ * (the Ollama/LangChain Python form).
+ */
+function readMessages(
+  attributes: Record<string, unknown>,
+  prefix: string
+): string | undefined {
+  const messages = new Map<number, JsonObject>();
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!key.startsWith(prefix)) continue;
+    const match = /^(\d+)\.message\.(role|content)$/.exec(key.slice(prefix.length));
+    if (!match) continue;
+    const index = Number(match[1]);
+    const message = messages.get(index) ?? {};
+    message[match[2]] = value;
+    messages.set(index, message);
+  }
+  return orderedJson(messages);
+}
+
+function parseJsonOrValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function orderedJson(entries: Map<number, JsonObject>): string | undefined {
+  if (entries.size === 0) return undefined;
+  const ordered = [...entries.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, entry]) => entry);
+  return JSON.stringify(ordered, null, 2);
+}
+
 function toAttributeValue(value: unknown): TraceSpanAttributeValue {
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "boolean") return { boolValue: value };
@@ -89,6 +159,7 @@ function toTraceSpan(span: Span): TraceSpan {
   const end = span.ended_at
     ? new Date(span.ended_at)
     : new Date(start.getTime() + (span.duration_ms ?? 0));
+  const attributes = span.attributes ?? {};
 
   return {
     id: span.span_id,
@@ -104,14 +175,19 @@ function toTraceSpan(span: Span): TraceSpan {
         kind: span.kind,
         status: span.status,
         statusMessage: span.error_message ?? undefined,
-        attributes: span.attributes ?? {},
+        attributes,
       },
       null,
       2
     ),
     attributes: toAttributes(span),
-    input: readString(span.attributes, INPUT_KEYS),
-    output: readString(span.attributes, OUTPUT_KEYS),
+    input:
+      readString(span.attributes, INPUT_KEYS) ??
+      readMessages(attributes, LLM_INPUT_PREFIX),
+    output:
+      readString(span.attributes, OUTPUT_KEYS) ??
+      readRetrievalDocuments(attributes) ??
+      readMessages(attributes, LLM_OUTPUT_PREFIX),
     tokensCount: span.total_tokens > 0 ? span.total_tokens : undefined,
     cost: span.cost ?? undefined,
     metadata: {

@@ -72,7 +72,8 @@ uv run python dev/inspect_traces.py                 # latest workflow roots
 uv run python dev/inspect_traces.py --trace <id>    # full span list
 ```
 
-or open the Phoenix UI at http://localhost:6006 (project `demo`).
+or open the Phoenix UI at http://localhost:6006 (traces land in the default
+project unless you pass the deprecated `--project-id <name>` for routing).
 
 To intentionally see failure capture, pass an unreachable endpoint or invalid
 key — the workflow root will be `ERROR` with `sdk.error.*` attributes.
@@ -232,6 +233,54 @@ OPENAI_API_KEY=sk-... uv run python examples/langgraph_refund_approval.py \
     --request-id ORD-1234 --capture-prompts
 ```
 
-Then open http://localhost:6006 → Traces → project `demo`: the `ORD-1234`
-session shows one trace containing both runs (interrupt + resume), or inspect
-via `uv run python dev/inspect_traces.py`.
+Then open http://localhost:6006 → Traces (`--project-id` routes to a named
+project; the default project is used otherwise): the `ORD-1234` session shows
+one trace containing both runs (interrupt + resume), or inspect via
+`uv run python dev/inspect_traces.py`.
+
+---
+
+# Demo: raw Ollama client (no framework)
+
+`ollama_chat.py` traces plain **`ollama.chat(...)`** calls — the shape apps use
+when they talk to Ollama directly (e.g. OnboardingFulfillment's planning nodes)
+instead of going through LangChain/LlamaIndex. It runs one structured planning
+call inside a workflow root, with a **real raw `chromadb` retrieval step** and a
+validation span, producing:
+
+```
+CHAIN  ollama-onboarding      (workflow root, sdk.* business attrs)
+├─ CHAIN fetch_policies       (manual span for the hybrid-retriever logic)
+│  └─ RETRIEVER chroma.query  (raw chromadb query: input.value + retrieval.documents.*)
+├─ LLM   Chat                 (llm.provider=ollama, model, tokens, messages)
+└─ CHAIN validate_plan
+```
+
+The retrieval step queries a real in-memory `chromadb` collection with a
+deterministic embedding function (no Chroma server, no model download), so the
+SDK's ChromaDB interceptor emits the RETRIEVER span offline.
+
+Runs against a real local Ollama server, or fully offline with `--mock`
+(only the HTTP boundary is scripted — same fake as the regression suite, so the
+real client + real instrumentor emit the spans):
+
+```bash
+cd sdk
+
+# offline (no Ollama server needed):
+uv run python examples/ollama_chat.py --mock --capture-prompts \
+    --endpoint http://localhost:8000 --api-key <project-api-key>
+
+# real local Ollama (model from OLLAMA_MODEL, default granite4.2:3b):
+uv run python examples/ollama_chat.py --capture-prompts \
+    --endpoint http://localhost:8000 --api-key <project-api-key>
+
+# streaming (chunks are reconstructed into ONE LLM span with final counts):
+uv run python examples/ollama_chat.py --mock --stream --capture-prompts
+```
+
+`--api-key` (key-only ingest, ADR-0008) is all the platform needs; `--project-id`
+remains available for Phoenix routing. `--endpoint` defaults to the platform
+backend on `http://localhost:8000` (dashboard executions/costs); point it at
+`http://localhost:6006` for Phoenix. Local models are priced at **$0.00** by the
+backend's seeded `ollama` provider-default row.

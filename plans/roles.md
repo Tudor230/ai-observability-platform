@@ -126,7 +126,8 @@ configured origins.
   `AIOBS_ADMIN_PASSWORD` → user + global `admin` membership.
 - Admin `POST /api/v1/users` gains an optional `password` (auto-generated and
   returned once if omitted); user API keys keep being minted.
-- Project ingest auth (`x-project-name` + `Bearer <project key>`) is untouched.
+- Project ingest auth is key-first (`authorization: Bearer <project key>`); the
+  `x-project-name` header is an optional assertion (ADR-0008).
 
 ## 5. Requests & approvals
 

@@ -100,6 +100,25 @@ def test_mock_trace_lands_in_postgres():
         assert all(r["completion_tokens"] is not None for r in llm_rows)
         assert any(r["prompt_tokens"] == "5" for r in llm_rows), "fixed token counts expected"
         assert any(r["prompt_tokens"] == "3" for r in llm_rows), "fixed token counts expected"
+
+        # ADR-0008 routing: x-project-name + openinference.project.name land the
+        # trace in the named Phoenix project.
+        project_rows = _query(
+            """
+            SELECT p.name AS project
+            FROM traces t
+            JOIN projects p ON p.id = t.project_rowid
+            WHERE t.trace_id = (
+                SELECT t.trace_id FROM spans s2
+                JOIN traces t ON t.id = s2.trace_rowid
+                WHERE s2.attributes->'sdk'->>'workflow_id' = %s
+                ORDER BY s2.start_time DESC
+                LIMIT 1
+            )
+            """,
+            (workflow_id,),
+        )
+        assert project_rows and project_rows[0]["project"] == "proj-1", project_rows
     finally:
         ai_observability.shutdown()
 

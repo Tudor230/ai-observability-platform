@@ -126,7 +126,11 @@ def main() -> int:
     parser.add_argument("query", nargs="?", default="Where is my order ORD-1234?")
     parser.add_argument("--order-id", default=None, help="order id used for lookups and validation (defaults to the order id found in the query)")
     parser.add_argument("--client-id", default="client-42")
-    parser.add_argument("--project-id", default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID", "demo"))
+    parser.add_argument(
+        "--project-id",
+        default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID"),
+        help="optional, deprecated: Phoenix project routing only; the API key identifies the platform project",
+    )
     parser.add_argument("--capture-prompts", action="store_true", default=False)
     parser.add_argument("--no-export", action="store_true", help="run without exporting (local only)")
     args = parser.parse_args()
