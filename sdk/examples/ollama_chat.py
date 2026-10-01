@@ -2,13 +2,16 @@
 """Ollama raw-client demo for the ai_observability SDK.
 
 Runs a plain ``ollama.chat(...)`` call — **no** LangChain/LlamaIndex wrapper —
-inside a manual workflow root, with a retrieval step and a validation span, so
-the trace is the exact shape an app like OnboardingFulfillment produces:
-``workflow (CHAIN) -> fetch_policies (CHAIN) + Chat (LLM) + validate_plan (CHAIN)``.
+inside a manual workflow root, with a real raw ``chromadb`` retrieval step and
+a validation span, so the trace is the exact shape an app like
+OnboardingFulfillment produces: ``workflow (CHAIN) -> fetch_policies (CHAIN) ->
+chroma.query (RETRIEVER) + Chat (LLM) + validate_plan (CHAIN)``.
 
 With a local Ollama server it makes real calls; with ``--mock`` it scripts only
 the HTTP boundary (the same fake the regression suite uses), so it runs offline
-while still emitting real spans through the real instrumentor.
+while still emitting real spans through the real instrumentor. The retrieval
+step always runs against a real in-memory chromadb collection with a
+deterministic embedding function (no server, no model download).
 
 Configuration (env vars, 12-factor):
     AI_OBSERVABILITY_API_KEY   platform project key (the key is the identity)
@@ -76,15 +79,34 @@ MOCK_PLAN = json.dumps(
 
 
 def fetch_policies(candidate_role: str) -> list[dict]:
-    """Stand-in for the app's hybrid retrieval step (chroma/BM25 in the real app).
+    """A real raw-chromadb retrieval step — the surface the SDK instruments.
 
-    This is exactly where a manual ``span("fetch_policies")`` belongs when the
-    retriever is not a framework the instrumentors know about.
+    The app's version is a hybrid retriever (dense chroma + BM25 + RRF +
+    cross-encoder) pointed at its own ``PersistentClient`` index; here the
+    dense half runs against the SDK's deterministic in-memory collection
+    (no Chroma server, no embedding-model download). The manual
+    ``span("fetch_policies")`` brackets the surrounding hybrid logic; the
+    ``collection.query(...)`` call inside emits its own RETRIEVER span.
     """
+    try:
+        from mock_workflows.chroma.fakes import QUERY, make_collection
+    except ImportError:  # chromadb not installed: static stand-in
+        return [
+            {"code": "POL-HW-01", "title": "Workstation tiers"},
+            {"code": "POL-LOG-02", "title": "Remote equipment logistics"},
+            {"code": "POL-SEC-03", "title": "Security keys"},
+        ]
+    collection = make_collection()
+    result = collection.query(
+        query_texts=[f"{QUERY} for a {candidate_role}"], n_results=3
+    )
+    metadatas = (result.get("metadatas") or [[]])[0]
     return [
-        {"code": "POL-HW-01", "title": "Workstation tiers"},
-        {"code": "POL-LOG-02", "title": "Remote equipment logistics"},
-        {"code": "POL-SEC-03", "title": "Security keys"},
+        {
+            "code": (metadata or {}).get("policy_code", ""),
+            "title": (metadata or {}).get("section", ""),
+        }
+        for metadata in metadatas
     ]
 
 

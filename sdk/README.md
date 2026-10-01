@@ -2,7 +2,8 @@
 
 Python observability SDK for the AI Observability Platform (phase 1).
 Implements [`plans/sdk.md`](../plans/sdk.md): manual workflow boundaries,
-LangChain + LlamaIndex + raw Ollama client auto-instrumentation, failure/usage
+LangChain + LlamaIndex + raw Ollama + raw ChromaDB client
+auto-instrumentation, failure/usage
 capture, OTLP HTTP export into Phoenix (PostgreSQL-backed), and a deterministic
 mock-workflow regression suite.
 
@@ -26,7 +27,7 @@ with workflow(
     version="v2",
     context={"channel": "web"},
 ) as wf:
-    run_agent()                # LangChain/LlamaIndex spans nest under it
+    run_agent()                # LangChain/LlamaIndex/Ollama/ChromaDB spans nest under it
 
 # Manual step for non-framework code
 with span("validate_output", context={"checks": 3}):
@@ -71,8 +72,8 @@ Deterministic scenarios through the real SDK + instrumentors with framework
 fake models (fixed responses, fixed token counts, scripted failures):
 
 ```bash
-uv run pytest                          # 139 tests, offline (in-memory export)
-uv run aiobs-mock                      # pass/fail CLI report (22 scenarios)
+uv run pytest                          # 151 tests, offline (in-memory export)
+uv run aiobs-mock                      # pass/fail CLI report (25 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
@@ -89,7 +90,8 @@ uv run aiobs-mock --endpoint http://localhost:6006 --project-id proj-1
 Failure catalog covered: LLM error, tool timeout (+ retry inference), invalid
 JSON, retrieval failure, high latency, rate limit, retry-then-success — plus
 LangGraph: basic node tracing, interrupt, resume, and streaming interrupt; plus
-raw Ollama chat: happy path, rate-limit error, redaction, and streaming.
+raw Ollama chat: happy path, rate-limit error, redaction, and streaming; plus
+raw ChromaDB query: retrieval span, invalid filter, and redaction.
 
 ## Real demo (not mocked)
 
@@ -142,6 +144,14 @@ See `examples/README.md`.
   input/output messages, and exception events. Instrument before the first chat
   call; skipped silently when the `ollama` package is not installed. Local
   models price at $0 via the backend's seeded zero-rate default row.
+* **Raw ChromaDB client**: plain `collection.query(...)` calls become
+  OpenInference **RETRIEVER** spans (`chroma.query`) with `input.value` (query
+  text), `retrieval.documents.*` (id/content/metadata/distance), `output.value`
+  (the documents as a JSON array, like upstream retriever spans), and
+  `db.system=chroma` / `db.operation` / `db.collection.name`, plus an exception
+  event + ERROR status on failure. The SDK owns this interceptor (OpenInference
+  has no ChromaDB instrumentor); sync `Collection.query` only, skipped silently
+  when `chromadb` is not installed.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).

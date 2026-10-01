@@ -245,15 +245,20 @@ one trace containing both runs (interrupt + resume), or inspect via
 `ollama_chat.py` traces plain **`ollama.chat(...)`** calls — the shape apps use
 when they talk to Ollama directly (e.g. OnboardingFulfillment's planning nodes)
 instead of going through LangChain/LlamaIndex. It runs one structured planning
-call inside a workflow root, with a simulated retrieval step and a validation
-span, producing:
+call inside a workflow root, with a **real raw `chromadb` retrieval step** and a
+validation span, producing:
 
 ```
 CHAIN  ollama-onboarding      (workflow root, sdk.* business attrs)
-├─ CHAIN fetch_policies       (manual span for non-framework retrieval)
+├─ CHAIN fetch_policies       (manual span for the hybrid-retriever logic)
+│  └─ RETRIEVER chroma.query  (raw chromadb query: input.value + retrieval.documents.*)
 ├─ LLM   Chat                 (llm.provider=ollama, model, tokens, messages)
 └─ CHAIN validate_plan
 ```
+
+The retrieval step queries a real in-memory `chromadb` collection with a
+deterministic embedding function (no Chroma server, no model download), so the
+SDK's ChromaDB interceptor emits the RETRIEVER span offline.
 
 Runs against a real local Ollama server, or fully offline with `--mock`
 (only the HTTP boundary is scripted — same fake as the regression suite, so the

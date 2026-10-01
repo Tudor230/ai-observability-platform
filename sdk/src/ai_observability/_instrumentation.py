@@ -1,12 +1,14 @@
-"""Framework instrumentation wiring (LangChain + LlamaIndex + Ollama instrumentors).
+"""Framework instrumentation wiring (LangChain + LlamaIndex + Ollama + ChromaDB).
 
-Reuses the OpenInference instrumentors with the SDK-owned TracerProvider.
-Never double-instrument: warn at init when another instrumentor is active.
+Reuses the OpenInference instrumentors with the SDK-owned TracerProvider and
+the SDK's own minimal ChromaDB interceptor (OpenInference has no ChromaDB
+instrumentor). Never double-instrument: warn at init when another instrumentor
+is active.
 
-The instrumented frameworks (``langchain_core``, ``llama_index.core``,
-``ollama``) are **optional**: each is skipped quietly (debug log) when its
-package is not importable. An instrumentor that fails for any other reason
-warns and never propagates into ``init()`` (plan §8).
+The instrumented packages (``langchain_core``, ``llama_index.core``,
+``ollama``, ``chromadb``) are **optional**: each is skipped quietly (debug log)
+when not importable. An instrumentor that fails for any other reason warns and
+never propagates into ``init()`` (plan §8).
 
 Payload capture is left ON at the instrumentor level; the enrichment layer
 enforces the SDK's opt-in ``capture_prompts`` policy at export time (that is
@@ -21,6 +23,7 @@ from typing import Optional
 
 from opentelemetry.sdk.trace import TracerProvider
 
+from ._chroma import instrument_chroma, uninstrument_chroma
 from ._langgraph import (
     _already_instrumented_langgraph,
     instrument_langgraph,
@@ -52,6 +55,10 @@ def _llamaindex_available() -> bool:
 
 def _ollama_available() -> bool:
     return _module_available("ollama")
+
+
+def _chroma_available() -> bool:
+    return _module_available("chromadb")
 
 
 def _already_instrumented_langchain() -> bool:
@@ -90,6 +97,20 @@ def _already_instrumented_ollama() -> bool:
     )
 
 
+def _already_instrumented_chroma() -> bool:
+    """True when ``Collection.query`` is wrapped, by us or another instrumentor
+    (e.g. Traceloop's ``opentelemetry-instrumentation-chromadb``)."""
+    try:
+        import wrapt
+        from chromadb.api.models.Collection import Collection
+    except ImportError:
+        return False
+    for klass in Collection.__mro__:
+        if isinstance(klass.__dict__.get("query"), wrapt.FunctionWrapper):
+            return True
+    return False
+
+
 def _safe_instrument(instrumentor: object, provider: TracerProvider, **kwargs) -> bool:
     """Instrument with the SDK provider; failures warn and never propagate (plan §8)."""
     try:
@@ -108,6 +129,7 @@ def instrument_frameworks(provider: TracerProvider) -> None:
     _instrument_langchain(provider)
     _instrument_llamaindex(provider)
     _instrument_ollama(provider)
+    _instrument_chroma(provider)
     _instrument_langgraph()
 
 
@@ -194,6 +216,30 @@ def _instrument_ollama(provider: TracerProvider) -> None:
         _ollama_instrumentor = instrumentor
 
 
+def _instrument_chroma(provider: TracerProvider) -> None:
+    """Raw ``chromadb`` client coverage (plan §7.5).
+
+    The SDK owns this interceptor because OpenInference has no ChromaDB
+    instrumentor; it wraps sync ``Collection.query`` before the app queries
+    (``init()`` runs at startup).
+    """
+    if not _chroma_available():
+        logger.debug("chromadb is not installed; skipping ChromaDB instrumentation")
+        return
+    if _already_instrumented_chroma():
+        logger.warning(
+            "ChromaDB is already instrumented by another instrumentor; "
+            "skipping to avoid double instrumentation."
+        )
+        return
+    try:
+        instrument_chroma(provider)
+    except Exception:
+        logger.warning(
+            "ChromaDB instrumentation failed; continuing without it", exc_info=True
+        )
+
+
 def uninstrument_frameworks() -> None:
     global _langchain_instrumentor, _llamaindex_instrumentor, _ollama_instrumentor
     if _langchain_instrumentor is not None:
@@ -214,4 +260,5 @@ def uninstrument_frameworks() -> None:
         except Exception:
             logger.exception("Failed to uninstrument Ollama")
         _ollama_instrumentor = None
+    uninstrument_chroma()
     uninstrument_langgraph()

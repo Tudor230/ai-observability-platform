@@ -21,6 +21,7 @@ aiobs-contracts = { path = "../shared/aiobs_contracts", editable = true }
 
 [dependency-groups]
 dev = [
+    "chromadb>=1.5.9",
     "langchain-core>=1.0",
     "langchain-openai>=0.3",
     "langgraph>=1.1.9",
