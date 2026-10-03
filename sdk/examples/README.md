@@ -184,8 +184,10 @@ OPENAI_API_KEY=sk-... uv run python examples/rag_order_support_llamaindex.py \
 > so every run is its own execution/trace. Pass `--workflow-id <id>` to pin it:
 > the SDK derives the trace id deterministically from the workflow id, so runs
 > sharing the pinned id join ONE trace (LangGraph HITL continuation) — and the
-> backend recomputes that single execution on each re-ingest (idempotent per
-> trace id), so re-runs replace it instead of appending.
+> backend upserts spans per trace and recomputes the execution from all stored
+> spans (ADR-0009). The interrupt run and its resume coexist under one
+> execution; re-sending identical spans is idempotent, while distinct runs that
+> share the pinned id extend the same execution.
 
 ---
 

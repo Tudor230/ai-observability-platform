@@ -210,6 +210,35 @@ def test_root_error_without_kind_still_propagates_status():
     assert dict(root_out.attributes)[SDK_ERROR_KIND] == "provider_error"
 
 
+def test_root_kind_skips_failed_wrappers_to_the_classified_origin():
+    """A failed root/wrapper has no kind; the root must inherit the origin's.
+
+    Every ancestor of a raising span is marked ERROR by the instrumentor, so
+    the earliest failed span is usually an unclassified wrapper. The root's
+    ``sdk.error.kind`` must come from the earliest *classified* failure.
+    """
+    root = make_span(
+        1, TRACE, None, name="wf", kind="CHAIN", status_code=StatusCode.ERROR,
+        events=[exception_event("RuntimeError", "connection reset by peer")],
+        start_time=1,
+    )
+    wrapper = make_span(
+        2, TRACE, 1, name="RunnableSequence", kind="CHAIN",
+        status_code=StatusCode.ERROR,
+        events=[exception_event("RuntimeError", "connection reset by peer")],
+        start_time=2,
+    )
+    llm = make_span(
+        3, TRACE, 2, name="llm", kind="LLM", status_code=StatusCode.ERROR,
+        events=[exception_event("RuntimeError", "connection reset by peer")],
+        start_time=3,
+    )
+    out = enrich([root, wrapper, llm], CFG_OFF)
+    root_out = next(s for s in out if s.name == "wf")
+    assert root_out.status.status_code == StatusCode.ERROR
+    assert dict(root_out.attributes)[SDK_ERROR_KIND] == "provider_error"
+
+
 def test_continued_trace_failure_scoped_to_own_root():
     """In a continued trace (HITL interrupt + resume share one trace id), a
     failed resume descendant must NOT flip the already-completed interrupt

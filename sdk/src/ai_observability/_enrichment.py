@@ -497,8 +497,15 @@ class EnrichingExporter(SpanExporter):
                 StatusCode.ERROR, description=status.description if status else None
             )
         if SDK_ERROR_KIND not in attrs:
-            earliest = min(failed, key=lambda m: m.start_time)
-            if earliest.error_kind:
+            # The root itself usually carries no classification (it only
+            # re-raised a descendant's exception), so pick the earliest *typed*
+            # failure, not merely the earliest failure.
+            earliest = min(
+                (m for m in failed if m.error_kind),
+                key=lambda m: m.start_time,
+                default=None,
+            )
+            if earliest is not None:
                 attrs[SDK_ERROR_KIND] = earliest.error_kind
         return _copy_span(root, attrs, status)
 

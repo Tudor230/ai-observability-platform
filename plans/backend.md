@@ -364,7 +364,7 @@ Resolved during implementation on the wayfinder map `.scratch/backend/` (per
 
 | Ticket | Decision |
 |---|---|
-| [01 — Ingest path](../.scratch/backend/issues/01-ingest-path.md) | Direct OTLP HTTP receive (`/v1/traces` + `/api/v1/traces`); Phoenix stays the canonical trace store, not a read dependency; idempotent per-trace recompute |
+| [01 — Ingest path](../.scratch/backend/issues/01-ingest-path.md) | Direct OTLP HTTP receive (`/v1/traces` + `/api/v1/traces`); Phoenix stays the canonical trace store, not a read dependency; Phoenix-style span upsert + per-trace recompute (ADR-0009) |
 | [02 — Failure taxonomy](../.scratch/backend/issues/02-failure-taxonomy.md) | Authoritative taxonomy in `aiobs_contracts`; trust + refine SDK hints; span-level kinds, execution root carries primary failure |
 | [03 — Cost engine](../.scratch/backend/issues/03-cost-engine.md) | Mirror Phoenix pricing; exact → prefix → provider default → unpriced (`NULL`); cache/reasoning tokens priced |
 | [04 — Analytics & alerts](../.scratch/backend/issues/04-analytics-alerts.md) | Daily rollup (total/project/client/workflow) with p50/p95/p99; budget-based alert rules; background scheduler + on-demand admin endpoints |

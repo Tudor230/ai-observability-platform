@@ -232,6 +232,122 @@ def test_continued_trace_roots_both_get_injected_identity(
         assert all(s.attributes["sdk.project_id"] == "proj-1" for s in roots)
 
 
+def test_continued_trace_resume_extends_instead_of_replacing(
+    client, session_factory, project
+):
+    """HITL continuation (Phoenix-style): the resume batch extends the trace.
+
+    The interrupt run's spans must survive the resume; the execution id is
+    stable and the aggregates cover both runs.
+    """
+    now = _now()
+    interrupt_root = build_span(
+        name="approval", oi_kind="CHAIN", span_id=1, trace_id=1700,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={
+            "sdk.workflow_id": "thread-1",
+            "session.id": "thread-1",
+            "sdk.client_id": "client-42",
+            "sdk.hitl.interrupted": "true",
+        },
+    )
+    llm = build_span(
+        name="plan", oi_kind="LLM", span_id=2, trace_id=1700, parent_span_id=1,
+        start=now + timedelta(milliseconds=100), end=now + timedelta(seconds=1),
+        attrs={
+            "llm.model_name": "gpt-4o-mini",
+            "llm.provider": "openai",
+            "llm.token_count.prompt": 1000,
+            "llm.token_count.completion": 500,
+            "llm.token_count.total": 1500,
+        },
+    )
+    first = client.post(
+        "/api/v1/traces",
+        content=build_request([interrupt_root, llm]),
+        headers=_headers(),
+    )
+    assert first.status_code == 200, first.text
+    exec_id = first.json()["traces"][0]["execution_id"]
+
+    resume_root = build_span(
+        name="approval", oi_kind="CHAIN", span_id=10, trace_id=1700,
+        start=now + timedelta(seconds=2), end=now + timedelta(seconds=3),
+        attrs={
+            "sdk.workflow_id": "thread-1",
+            "session.id": "thread-1",
+            "sdk.client_id": "client-42",
+            "sdk.hitl.resumed": "true",
+        },
+    )
+    finalize = build_span(
+        name="finalize", oi_kind="CHAIN", span_id=11, trace_id=1700,
+        parent_span_id=10,
+        start=now + timedelta(seconds=2, milliseconds=100),
+        end=now + timedelta(seconds=3),
+    )
+    second = client.post(
+        "/api/v1/traces",
+        content=build_request([resume_root, finalize]),
+        headers=_headers(),
+    )
+    assert second.status_code == 200, second.text
+    summary = second.json()["traces"][0]
+    assert summary["execution_id"] == exec_id  # same execution, extended
+    assert summary["spans"] == 4
+    assert summary["total_tokens"] == 1500  # the interrupt run's tokens survive
+
+    with session_factory() as session:
+        executions = session.execute(select(Execution)).scalars().all()
+        assert len(executions) == 1
+        assert executions[0].workflow_name == "approval"
+        rows = session.execute(select(Span).order_by(Span.started_at)).scalars().all()
+        assert [r.name for r in rows] == ["approval", "plan", "approval", "finalize"]
+
+
+def test_partial_langgraph_node_is_not_the_identity_root(
+    client, session_factory, project
+):
+    """A node span's session.id must not crown it root (nor lose it later).
+
+    OpenInference stamps session.id on LangGraph node spans; when such a node
+    arrives before its parent, the execution stays provisional and the node is
+    kept as a child once the real workflow root arrives.
+    """
+    now = _now()
+    node = build_span(
+        name="fetch_context", oi_kind="CHAIN", span_id=2, trace_id=1800,
+        parent_span_id=1,  # the parent arrives in the next batch
+        start=now, end=now + timedelta(milliseconds=50),
+        attrs={"session.id": "thread-9", "sdk.client_id": "client-42"},
+    )
+    first = client.post(
+        "/api/v1/traces", content=build_request([node]), headers=_headers()
+    )
+    summary = first.json()["traces"][0]
+    assert summary.get("provisional") is True
+    with session_factory() as session:
+        ex = session.execute(select(Execution)).scalar_one()
+        assert ex.workflow_name is None
+        assert ex.session_id is None
+
+    root = build_span(
+        name="approval", oi_kind="CHAIN", span_id=1, trace_id=1800,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.workflow_id": "thread-9", "session.id": "thread-9"},
+    )
+    second = client.post(
+        "/api/v1/traces", content=build_request([root]), headers=_headers()
+    )
+    assert second.json()["traces"][0]["spans"] == 2
+    with session_factory() as session:
+        ex = session.execute(select(Execution)).scalar_one()
+        assert ex.workflow_name == "approval"
+        assert ex.session_id == "thread-9"
+        names = session.execute(select(Span.name).order_by(Span.name)).scalars().all()
+        assert names == ["approval", "fetch_context"]
+
+
 def test_conflicting_second_root_answers_409(client, session_factory, project):
     """Every workflow root in the batch is validated, not just the selected one."""
     now = _now()
@@ -491,6 +607,53 @@ def test_root_failure_kind_prefers_specific_descendant(client, session_factory, 
         ex = session.execute(select(Execution)).scalar_one()
         assert ex.status == "error"
         assert ex.root_error_kind == "rate_limit"
+
+
+def test_wrapper_spans_do_not_get_failure_kinds(client, session_factory, project):
+    """Only the origin of a failure carries a kind; wrappers keep ERROR status.
+
+    The instrumentor marks every ancestor ERROR because the exception
+    propagates through the run tree (Phoenix renders the same); the platform
+    must not classify each wrapper as a new failure, and the execution must
+    report the originating span's kind.
+    """
+    now = _now()
+    root = build_span(
+        name="checkout", oi_kind="CHAIN", span_id=1, trace_id=602,
+        start=now, end=now + timedelta(seconds=1), status=2,
+        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+    )
+    wrapper = build_span(
+        name="RunnableSequence", oi_kind="CHAIN", span_id=2, trace_id=602,
+        parent_span_id=1, start=now + timedelta(milliseconds=50),
+        end=now + timedelta(seconds=1), status=2,
+        status_message="connection reset by peer",
+    )
+    llm = build_span(
+        name="llm_call", oi_kind="LLM", span_id=3, trace_id=602, parent_span_id=2,
+        start=now + timedelta(milliseconds=100), end=now + timedelta(seconds=1),
+        status=2, status_message="connection reset by peer",
+        attrs={"llm.model_name": "gpt-4o-mini", "llm.provider": "openai"},
+    )
+    resp = client.post(
+        "/api/v1/traces",
+        content=build_request([root, wrapper, llm]),
+        headers=_headers(),
+    )
+    assert resp.status_code == 200, resp.text
+    with session_factory() as session:
+        ex = session.execute(select(Execution)).scalar_one()
+        assert ex.status == "error"
+        assert ex.root_error_kind == "provider_error"
+        kinds = {
+            s.name: s.error_kind
+            for s in session.execute(select(Span)).scalars().all()
+        }
+        assert kinds == {
+            "checkout": None,  # propagated wrapper: ERROR status, no classification
+            "RunnableSequence": None,  # propagated wrapper: ERROR status, no kind
+            "llm_call": "provider_error",  # the origin
+        }
 
 
 def test_unpriced_calls_surface_in_reads(client, session_factory, project):

@@ -1,7 +1,10 @@
 """Trace processing pipeline (plans/backend.md §6): normalize → enrich → classify
 → cost → persist executions/spans.
 
-Idempotent per trace_id: re-processing a trace fully recomputes its rows.
+Phoenix-style ingest: spans are upserted by ``(execution, span_id)`` and a
+trace's execution is recomputed from all stored spans. Batches may arrive in
+any order or split mid-run (streaming SDK, HITL interrupt/resume) without
+losing previously stored spans.
 """
 from __future__ import annotations
 
@@ -113,9 +116,16 @@ def derive(raw: RawSpan) -> DerivedSpan:
 
 
 def _is_workflow_root(d: DerivedSpan) -> bool:
+    """Explicit SDK workflow identity on a CHAIN span.
+
+    ``session.id`` alone is not identity: the OpenInference LangChain
+    instrumentor stamps it on LangGraph node spans (from the graph thread id),
+    so a node arriving in a partial batch must never be mistaken for the
+    workflow root. Phoenix treats sessions as attributes, not as roots.
+    """
     a = d.raw.attributes
     return d.oi_kind == attrs.KIND_CHAIN and (
-        attrs.SDK_WORKFLOW_ID in a or attrs.SDK_PROJECT_ID in a or "session.id" in a
+        attrs.SDK_WORKFLOW_ID in a or attrs.SDK_PROJECT_ID in a
     )
 
 
@@ -123,45 +133,35 @@ def _start_key(d: DerivedSpan) -> float:
     return d.raw.start_time.timestamp() if d.raw.start_time else 0.0
 
 
-def _find_root(derived: list[DerivedSpan]) -> DerivedSpan | None:
-    """Return the trace root only when this batch can prove one (F02).
-
-    A batch may be a *partial* re-send: children whose parent lives in a
-    previous batch. Treating such children as roots would create a bogus
-    execution, so a root must be either
-    1. the SDK workflow root (CHAIN carrying ``sdk.*`` identity), or
-    2. a span with no recorded parent at all.
-    Batches that only contain parented spans that are not in the batch return
-    ``None`` and are merged into an existing execution (or skipped).
-    """
-    span_ids = {d.raw.span_id for d in derived}
-    is_parentless = lambda d: d.raw.parent_span_id not in span_ids  # noqa: E731
-    candidates = [d for d in derived if _is_workflow_root(d) and is_parentless(d)]
-    if not candidates:
-        candidates = [
-            d for d in derived if is_parentless(d) and not d.raw.parent_span_id
-        ]
-    if not candidates:
-        return None
-    return min(candidates, key=_start_key)
-
-
-def _primary_failure(
-    root: DerivedSpan, failed: list[DerivedSpan]
+def _resolve_identity_root(
+    session: Session, execution: Execution, derived: list[DerivedSpan]
 ) -> DerivedSpan | None:
-    """Pick the most specific failure (F28).
+    """Elect the span that defines this trace's workflow identity (F02).
 
-    A wrapper root often carries only a generic propagated kind; prefer the
-    earliest failing descendant when it has a more specific classification.
+    Phoenix-style root resolution: a span is a root when its parent is absent
+    from **every span stored for the trace** (plus this batch), not merely from
+    the current batch — a children-first delivery never invents a root from a
+    node whose parent has not arrived yet. Explicit workflow roots win; a plain
+    parentless span (``workflow()`` without ``workflow_id``) is the fallback.
     """
-    if not failed:
-        return None
-    descendants = [d for d in failed if d.raw.span_id != root.raw.span_id]
-    if descendants:
-        earliest = min(descendants, key=_start_key)
-        if earliest.error_kind or not root.error_kind:
-            return earliest
-    return root if root.failed else min(failed, key=_start_key)
+    stored_ids = set(
+        session.execute(
+            select(Span.span_id).where(Span.execution_id == execution.id)
+        ).scalars()
+    )
+    present_ids = stored_ids | {d.raw.span_id for d in derived}
+    parentless = [
+        d
+        for d in derived
+        if d.raw.parent_span_id is None or d.raw.parent_span_id not in present_ids
+    ]
+    explicit = [d for d in parentless if _is_workflow_root(d)]
+    if explicit:
+        return min(explicit, key=_start_key)
+    fallback = [d for d in parentless if not d.raw.parent_span_id]
+    if fallback:
+        return min(fallback, key=_start_key)
+    return None
 
 
 def _now() -> datetime:
@@ -199,29 +199,21 @@ def process_trace_batch(
 def process_trace(
     session: Session, project: Project, raw_spans: list[RawSpan]
 ) -> dict:
+    """Persist one trace's batch, Phoenix-style: upsert spans, recompute.
+
+    Spans are keyed by ``(execution, span_id)``: a re-sent span replaces its
+    stored row and cost, new spans append, and no stored row is deleted because
+    a later batch arrived. Aggregates, status and timing are always recomputed
+    from *all* spans stored for the trace, so an interrupt run and its HITL
+    resume (two roots, one trace id) coexist under a single execution.
+    """
     trace_id = raw_spans[0].trace_id
     derived = [derive(r) for r in raw_spans]
-    root = _find_root(derived)
 
-    existing = session.execute(
-        select(Execution).where(Execution.trace_id == trace_id)
-    ).scalar_one_or_none()
-
-    if root is None:
-        # Partial batch (children whose parent is not here). Never invent a root
-        # and never delete stored rows; merge into an existing execution if one
-        # exists (F02). A streaming SDK can deliver children before the root, so
-        # otherwise keep them in a *provisional* execution instead of dropping
-        # them; the root batch later rebuilds the execution with full identity.
-        if existing is not None:
-            return _merge_partial_batch(session, existing, derived, project)
-        return _provisional_batch(session, project, derived, trace_id)
-
-    root_a = root.raw.attributes
-    # Ingest validation: the authenticated project must match the identity of every
-    # workflow root in the batch — a continued trace (LangGraph interrupt/resume)
-    # carries two roots sharing one trace id. Rows are only deleted *after* this
-    # check, so a rejected batch is a no-op.
+    # Ingest validation: the authenticated project must match the identity of
+    # every workflow root in the batch — a continued trace (LangGraph
+    # interrupt/resume) carries two roots sharing one trace id. Nothing is
+    # written before this check, so a rejected batch is a no-op.
     for d in derived:
         if not _is_workflow_root(d):
             continue
@@ -234,177 +226,58 @@ def process_trace(
                     f"root sdk.project_id={asserted!r} != {project.project_id!r}"
                 ),
             }
-    # Server-authoritative identity (ADR-0008): stored workflow roots always carry
-    # the authenticated project, whatever the SDK sent (or omitted).
-    for d in derived:
-        if _is_workflow_root(d) or d.raw.span_id == root.raw.span_id:
-            d.raw.attributes = {
-                **d.raw.attributes,
-                attrs.SDK_PROJECT_ID: project.project_id,
-            }
-    root_a = root.raw.attributes
 
-    # Validated root in hand: idempotent recompute may safely replace old rows,
-    # unless the stored execution is *provisional* (children arrived first) —
-    # then keep the stored spans and upgrade the identity in place.
-    if existing:
-        if existing.workflow_name is None:
-            _apply_root_identity(session, existing, project, root)
-            return _merge_partial_batch(session, existing, derived, project)
+    existing = session.execute(
+        select(Execution).where(Execution.trace_id == trace_id)
+    ).scalar_one_or_none()
+    if existing is not None and existing.project_id != project.id:
+        # Trace-id collision across projects (deterministic workflow seeds):
+        # keep the historical replace semantics instead of mixing projects.
         session.query(CostRecord).filter(
             CostRecord.execution_id == existing.id
         ).delete()
         session.query(Span).filter(Span.execution_id == existing.id).delete()
         session.delete(existing)
         session.flush()
+        existing = None
 
-    started = root.raw.start_time or min(
-        (d.raw.start_time for d in derived if d.raw.start_time), default=None
-    )
-    ended = root.raw.end_time or max(
-        (d.raw.end_time for d in derived if d.raw.end_time), default=None
-    )
-    started = started or _now()
-
-    execution = Execution(
-        trace_id=trace_id,
-        project_id=project.id,
-        started_at=started,
-        ended_at=ended,
-        duration_ms=_duration_ms(started, ended),
-    )
-    session.add(execution)
-    session.flush()
-    _apply_root_identity(session, execution, project, root)
-
-    resolver = PricingResolver(session, started)
-    failed: list[DerivedSpan] = []
-    span_rows: list[Span] = []
-    cost_rows: list[CostRecord] = []
-    total_cost = Decimal("0")
-    priced_calls = 0
-    llm_calls = tool_calls = retrieval_calls = agent_calls = error_count = retries = 0
-    input_tokens = output_tokens = total_tokens = 0
-
-    for d in derived:
-        is_root = d.raw.span_id == root.raw.span_id
-        kind = d.oi_kind
-        if kind == attrs.KIND_LLM:
-            llm_calls += 1
-            input_tokens += d.input_tokens
-            output_tokens += d.output_tokens
-            total_tokens += d.total_tokens
-        elif kind == attrs.KIND_TOOL:
-            tool_calls += 1
-        elif kind == attrs.KIND_RETRIEVER:
-            retrieval_calls += 1
-        elif kind == attrs.KIND_AGENT:
-            agent_calls += 1
-
-        if d.retry:
-            retries = max(retries, d.retry)
-        if d.failed:
-            error_count += 1
-            failed.append(d)
-
-        span_cost: Decimal | None = None
-        if kind == attrs.KIND_LLM:
-            pricing = resolver.resolve(d.provider, d.model)
-            if pricing is not None:
-                amount = compute_llm_cost(
-                    pricing,
-                    d.input_tokens,
-                    d.output_tokens,
-                    cache_read_tokens=d.cache_read_tokens,
-                    cache_write_tokens=d.cache_write_tokens,
-                    reasoning_tokens=d.reasoning_tokens,
-                )
-                if amount is not None:
-                    span_cost = Decimal(str(amount))
-                    total_cost += span_cost
-                    priced_calls += 1
-                    cost_rows.append(
-                        CostRecord(
-                            execution_id=execution.id,
-                            span_id=d.raw.span_id,
-                            provider=d.provider,
-                            model=d.model,
-                            input_tokens=d.input_tokens,
-                            output_tokens=d.output_tokens,
-                            price_version=pricing.id,
-                            unit_prices=_price_snapshot(pricing),
-                            amount=span_cost,
-                        )
-                    )
-
-        row = Span(
-            execution_id=execution.id,
+    if existing is None:
+        starts = [d.raw.start_time for d in derived if d.raw.start_time]
+        execution = Execution(
             trace_id=trace_id,
-            span_id=d.raw.span_id,
-            parent_id=d.raw.parent_span_id,
-            kind=kind,
-            name=d.raw.name or None,
-            status=d.raw.status_code,
-            error_type=d.error_type,
-            error_message=d.error_message,
-            error_kind=d.error_kind,
-            started_at=d.raw.start_time or started,
-            ended_at=d.raw.end_time,
-            duration_ms=d.duration_ms,
-            llm_model=d.model,
-            llm_provider=d.provider,
-            input_tokens=d.input_tokens,
-            output_tokens=d.output_tokens,
-            total_tokens=d.total_tokens,
-            tool_name=d.tool_name,
-            retrieval_doc_count=d.retrieval_docs,
-            retry_count=d.retry,
-            cost=span_cost,
-            attributes=root_a if is_root else d.raw.attributes,
+            project_id=project.id,
+            started_at=min(starts) if starts else _now(),
         )
-        span_rows.append(row)
-
-    session.add_all(span_rows)
-    session.add_all(cost_rows)
-
-    # Root propagation (consistent with SDK enrichment). Prefer the most
-    # specific failing descendant over a generic root wrapper (F28).
-    if root.failed or failed:
-        execution.status = "error"
-        primary = _primary_failure(root, failed) or root
-        execution.root_error_kind = primary.error_kind
-        execution.root_error_message = primary.error_message
+        session.add(execution)
+        session.flush()
     else:
-        execution.status = "ok"
+        execution = existing
 
-    execution.input_tokens = input_tokens
-    execution.output_tokens = output_tokens
-    execution.total_tokens = total_tokens
-    execution.llm_calls = llm_calls
-    execution.tool_calls = tool_calls
-    execution.retrieval_calls = retrieval_calls
-    execution.agent_calls = agent_calls
-    execution.error_count = error_count
-    execution.retry_count = retries
-    execution.total_cost = (
-        total_cost.quantize(Decimal("0.000001")) if priced_calls else None
-    )
-    # Unpriced LLM calls: cost must stay auditable, never silently $0 (F12).
-    execution.unpriced_calls = llm_calls - priced_calls
-    execution.duration_ms = execution.duration_ms or _duration_ms(started, ended)
-    touch_agents(session, project, derived)
-    session.flush()
+    # Store-aware root election: a children-first batch (streaming SDK) leaves
+    # the execution provisional until its root arrives, then only the identity
+    # is upgraded in place — stored spans are kept. The first resolved root
+    # wins; a later HITL resume root must not flap the execution's identity.
+    identity_root = _resolve_identity_root(session, execution, derived)
 
-    return {
-        "trace_id": trace_id,
-        "execution_id": execution.id,
-        "status": execution.status,
-        "error_kind": execution.root_error_kind,
-        "spans": len(span_rows),
-        "unpriced_calls": execution.unpriced_calls,
-        "total_cost": float(total_cost),
-        "total_tokens": total_tokens,
-    }
+    # Server-authoritative identity (ADR-0008): explicit workflow roots always
+    # carry the authenticated project, whatever the SDK sent (or omitted); the
+    # elected fallback root does too.
+    for d in derived:
+        if _is_workflow_root(d) or (
+            identity_root is not None
+            and d.raw.span_id == identity_root.raw.span_id
+        ):
+            d.raw.attributes = {
+                **d.raw.attributes,
+                attrs.SDK_PROJECT_ID: project.project_id,
+            }
+
+    if identity_root is not None and execution.workflow_name is None:
+        _apply_root_identity(session, execution, project, identity_root)
+
+    summary = _upsert_spans(session, project, execution, derived)
+    summary["provisional"] = execution.workflow_name is None
+    return summary
 
 
 def _apply_root_identity(
@@ -426,35 +299,14 @@ def _apply_root_identity(
     execution.metadata_json = c.redact_metadata(attrs.metadata_dict(root.raw))
 
 
-def _provisional_batch(
-    session: Session, project: Project, derived: list[DerivedSpan], trace_id: str
+def _upsert_spans(
+    session: Session, project: Project, execution: Execution, derived: list[DerivedSpan]
 ) -> dict:
-    """Store a children-first batch before its root arrives (F02/F14).
+    """Upsert a batch of spans into an execution, then recompute aggregates.
 
-    The execution has no workflow identity yet; the root batch later rebuilds
-    it (same trace_id) with the real identity and the complete span set.
-    """
-    starts = [d.raw.start_time for d in derived if d.raw.start_time]
-    execution = Execution(
-        trace_id=trace_id,
-        project_id=project.id,
-        started_at=min(starts) if starts else _now(),
-        ended_at=max(starts) if starts else None,
-    )
-    session.add(execution)
-    session.flush()
-    summary = _merge_partial_batch(session, execution, derived, project)
-    summary["provisional"] = True
-    return summary
-
-
-def _merge_partial_batch(
-    session: Session, execution: Execution, derived: list[DerivedSpan], project: Project
-) -> dict:
-    """Upsert a children-only batch into an existing execution (F02).
-
-    Spans already stored are replaced, the rest are kept; aggregates are then
-    recomputed from the stored spans. The execution itself is never deleted.
+    Spans are keyed by ``(execution, span_id)`` (Phoenix-style): a re-sent span
+    replaces its stored row and cost, new spans append, everything else is
+    kept. Aggregates always come from the full stored span set.
     """
     resolver = PricingResolver(session, execution.started_at)
     batch_ids = [d.raw.span_id for d in derived]
@@ -529,7 +381,7 @@ def _merge_partial_batch(
 def _recompute_execution(
     session: Session, execution: Execution, merged: int = 0
 ) -> dict:
-    """Rebuild execution aggregates from its stored spans (after a merge)."""
+    """Rebuild execution aggregates from its stored spans (after an upsert)."""
     spans = (
         session.execute(
             select(Span)
@@ -563,27 +415,9 @@ def _recompute_execution(
         execution.ended_at = max(ends)
         execution.duration_ms = _duration_ms(execution.started_at, execution.ended_at)
 
-    if failed:
-        execution.status = "error"
-        root_span = next((s for s in spans if not s.parent_id), None)
-        descendants = [
-            s for s in failed if root_span is None or s.span_id != root_span.span_id
-        ]
-        if descendants:
-            primary = min(
-                descendants,
-                key=lambda s: s.started_at.timestamp() if s.started_at else 0,
-            )
-            if not primary.error_kind and root_span is not None and root_span.error_kind:
-                primary = root_span
-        else:
-            primary = failed[0]
-        execution.root_error_kind = primary.error_kind
-        execution.root_error_message = primary.error_message
-    else:
-        execution.status = "ok"
-        execution.root_error_kind = None
-        execution.root_error_message = None
+    failed = [s for s in spans if s.status == "error" or s.error_kind]
+    execution.error_count = len(failed)
+    _attribute_failure(spans, failed, execution)
     session.flush()
 
     return {
@@ -597,6 +431,65 @@ def _recompute_execution(
         "total_cost": float(execution.total_cost or 0),
         "total_tokens": execution.total_tokens,
     }
+
+
+def _attribute_failure(
+    spans: list[Span], failed: list[Span], execution: Execution
+) -> None:
+    """Attribute failures to their origin, Phoenix-style.
+
+    Instrumentors mark **every ancestor** of a raising span as ERROR because
+    the exception propagates through the run tree — that is faithful, and
+    Phoenix renders it the same way. But only the span where the failure
+    originated should carry a classification: a wrapper CHAIN/AGENT whose
+    failure is just a re-raised descendant drops the generic
+    ``business_logic`` fallback. The execution then reports the earliest
+    classified failure (the originating span) as its root cause.
+    """
+    if not failed:
+        execution.status = "ok"
+        execution.root_error_kind = None
+        execution.root_error_message = None
+        return
+
+    execution.status = "error"
+    children: dict[str | None, list[Span]] = {}
+    for span in spans:
+        children.setdefault(span.parent_id, []).append(span)
+    specific = {
+        s.span_id
+        for s in failed
+        if s.error_kind and s.error_kind != c.KIND_BUSINESS_LOGIC
+    }
+
+    def has_specific_descendant(span_id: str) -> bool:
+        stack = list(children.get(span_id, ()))
+        seen: set[str] = set()
+        while stack:
+            child = stack.pop()
+            if child.span_id in seen:
+                continue
+            seen.add(child.span_id)
+            if child.span_id in specific:
+                return True
+            stack.extend(children.get(child.span_id, ()))
+        return False
+
+    for span in failed:
+        if (
+            span.error_kind == c.KIND_BUSINESS_LOGIC
+            and span.kind in (attrs.KIND_CHAIN, attrs.KIND_AGENT)
+            and has_specific_descendant(span.span_id)
+        ):
+            # The wrapper only propagated a classified descendant's failure.
+            span.error_kind = None
+
+    primary = min(
+        (s for s in failed if s.error_kind) or failed,
+        key=lambda s: s.started_at.timestamp() if s.started_at else 0,
+    )
+    execution.root_error_kind = primary.error_kind
+    execution.root_error_message = primary.error_message
 
 
 def _upsert_row(session: Session, model, lookup, values: dict):
