@@ -9,6 +9,7 @@ losing previously stored spans.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -434,7 +435,7 @@ def _recompute_execution(
 
 
 def _attribute_failure(
-    spans: list[Span], failed: list[Span], execution: Execution
+    spans: Sequence[Span], failed: list[Span], execution: Execution
 ) -> None:
     """Attribute failures to their origin, Phoenix-style.
 
