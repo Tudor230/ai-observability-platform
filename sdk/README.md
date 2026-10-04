@@ -200,3 +200,12 @@ uv sync --group dev
 uv run pytest
 AI_OBSERVABILITY_E2E=1 uv run pytest -m e2e   # requires the shared stack (`docker compose up -d --wait postgres phoenix` at the repo root)
 ```
+
+### Releasing
+
+Releases are tag-triggered: bump `__version__` in
+`src/ai_observability/__init__.py`, commit, then push a matching tag
+(`git tag sdk-v0.1.1 && git push origin sdk-v0.1.1`). The `release` workflow
+runs the offline suite, builds both `aiobs-contracts` and
+`ai-observability-sdk`, publishes them to PyPI via trusted publishing, and
+creates the GitHub Release.

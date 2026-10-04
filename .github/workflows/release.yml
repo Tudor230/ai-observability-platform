@@ -1,0 +1,163 @@
+name: release
+
+on:
+  push:
+    tags: ["sdk-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Release gate — SDK unit + scenario tests (offline)
+        working-directory: sdk
+        run: |
+          uv sync --group dev
+          uv lock --check
+          uv run pytest -q
+
+      - name: Check tag ↔ SDK version ↔ contracts constraint
+        run: |
+          uv run --no-project --with packaging --python 3.12 python - <<'PY'
+          import os, pathlib, re, tomllib
+          from packaging.requirements import Requirement
+
+          tag_version = os.environ["GITHUB_REF_NAME"].removeprefix("sdk-v")
+
+          init_py = pathlib.Path("sdk/src/ai_observability/__init__.py").read_text()
+          sdk_version = re.search(r'^__version__ = "([^"]+)"', init_py, re.M).group(1)
+          print(f"tag: sdk-v{tag_version} | ai_observability.__version__: {sdk_version}")
+          assert tag_version == sdk_version, "tag does not match ai_observability.__version__"
+
+          sdk_meta = tomllib.loads(pathlib.Path("sdk/pyproject.toml").read_text())
+          contracts_version = tomllib.loads(
+              pathlib.Path("shared/aiobs_contracts/pyproject.toml").read_text()
+          )["project"]["version"]
+          dep = next(
+              d for d in sdk_meta["project"]["dependencies"] if d.startswith("aiobs-contracts")
+          )
+          assert Requirement(dep).specifier.contains(contracts_version, prereleases=True), (
+              f"{dep!r} does not allow aiobs-contracts {contracts_version}"
+          )
+          print(f"aiobs-contracts {contracts_version} satisfies {dep!r}")
+          PY
+
+      - name: Build aiobs-contracts
+        working-directory: shared/aiobs_contracts
+        run: uv build
+
+      - name: Build ai-observability-sdk
+        working-directory: sdk
+        run: uv build
+
+      - name: Upload aiobs-contracts distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-contracts
+          path: shared/aiobs_contracts/dist/
+          if-no-files-found: error
+
+      - name: Upload ai-observability-sdk distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdk
+          path: sdk/dist/
+          if-no-files-found: error
+
+  publish-contracts:
+    name: Publish aiobs-contracts to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/aiobs-contracts
+    permissions:
+      id-token: write # trusted publishing (OIDC)
+    steps:
+      - name: Download aiobs-contracts distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-contracts
+          path: dist
+
+      - name: Publish aiobs-contracts
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true # unchanged contracts on an SDK release are a no-op
+          print-hash: true
+
+  publish-sdk:
+    name: Publish ai-observability-sdk to PyPI
+    needs: [build, publish-contracts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ai-observability-sdk
+    permissions:
+      id-token: write # trusted publishing (OIDC)
+    steps:
+      - name: Download ai-observability-sdk distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-sdk
+          path: dist
+
+      - name: Publish ai-observability-sdk
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+          print-hash: true
+
+  github-release:
+    name: Create GitHub Release
+    needs: [publish-contracts, publish-sdk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download aiobs-contracts distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-contracts
+          path: release-assets
+
+      - name: Download ai-observability-sdk distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-sdk
+          path: release-assets
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
