@@ -7,6 +7,23 @@ auto-instrumentation, failure/usage
 capture, OTLP HTTP export into Phoenix (PostgreSQL-backed), and a deterministic
 mock-workflow regression suite.
 
+## Install
+
+```bash
+pip install ai-observability-sdk
+```
+
+The SDK ships the OpenInference instrumentors but **not** the frameworks
+themselves: install the LangChain/LlamaIndex/Ollama/Groq/ChromaDB versions your
+app already uses. A framework that is not installed is skipped silently at
+`init()`.
+
+The bundled mock-workflow suite (`aiobs-mock`) needs its framework extras:
+
+```bash
+pip install "ai-observability-sdk[mock]"
+```
+
 ## Quickstart
 
 ```python

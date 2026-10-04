@@ -1,11 +1,37 @@
 [project]
 name = "ai-observability-sdk"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python observability SDK for the AI Observability Platform (v1: LangChain + LlamaIndex tracing to OTLP/Postgres)"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Tudor Oprea", email = "133231902+Tudor230@users.noreply.github.com" },
+]
+keywords = [
+    "observability",
+    "opentelemetry",
+    "openinference",
+    "agents",
+    "langchain",
+    "llamaindex",
+    "llm",
+    "finops",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Monitoring",
+]
 dependencies = [
-    "aiobs-contracts",
+    "aiobs-contracts>=0.1,<0.2",
     "opentelemetry-api>=1.30",
     "opentelemetry-sdk>=1.30",
     "opentelemetry-exporter-otlp-proto-http>=1.30",
@@ -16,6 +42,12 @@ dependencies = [
     "openinference-instrumentation-ollama>=0.1.9",
     "openinference-instrumentation-groq>=0.1.30",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Tudor230/ai-observability-platform"
+Repository = "https://github.com/Tudor230/ai-observability-platform"
+Issues = "https://github.com/Tudor230/ai-observability-platform/issues"
+Documentation = "https://github.com/Tudor230/ai-observability-platform/blob/main/sdk/README.md"
 
 [tool.uv.sources]
 aiobs-contracts = { path = "../shared/aiobs_contracts", editable = true }
@@ -38,6 +70,15 @@ dev = [
 
 [project.optional-dependencies]
 tiktoken = ["tiktoken>=0.8"]
+mock = [
+    "chromadb>=1.5.9",
+    "groq>=0.9.0",
+    "httpx>=0.28",
+    "langchain-core>=1.0",
+    "langgraph>=1.1.9",
+    "llama-index-core>=0.12.0",
+    "ollama>=0.4.0",
+]
 
 [project.scripts]
 aiobs-mock = "mock_workflows.cli:main"
@@ -45,6 +86,9 @@ aiobs-mock = "mock_workflows.cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/ai_observability/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai_observability", "src/mock_workflows"]
@@ -57,4 +101,3 @@ markers = [
 
 [tool.uv]
 default-groups = ["dev"]
-
