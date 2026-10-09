@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import Alert, Budget, Execution
+from .models import Alert, Budget, Execution, Project, Team
 from .stats import percentile
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,15 @@ def budget_spend(
         q = q.where(Execution.client_id == budget.client_id)
     if budget.workflow_name:
         q = q.where(Execution.workflow_name == budget.workflow_name)
+    if budget.team_id or budget.department_id:
+        # Department/team budgets only count executions under their unit.
+        q = q.join(Project, Project.id == Execution.project_id).join(
+            Team, Team.id == Project.team_id
+        )
+        if budget.team_id:
+            q = q.where(Team.id == budget.team_id)
+        if budget.department_id:
+            q = q.where(Team.department_id == budget.department_id)
     return float(session.execute(q).scalar_one() or 0)
 
 

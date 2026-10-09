@@ -385,6 +385,14 @@ class Budget(Base):
         ForeignKey("clients.id"), nullable=True, index=True
     )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # Manager-owned budgets are scoped to an org unit (audit item 5); global
+    # budgets (all scope columns NULL) stay exec/admin-only.
+    department_id: Mapped[str | None] = mapped_column(
+        ForeignKey("departments.id"), nullable=True, index=True
+    )
+    team_id: Mapped[str | None] = mapped_column(
+        ForeignKey("teams.id"), nullable=True, index=True
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     period: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True

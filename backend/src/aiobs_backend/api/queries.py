@@ -43,14 +43,30 @@ def alert_scope_clause(project_ids: Collection[str] | None):
     return and_(Alert.dimension == "budget", Alert.dimension_key.in_(allowed))
 
 
-def budget_scope_clause(project_ids: Collection[str] | None):
-    """Clause selecting budgets visible to a scoped caller (global ones excluded)."""
+def budget_scope_clause(
+    project_ids: Collection[str] | None,
+    department_ids: Collection[str] = (),
+    team_ids: Collection[str] = (),
+):
+    """Clause selecting budgets visible to a scoped caller (global ones excluded).
+
+    A budget is visible when its project, team or department scope intersects
+    the caller's allowed set; global budgets (all scope fields NULL) return
+    only for unrestricted callers.
+    """
     if project_ids is None:
         return None
-    if not project_ids:
+    clauses = []
+    if project_ids:
+        allowed = select(Project.id).where(Project.project_id.in_(project_ids))
+        clauses.append(Budget.project_id.in_(allowed))
+    if team_ids:
+        clauses.append(Budget.team_id.in_(team_ids))
+    if department_ids:
+        clauses.append(Budget.department_id.in_(department_ids))
+    if not clauses:
         return false()
-    allowed = select(Project.id).where(Project.project_id.in_(project_ids))
-    return Budget.project_id.in_(allowed)
+    return or_(*clauses)
 
 
 def parse_dt(value: str | None, *, end_of_day: bool = False) -> datetime | None:

@@ -19,6 +19,7 @@ from ..security import (
     hash_api_key,
 )
 from .memberships import (
+    allowed_budget_units,
     allowed_project_ids,
     approved_memberships,
     effective_roles,
@@ -106,6 +107,9 @@ class AccessScope:
     unrestricted: bool
     header_project: str | None = None
     user: User | None = None
+    # Internal department/team ids granted by memberships (budget scoping).
+    department_ids: frozenset[str] = frozenset()
+    team_ids: frozenset[str] = frozenset()
 
     @property
     def cost_visible(self) -> bool:
@@ -189,12 +193,15 @@ def require_access(*roles: str):
                 detail=f"roles {sorted(roles_set)} cannot access this resource",
             )
         header_project = _validated_header_project(session, x_project_name)
+        department_ids, team_ids = allowed_budget_units(session, memberships)
         scope = AccessScope(
             frozenset(roles_set),
             allowed_project_ids(session, memberships),
             False,
             header_project,
             user,
+            department_ids,
+            team_ids,
         )
         if header_project:
             scope.resolve_project_filter(header_project)

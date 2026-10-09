@@ -110,6 +110,26 @@ def allowed_project_ids(
     return frozenset(rows)
 
 
+def allowed_budget_units(
+    session: Session, memberships: list[Membership]
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Internal department/team ids granted by memberships (budget scoping).
+
+    No name lookups needed: membership ``scope_id`` values are already internal
+    ids for department/team scopes, matching ``Budget.department_id/team_id``.
+    """
+    department_ids: set[str] = set()
+    team_ids: set[str] = set()
+    for m in memberships:
+        if m.status != APPROVED or not m.scope_id:
+            continue
+        if m.scope_type == "department":
+            department_ids.add(m.scope_id)
+        elif m.scope_type == "team":
+            team_ids.add(m.scope_id)
+    return frozenset(department_ids), frozenset(team_ids)
+
+
 def _project_ancestors(session: Session, project_id: str) -> tuple[str | None, str | None]:
     row = session.execute(
         select(Project.team_id, Team.department_id)
