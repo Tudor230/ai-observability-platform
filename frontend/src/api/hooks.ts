@@ -78,6 +78,17 @@ export function useBudgets() {
   return useQuery({ queryKey: ["budgets", "list"], queryFn: () => api.budgets.list() });
 }
 
+export function usePricing(params: {
+  q?: string;
+  sort?: "provider" | "model" | "effective_from";
+  order?: "asc" | "desc";
+}) {
+  return useQuery({
+    queryKey: ["pricing", params],
+    queryFn: () => api.pricing.list(params),
+  });
+}
+
 export function useDirectoryProjects() {
   return useQuery({
     queryKey: ["directory", "projects"],

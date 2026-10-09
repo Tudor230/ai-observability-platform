@@ -1,7 +1,7 @@
 # 05 — Frontend: pricing admin UI
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01 (search/sort params on `/pricing`)
 Area: audit item 6 (pricing)
 Estimate: S
@@ -57,3 +57,15 @@ requiring curl. The backend CRUD already exists (admin-guarded, F30-safe).
   delete-409 shows the message); manual run against the live backend.
 
 ## Comments
+
+Implemented. New admin-only `/pricing` page (+ nav item, route guard, breadcrumb)
+with a debounced search (`q`), sortable provider/model/effective_from headers,
+the full rate table (input/output/cache read/cache write/reasoning, match
+badge, effective_from), an "Add price" dialog (all `PricingIn` fields, effective
+now by default) and a delete confirm that maps the 409 to the immutable-history
+message. `api.pricing.list/create/remove` + `usePricing` + `Pricing`/
+`PricingInput` types added; no edit in v1 (history is immutable, F30).
+
+Evidence: `npm run lint` + `npm run build` clean, `npm test` 416 passed. Live
+`/pricing` was verified against the rebuilt backend (admin key) earlier; the
+RTL add/delete flow lands in ticket 16.

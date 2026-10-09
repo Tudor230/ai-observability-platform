@@ -161,6 +161,33 @@ export interface BudgetInput {
   team?: string | null;
 }
 
+export interface Pricing {
+  id: string;
+  provider: string;
+  model: string;
+  model_match: "exact" | "prefix" | "default";
+  input_price_per_1m: number;
+  output_price_per_1m: number;
+  cache_read_price_per_1m: number | null;
+  cache_write_price_per_1m: number | null;
+  reasoning_price_per_1m: number | null;
+  currency: string;
+  effective_from: string | null;
+}
+
+export interface PricingInput {
+  provider: string;
+  model: string;
+  model_match: "exact" | "prefix" | "default";
+  input_price_per_1m: number;
+  output_price_per_1m: number;
+  cache_read_price_per_1m?: number | null;
+  cache_write_price_per_1m?: number | null;
+  reasoning_price_per_1m?: number | null;
+  currency?: string;
+  effective_from?: string | null;
+}
+
 export interface Alert {
   id: string;
   rule_id: string;

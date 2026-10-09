@@ -17,6 +17,7 @@ const Projects = lazy(() => import("./pages/Projects"));
 const Requests = lazy(() => import("./pages/Requests"));
 const Project = lazy(() => import("./pages/Project"));
 const Accounts = lazy(() => import("./pages/Accounts"));
+const Pricing = lazy(() => import("./pages/Pricing"));
 const Login = lazy(() => import("./pages/Login"));
 
 function Loading() {
@@ -125,6 +126,14 @@ export default function App() {
                 <Route path="requests" element={<Requests />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="projects/:projectId" element={<Project />} />
+                <Route
+                  path="pricing"
+                  element={
+                    <RequireRoles allow={["admin"]}>
+                      <Pricing />
+                    </RequireRoles>
+                  }
+                />
                 <Route
                   path="accounts"
                   element={

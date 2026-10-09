@@ -12,6 +12,8 @@ import type {
   Filters,
   Membership,
   Overview,
+  Pricing,
+  PricingInput,
   Profile,
   ProjectKey,
   ProjectKeyRow,
@@ -127,6 +129,15 @@ export const api = {
     update: (id: string, body: Partial<BudgetInput>) =>
       patch<BudgetStatus>(`/budgets/${id}`, body),
     remove: (id: string) => del<{ deleted: string }>(`/budgets/${id}`),
+  },
+  pricing: {
+    list: (params: {
+      q?: string;
+      sort?: "provider" | "model" | "effective_from";
+      order?: "asc" | "desc";
+    } = {}) => get<List<Pricing>>(`/pricing${qs(params)}`),
+    create: (body: PricingInput) => post<{ id: string; effective_from: string }>(`/pricing`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/pricing/${id}`),
   },
 
   auth: {
