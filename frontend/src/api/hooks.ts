@@ -66,8 +66,38 @@ export function useMetrics(dimension: string, f: Filters, key?: string) {
   });
 }
 
-export function useAlerts(enabled = true) {
-  return useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts(), enabled });
+export function useAlerts(
+  enabled = true,
+  params: {
+    status?: string;
+    severity?: string;
+    q?: string;
+    sort?: "triggered_at" | "severity";
+    order?: "asc" | "desc";
+    limit?: number;
+  } = { status: "open" }
+) {
+  return useQuery({
+    queryKey: ["alerts", params],
+    queryFn: () => api.alerts.list(params),
+    enabled,
+  });
+}
+
+export function useAlertRules(enabled = true) {
+  return useQuery({
+    queryKey: ["alert-rules"],
+    queryFn: () => api.alertRules.list(),
+    enabled,
+  });
+}
+
+export function useAlertChannels(enabled = true) {
+  return useQuery({
+    queryKey: ["alert-channels"],
+    queryFn: () => api.alertChannels.list(),
+    enabled,
+  });
 }
 
 export function useBudgetStatus() {

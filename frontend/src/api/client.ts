@@ -2,6 +2,10 @@ import type {
   AccessRequest,
   AggregateRow,
   Alert,
+  AlertChannel,
+  AlertChannelInput,
+  AlertRule,
+  AlertRuleInput,
   BudgetStatus,
   BudgetInput,
   DayMetric,
@@ -121,7 +125,35 @@ export const api = {
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
   metrics: (dimension: string, f: Filters, key?: string) =>
     get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key, days: f.days })}`),
-  alerts: () => get<List<Alert>>(`/alerts?status=open`),
+  alerts: {
+    list: (
+      params: {
+        status?: string;
+        severity?: string;
+        q?: string;
+        sort?: "triggered_at" | "severity";
+        order?: "asc" | "desc";
+        limit?: number;
+        offset?: number;
+      } = {}
+    ) => get<List<Alert>>(`/alerts${qs(params)}`),
+    update: (id: string, status: string) =>
+      patch<{ id: string; status: string }>(`/alerts/${id}?status=${encodeURIComponent(status)}`),
+  },
+  alertRules: {
+    list: () => get<List<AlertRule>>(`/alert-rules`),
+    create: (body: AlertRuleInput) => post<AlertRule>(`/alert-rules`, body),
+    update: (id: string, body: Partial<AlertRuleInput> & { enabled?: boolean }) =>
+      patch<AlertRule>(`/alert-rules/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/alert-rules/${id}`),
+  },
+  alertChannels: {
+    list: () => get<List<AlertChannel>>(`/alert-channels`),
+    create: (body: AlertChannelInput) => post<AlertChannel>(`/alert-channels`, body),
+    update: (id: string, body: Partial<AlertChannelInput>) =>
+      patch<AlertChannel>(`/alert-channels/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/alert-channels/${id}`),
+  },
   budgetStatus: () => get<List<BudgetStatus>>(`/budgets/status`),
   budgets: {
     list: () => get<List<BudgetStatus>>(`/budgets`),

@@ -191,12 +191,64 @@ export interface PricingInput {
 export interface Alert {
   id: string;
   rule_id: string;
+  rule_ref: string | null;
   severity: string;
   message: string;
   dimension: string;
   dimension_key: string | null;
   status: string;
   triggered_at: string | null;
+  scope?: string;
+  scope_name?: string | null;
+  can_ack?: boolean;
+}
+
+export type AlertMetric =
+  | "error_rate"
+  | "daily_tokens"
+  | "tool_calls_per_execution"
+  | "p95_latency"
+  | "cost_anomaly";
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  metric: AlertMetric;
+  warning_threshold: number;
+  critical_threshold: number;
+  scope_type: ScopeType;
+  scope_id: string | null;
+  scope_name: string | null;
+  enabled: boolean;
+  builtin: boolean;
+  channel_ids: string[];
+  created_at: string | null;
+}
+
+export interface AlertRuleInput {
+  name: string;
+  metric: AlertMetric;
+  warning_threshold: number;
+  critical_threshold: number;
+  scope_type: ScopeType;
+  scope_id?: string | null;
+  channel_ids?: string[];
+}
+
+export interface AlertChannel {
+  id: string;
+  name: string;
+  type: "email" | "slack" | "webhook";
+  target: string;
+  enabled: boolean;
+  created_at: string | null;
+}
+
+export interface AlertChannelInput {
+  name: string;
+  type: "email" | "slack" | "webhook";
+  target: string;
+  enabled: boolean;
 }
 
 export interface Filters {

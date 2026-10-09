@@ -97,7 +97,7 @@ export default function Overview() {
               label="Open alerts"
               value={data?.open_alerts ?? 0}
               tone={data && data.open_alerts > 0 ? "warning" : "default"}
-              sub={data && data.open_alerts > 0 ? <Link to="/manager">Review alerts</Link> : "All clear"}
+              sub={data && data.open_alerts > 0 ? <Link to="/alerts">Review alerts</Link> : "All clear"}
             />
           </div>
 
@@ -168,7 +168,7 @@ export default function Overview() {
             <CardPanel
               title="Open alerts"
               subTitle={alerts.data ? `${alerts.data.total} open` : undefined}
-              extra={<Link to="/manager">View all</Link>}
+              extra={<Link to="/alerts">View all</Link>}
             >
               {(alerts.data?.items ?? []).slice(0, 4).map((alert) => (
                 <div className="list-row" key={alert.id}>

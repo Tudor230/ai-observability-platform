@@ -40,6 +40,7 @@ const NAV_ITEMS: (NavItem | "separator")[] = [
   { to: "/manager", label: "Manager", icon: IconChart, allow: ["manager", "exec"] },
   { to: "/executive", label: "Executive", icon: IconCoins, allow: ["exec"] },
   { to: "/client", label: "Client", icon: IconUsers, allow: ["client"] },
+  { to: "/alerts", label: "Alerts", icon: IconAlertTriangle, allow: ALL_ROLES },
   "separator",
   { to: "/projects", label: "Projects", icon: IconLayers, allow: ALL_ROLES },
   { to: "/requests", label: "Requests", icon: IconInbox, allow: ALL_ROLES },
@@ -57,6 +58,7 @@ const ROUTE_TITLES: { prefix: string; label: string }[] = [
   { prefix: "/projects/", label: "Project" },
   { prefix: "/projects", label: "Projects" },
   { prefix: "/requests", label: "Requests" },
+  { prefix: "/alerts", label: "Alerts" },
   { prefix: "/pricing", label: "Pricing" },
   { prefix: "/accounts", label: "Accounts" },
   { prefix: "/", label: "Overview" },
@@ -81,8 +83,9 @@ const SIDEBAR_KEY = "aiobs.sidebar";
 
 export function AppShell() {
   const { hasRole, canApprove } = useAuth();
-  const canSeeAlerts = hasRole("manager", "exec");
-  const { data: alerts } = useAlerts(canSeeAlerts);
+  // Scoped alerts are visible to every authenticated role (clients included).
+  const canSeeAlerts = true;
+  const { data: alerts } = useAlerts();
   const openAlerts = alerts?.total ?? 0;
   const { data: approvals } = usePendingApprovals(canApprove);
   const pendingApprovals = approvals?.pending_approvals ?? 0;
@@ -103,7 +106,6 @@ export function AppShell() {
       <SideNav
         expanded={expanded}
         openAlerts={openAlerts}
-        canSeeAlerts={canSeeAlerts}
         pendingApprovals={pendingApprovals}
         hasRole={hasRole}
       />
@@ -126,13 +128,11 @@ export function AppShell() {
 function SideNav({
   expanded,
   openAlerts,
-  canSeeAlerts,
   pendingApprovals,
   hasRole,
 }: {
   expanded: boolean;
   openAlerts: number;
-  canSeeAlerts: boolean;
   pendingApprovals: number;
   hasRole: (...allowed: Role[]) => boolean;
 }) {
@@ -163,7 +163,7 @@ function SideNav({
                   <item.icon size={18} />
                 </span>
                 <span className="nav-link__text">{item.label}</span>
-                {item.to === "/manager" && canSeeAlerts && openAlerts > 0 ? (
+                {item.to === "/alerts" && openAlerts > 0 ? (
                   <span className="nav-link__counter">{openAlerts}</span>
                 ) : null}
                 {item.to === "/requests" && pendingApprovals > 0 ? (
@@ -244,7 +244,7 @@ function TopNav({
       <div className="top-nav__actions">
         {canSeeAlerts ? (
           <Link
-            to="/manager"
+            to="/alerts"
             className="top-nav__alerts"
             data-open={openAlerts > 0}
             title={`${openAlerts} open alert${openAlerts === 1 ? "" : "s"}`}

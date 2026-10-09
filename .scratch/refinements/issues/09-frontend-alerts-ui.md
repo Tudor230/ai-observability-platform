@@ -1,7 +1,7 @@
 # 09 — Frontend: Alerts page (list, rules, channels)
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01, 07, 08
 Area: audit item 7 (alerts)
 Estimate: L
@@ -66,3 +66,20 @@ and admins/execs manage delivery channels.
   stack: create a rule via UI → `POST /alerts/evaluate` → alert appears.
 
 ## Comments
+
+Implemented. New `/alerts` page (all roles) with three tabs: **Open** (debounced
+message search, severity/status filters, scope labels, Ack/Close per
+`can_ack`), **Rules** (manager/exec/admin: sortable-free table with metric
+labels, warning/critical thresholds, scope, channel count, enable/disable,
+edit dialog with metric/threshold/scope pickers and a channel multi-select,
+builtin rows marked "system" with no delete), and **Channels**
+(admin/exec: CRUD with email/Slack/webhook validation and the SMTP hint). New
+`api.alerts.list/update`, `api.alertRules.*`, `api.alertChannels.*` (typed
+inputs); hooks `useAlerts(params)`/`useAlertRules`/`useAlertChannels`. Nav item
+with the open counter (moved from Manager) plus the topbar shortcut now point
+to `/alerts`; Overview links updated; the alerts badge fetches for every
+authenticated role (clients see their scoped alerts, no ack).
+
+Evidence: `npm run lint` + `npm run build` clean (Alerts page code-split to
+15.5 kB gzip 4.7), `npm test` 416 passed. Backend endpoints were live-verified
+in tickets 06–08; role/tab RTL coverage lands in ticket 16.
