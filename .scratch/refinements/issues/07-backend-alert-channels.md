@@ -1,7 +1,7 @@
 # 07 — Backend: alert channels (email/Slack/webhook) + per-rule routing
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 06
 Area: audit item 7 (alerts — channels)
 Estimate: M
@@ -68,3 +68,20 @@ delivery: failures are logged and never break evaluation.
 - `uv run pytest -q`, ruff, mypy; migration fresh-DB upgrade/downgrade.
 
 ## Comments
+
+Implemented. New `alert_channels` + `alert_rule_channels` tables (migration
+`d7a9c4e21f68`); channel CRUD `/alert-channels` is admin/exec-only (manager →
+403). Delivery moved to `notify.py`: `email` via stdlib SMTP
+(`AIOBS_SMTP_*`, skipped with a warning when unconfigured), `slack` posts
+`{"text": …}`, `webhook` posts the alert JSON; a rule with linked channels
+delivers to exactly those (disabled channels are skipped) and rules/budget
+alerts without links fall back to the batched `AIOBS_ALERT_WEBHOOK_URL` POST.
+Failures are logged and never propagate. Rules API accepts `channel_ids`
+(unknown → 404, disabled → 409) and returns them. README env table updated.
+
+Evidence: new `tests/test_alert_channels.py` (6 tests: CRUD auth matrix +
+422 validation, rule-link flow incl. 404/409, channel-wins-over-fallback
+routing, disabled-channel fallback, Slack+email senders via fake SMTP/urlopen,
+unconfigured-email skip); the F37 webhook test now patches `notify`. Full suite
+**133 passed**; ruff + mypy clean; migration upgrade/check/downgrade/upgrade
+verified.

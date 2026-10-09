@@ -104,8 +104,18 @@ Authorization is membership-based; see
 | `AIOBS_CORS_ORIGINS` | JSON list of browser origins allowed with credentials |
 | `AIOBS_READ_API_KEY` | service read key: `x-api-key` bypasses scoping (reads always require auth) |
 | `AIOBS_RETENTION_DAYS` | `>0` deletes executions/spans/costs/metrics/alerts older than the window (`POST /api/v1/maintenance/purge`) |
-| `AIOBS_ALERT_WEBHOOK_URL` | POST created alerts as JSON to this webhook (best effort) |
+| `AIOBS_ALERT_WEBHOOK_URL` | fallback webhook for alerts whose rule has no linked channels (best effort) |
+| `AIOBS_SMTP_HOST` / `AIOBS_SMTP_PORT` / `AIOBS_SMTP_FROM` | email channel delivery (all required for email; STARTTLS on by default) |
+| `AIOBS_SMTP_USERNAME` / `AIOBS_SMTP_PASSWORD` | optional SMTP auth |
+| `AIOBS_SMTP_STARTTLS` | `false` to skip STARTTLS (default `true`) |
 | `AIOBS_MAX_INGEST_BYTES` | OTLP body cap (default 10 MiB; larger bodies get 413) |
+
+**Alert rules & channels.** Threshold rules live in `alert_rules` (seeded once
+from the `AIOBS_ALERT_*` thresholds) and are managed via `/api/v1/alert-rules`:
+exec/admin manage any rule, managers only rules within their covered
+department/team/project. Channels (`/api/v1/alert-channels`, admin/exec) select
+per rule; a rule with no channels falls back to `AIOBS_ALERT_WEBHOOK_URL`.
+Delivery is best-effort — send failures are logged and never break evaluation.
 
 ## Layout
 

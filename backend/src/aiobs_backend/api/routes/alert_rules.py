@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...models import AlertRule
+from ...models import AlertChannel, AlertRule, alert_rule_channels
 from ..deps import AccessScope, get_db, require_access
 from ..memberships import approved_memberships, covers_scope, scope_exists, scope_name
 
@@ -33,6 +33,7 @@ class AlertRuleIn(BaseModel):
     critical_threshold: float = Field(gt=0)
     scope_type: ScopeType = "global"
     scope_id: str | None = Field(default=None, max_length=32)
+    channel_ids: list[str] | None = None
 
 
 class AlertRulePatch(BaseModel):
@@ -40,6 +41,7 @@ class AlertRulePatch(BaseModel):
     warning_threshold: float | None = Field(default=None, ge=0)
     critical_threshold: float | None = Field(default=None, gt=0)
     enabled: bool | None = None
+    channel_ids: list[str] | None = None
 
 
 def _is_unrestricted(access: AccessScope) -> bool:
@@ -77,6 +79,15 @@ def _assert_covers(
 
 
 def _rule_dict(session: Session, rule: AlertRule) -> dict:
+    channel_ids = list(
+        session.execute(
+            select(alert_rule_channels.c.channel_id).where(
+                alert_rule_channels.c.rule_id == rule.id
+            )
+        )
+        .scalars()
+        .all()
+    )
     return {
         "id": rule.id,
         "name": rule.name,
@@ -88,8 +99,31 @@ def _rule_dict(session: Session, rule: AlertRule) -> dict:
         "scope_name": scope_name(session, rule.scope_type, rule.scope_id),
         "enabled": rule.enabled,
         "builtin": rule.builtin,
+        "channel_ids": channel_ids,
         "created_at": rule.created_at.isoformat() if rule.created_at else None,
     }
+
+
+def _validate_channels(session: Session, channel_ids: list[str]) -> None:
+    for channel_id in channel_ids:
+        channel = session.get(AlertChannel, channel_id)
+        if channel is None:
+            raise HTTPException(status_code=404, detail=f"unknown channel {channel_id}")
+        if not channel.enabled:
+            raise HTTPException(
+                status_code=409, detail=f"channel {channel.name!r} is disabled"
+            )
+
+
+def _set_channels(session: Session, rule: AlertRule, channel_ids: list[str]) -> None:
+    session.execute(
+        alert_rule_channels.delete().where(alert_rule_channels.c.rule_id == rule.id)
+    )
+    if channel_ids:
+        session.execute(
+            alert_rule_channels.insert(),
+            [{"rule_id": rule.id, "channel_id": cid} for cid in channel_ids],
+        )
 
 
 def _load_rule(session: Session, rule_id: str) -> AlertRule:
@@ -136,6 +170,7 @@ def create_alert_rule(
         raise HTTPException(
             status_code=422, detail="critical_threshold must be >= warning_threshold"
         )
+    _validate_channels(session, body.channel_ids or [])
     rule = AlertRule(
         name=body.name,
         metric=body.metric,
@@ -147,6 +182,7 @@ def create_alert_rule(
     )
     session.add(rule)
     session.flush()
+    _set_channels(session, rule, body.channel_ids or [])
     session.commit()
     return _rule_dict(session, rule)
 
@@ -184,6 +220,10 @@ def update_alert_rule(
         rule.critical_threshold = Decimal(str(body.critical_threshold))
     if "enabled" in fields and body.enabled is not None:
         rule.enabled = body.enabled
+    if "channel_ids" in fields:
+        channel_ids = body.channel_ids or []
+        _validate_channels(session, channel_ids)
+        _set_channels(session, rule, channel_ids)
     session.flush()
     session.commit()
     return _rule_dict(session, rule)

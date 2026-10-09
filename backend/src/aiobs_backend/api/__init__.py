@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from .routes import (
     agents,
+    alert_channels,
     alert_rules,
     alerts,
     auth,
@@ -28,6 +29,7 @@ api = APIRouter(prefix="/api/v1")
 
 for module in (
     agents,
+    alert_channels,
     alert_rules,
     alerts,
     auth,

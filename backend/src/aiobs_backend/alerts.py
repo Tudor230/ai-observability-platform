@@ -10,9 +10,7 @@ evaluations do not spam.
 from __future__ import annotations
 
 import calendar
-import json
 import logging
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -21,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .models import Alert, AlertRule, Budget, Execution, Project, Team
+from .notify import deliver
 from .stats import percentile
 
 logger = logging.getLogger(__name__)
@@ -326,31 +325,6 @@ def _alert_dict(a: Alert) -> dict:
     }
 
 
-def _notify_webhook(alerts: list[Alert]) -> None:
-    """Best-effort webhook delivery for newly created alerts (F37).
-
-    Delivery failures never affect evaluation: they are logged and the alert
-    remains available through the API/UI.
-    """
-    settings = get_settings()
-    if not alerts or not settings.alert_webhook_url:
-        return
-    payload = json.dumps({"alerts": [_alert_dict(a) for a in alerts]}).encode("utf-8")
-    request = urllib.request.Request(
-        settings.alert_webhook_url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(
-            request, timeout=settings.alert_webhook_timeout_s
-        ):
-            pass
-    except Exception:
-        logger.warning("alert webhook delivery failed", exc_info=True)
-
-
 def evaluate_alerts(
     session: Session, now: datetime | None = None
 ) -> list[dict]:
@@ -360,5 +334,5 @@ def evaluate_alerts(
         created.extend(evaluate_budget(session, budget, now))
     created.extend(evaluate_threshold_rules(session, now))
     session.flush()
-    _notify_webhook(created)
+    deliver(session, created)
     return [_alert_dict(a) for a in created]

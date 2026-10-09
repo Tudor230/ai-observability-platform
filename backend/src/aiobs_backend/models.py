@@ -7,12 +7,14 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Column,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
+    Table,
     Text,
     UniqueConstraint,
     text,
@@ -416,6 +418,39 @@ class Alert(Base):
     triggered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, index=True
     )
+
+
+class AlertChannel(Base):
+    """A delivery target for alerts (audit item 7): email, Slack or webhook."""
+
+    __tablename__ = "alert_channels"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    type: Mapped[str] = mapped_column(String(20))  # email|slack|webhook
+    name: Mapped[str] = mapped_column(String(120))
+    target: Mapped[str] = mapped_column(String(320))  # address or URL
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# Rule ↔ channel selection (a rule with no links falls back to the global webhook).
+alert_rule_channels = Table(
+    "alert_rule_channels",
+    Base.metadata,
+    Column(
+        "rule_id",
+        String(32),
+        ForeignKey("alert_rules.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "channel_id",
+        String(32),
+        ForeignKey("alert_channels.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class AlertRule(Base):

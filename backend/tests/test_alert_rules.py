@@ -120,7 +120,7 @@ def test_alerts_are_posted_to_the_webhook(monkeypatch, session_factory, project)
     """F37: created alerts are delivered best-effort to the configured webhook."""
     import json as jsonlib
 
-    from aiobs_backend import alerts as alerts_mod
+    from aiobs_backend import notify as notify_mod
     from aiobs_backend.config import get_settings
 
     sent: dict = {}
@@ -138,7 +138,7 @@ def test_alerts_are_posted_to_the_webhook(monkeypatch, session_factory, project)
         return _Response()
 
     get_settings.cache_clear()
-    monkeypatch.setattr(alerts_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(notify_mod.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(
         get_settings(), "alert_webhook_url", "http://hooks.test/alerts"
     )
