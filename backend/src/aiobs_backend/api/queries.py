@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import Select, and_, asc, desc, false, func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import Alert, Budget, Client, Execution, Project, Team
+from ..models import Alert, AlertRule, Budget, Client, Execution, Project, Team
 
 EXTERNAL = (Execution, Project.project_id, Client.external_key)
 
@@ -29,18 +29,65 @@ def _project_scope_clause(project_ids: Collection[str] | None):
     return Project.project_id.in_(project_ids)
 
 
-def alert_scope_clause(project_ids: Collection[str] | None):
+def alert_scope_clause(
+    project_ids: Collection[str] | None,
+    department_ids: Collection[str] = (),
+    team_ids: Collection[str] = (),
+):
     """Clause selecting alerts visible to a scoped caller.
 
-    Rule alerts are global (exec/admin only); budget alerts follow the budget's
-    project, so they can be attributed to a team scope (plans/roles.md §6.3).
+    Budget alerts follow their budget's project/team/department; rule alerts are
+    visible when the rule's org scope intersects the caller's allowed set
+    (global rule alerts stay exec/admin-only), and rule alerts are exec/admin-only otherwise
+    (audit item 7, ticket 08).
     """
     if project_ids is None:
         return None
-    if not project_ids:
-        return false()
-    allowed = select(Project.id).where(Project.project_id.in_(project_ids))
-    return and_(Alert.dimension == "budget", Alert.dimension_key.in_(allowed))
+    budget_clauses = []
+    if project_ids:
+        allowed_projects = select(Project.id).where(
+            Project.project_id.in_(project_ids)
+        )
+        budget_clauses.append(Budget.project_id.in_(allowed_projects))
+    if team_ids:
+        budget_clauses.append(Budget.team_id.in_(team_ids))
+    if department_ids:
+        budget_clauses.append(Budget.department_id.in_(department_ids))
+    if budget_clauses:
+        visible_budgets = select(Budget.id).where(or_(*budget_clauses))
+    else:
+        visible_budgets = select(Budget.id).where(false())
+    budget_part = and_(
+        Alert.dimension == "budget", Alert.dimension_key.in_(visible_budgets)
+    )
+
+    rule_clauses = []
+    if project_ids:
+        rule_clauses.append(
+            and_(
+                AlertRule.scope_type == "project",
+                AlertRule.scope_id.in_(
+                    select(Project.id).where(Project.project_id.in_(project_ids))
+                ),
+            )
+        )
+    if team_ids:
+        rule_clauses.append(
+            and_(AlertRule.scope_type == "team", AlertRule.scope_id.in_(team_ids))
+        )
+    if department_ids:
+        rule_clauses.append(
+            and_(
+                AlertRule.scope_type == "department",
+                AlertRule.scope_id.in_(department_ids),
+            )
+        )
+    if rule_clauses:
+        visible_rules = select(AlertRule.id).where(or_(*rule_clauses))
+    else:
+        visible_rules = select(AlertRule.id).where(false())
+    rule_part = and_(Alert.dimension == "rule", Alert.rule_ref.in_(visible_rules))
+    return or_(budget_part, rule_part)
 
 
 def budget_scope_clause(

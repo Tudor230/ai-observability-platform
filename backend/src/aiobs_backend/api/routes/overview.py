@@ -90,7 +90,9 @@ def overview(
         workflow=workflow,
     )
     alert_stmt = select(Alert).where(Alert.status == "open")
-    alert_clause = alert_scope_clause(project_ids)
+    alert_clause = alert_scope_clause(
+        project_ids, access.department_ids, access.team_ids
+    )
     if alert_clause is not None:
         alert_stmt = alert_stmt.where(alert_clause)
     open_alerts = session.execute(alert_stmt).scalars().all()

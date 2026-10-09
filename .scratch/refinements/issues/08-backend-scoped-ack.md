@@ -1,7 +1,7 @@
 # 08 — Backend: scoped alert acknowledgment + rule alert visibility
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 06
 Area: audit item 7 (alerts — manager ack)
 Estimate: S
@@ -57,3 +57,17 @@ intersects theirs, and return a server-computed `can_ack` per alert.
 - `uv run pytest -q`, ruff, mypy.
 
 ## Comments
+
+Implemented. `PATCH /alerts/{id}` now uses `require_access()` and authorizes the
+admin key/admin session, any global grant, or a manager covering the alert's
+scope (budget → its project/team/department; rule → the rule's scope; global →
+exec/admin only) with 403 otherwise. `GET /alerts` items gained
+`can_ack` + `scope`/`scope_name`. `alert_scope_clause` now resolves budget
+visibility through the budget's project/team/department (fixing a latent
+comparison bug where budget ids were matched against project ids) and exposes
+rule alerts whose rule scope intersects the caller's access; global rule alerts
+stay exec/admin-only. `overview` passes the department/team sets too.
+
+Evidence: new `tests/test_alert_ack.py` (manager ack matrix incl. sibling 403,
+client sees-but-cannot-ack, exec/admin global ack, 400/404 paths, visibility
+per scope). Full backend suite **135 passed**; ruff + mypy clean.
