@@ -58,6 +58,7 @@ def list_alerts(
         {
             "id": a.id,
             "rule_id": a.rule_id,
+            "rule_ref": a.rule_ref,
             "severity": a.severity,
             "message": a.message,
             "dimension": a.dimension,

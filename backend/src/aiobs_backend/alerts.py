@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import Alert, Budget, Execution, Project, Team
+from .models import Alert, AlertRule, Budget, Execution, Project, Team
 from .stats import percentile
 
 logger = logging.getLogger(__name__)
@@ -168,47 +168,89 @@ def evaluate_budget(
     return created
 
 
-def _severity(value: float, threshold: float) -> str:
-    return "critical" if value >= threshold * 2 else "warning"
+METRICS = (
+    "error_rate",
+    "daily_tokens",
+    "tool_calls_per_execution",
+    "p95_latency",
+    "cost_anomaly",
+)
 
 
-def _rule_alert(
-    session: Session,
-    *,
-    rule_id: str,
-    severity: str,
-    message: str,
-    dimension_key: str,
-    now: datetime,
-) -> Alert | None:
-    if _has_open(session, rule_id):
+def _scope_internal_project_ids(session: Session, rule) -> set[str] | None:
+    """Internal project ids a rule applies to; ``None`` = every project."""
+    if rule.scope_type == "global" or not rule.scope_id:
         return None
-    alert = Alert(
-        rule_id=rule_id,
-        severity=severity,
-        message=message,
-        dimension="rule",
-        dimension_key=dimension_key,
-        status="open",
-        triggered_at=now,
+    if rule.scope_type == "project":
+        return {rule.scope_id} if session.get(Project, rule.scope_id) else set()
+    stmt = select(Project.id).join(Team, Team.id == Project.team_id)
+    if rule.scope_type == "team":
+        stmt = stmt.where(Project.team_id == rule.scope_id)
+    elif rule.scope_type == "department":
+        stmt = stmt.where(Team.department_id == rule.scope_id)
+    else:
+        return set()
+    return set(session.execute(stmt).scalars().all())
+
+
+def _baseline_cost_per_day(
+    session: Session, day_start: datetime, project_ids: set[str] | None
+) -> float:
+    """7-day average daily cost before ``day_start`` (scope-restricted)."""
+    if project_ids is not None and not project_ids:
+        return 0.0
+    q = select(func.coalesce(func.sum(Execution.total_cost), 0)).where(
+        Execution.started_at >= day_start - timedelta(days=7),
+        Execution.started_at < day_start,
     )
-    session.add(alert)
-    return alert
+    if project_ids is not None:
+        q = q.where(Execution.project_id.in_(project_ids))
+    return float(session.execute(q).scalar_one() or 0) / 7
+
+
+def _fmt_value(metric: str, value: float) -> str:
+    if metric == "error_rate":
+        return f"{value:.0%}"
+    if metric == "daily_tokens":
+        return f"{value:,.0f} tokens"
+    if metric == "tool_calls_per_execution":
+        return f"{value:.1f} tool calls/execution"
+    if metric == "p95_latency":
+        return f"{value:.0f}ms"
+    if metric == "cost_anomaly":
+        return f"{value:.1f}x the 7-day average"
+    return f"{value:.2f}"
+
+
+def _rule_message(rule, value: float, threshold: float, day: str) -> str:
+    scope = "all projects" if rule.scope_type == "global" else f"{rule.scope_type} scope"
+    return (
+        f"{rule.name}: {_fmt_value(rule.metric, value)} today exceeds "
+        f"{_fmt_value(rule.metric, threshold)} ({scope}, {day})"
+    )
 
 
 def evaluate_threshold_rules(
     session: Session, now: datetime | None = None
 ) -> list[Alert]:
-    """Day-scoped consumption/quality rules (F04, plans/backend.md §10).
+    """Day-scoped consumption/quality rules from the `alert_rules` table.
 
-    Covers the non-budget categories promised in docs/03 §3.12: error rate,
-    daily tokens, p95 latency, excessive tool calls, and cost deviation from
-    the 7-day moving average. Rules are deduped per rule id, which includes
-    the day, so each rule can alert once per day.
+    Built-in rules are seeded from the old env thresholds (F04); user rules
+    carry their own warning/critical thresholds and org scope. Each rule is
+    evaluated over its scope's executions for the current UTC day and deduped
+    per ``(rule, day, severity)``.
     """
     settings = get_settings()
     now = now or _utcnow()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day = day_start.date().isoformat()
+    rules = (
+        session.execute(select(AlertRule).where(AlertRule.enabled.is_(True)))
+        .scalars()
+        .all()
+    )
+    if not rules:
+        return []
     rows = (
         session.execute(
             select(Execution).where(
@@ -218,111 +260,53 @@ def evaluate_threshold_rules(
         .scalars()
         .all()
     )
-    if len(rows) < settings.alert_min_executions:
-        return []
-
-    day = day_start.date().isoformat()
-    count = len(rows)
     created: list[Alert] = []
 
-    failed = sum(1 for e in rows if e.status == "error")
-    rate = failed / count
-    if rate >= settings.alert_error_rate:
-        alert = _rule_alert(
-            session,
-            rule_id=f"rule:error_rate:{day}",
-            severity=_severity(rate, settings.alert_error_rate),
-            message=(
-                f"Error rate {rate:.0%} today ({failed}/{count} executions) "
-                f"exceeds {settings.alert_error_rate:.0%}"
-            ),
-            dimension_key="error_rate",
-            now=now,
-        )
-        if alert:
-            created.append(alert)
+    for rule in rules:
+        scope_ids = _scope_internal_project_ids(session, rule)
+        scoped = rows if scope_ids is None else [e for e in rows if e.project_id in scope_ids]
+        count = len(scoped)
+        if count < settings.alert_min_executions:
+            continue
 
-    tokens = sum(e.total_tokens for e in rows)
-    if tokens >= settings.alert_daily_tokens:
-        alert = _rule_alert(
-            session,
-            rule_id=f"rule:tokens:{day}",
-            severity=_severity(tokens, settings.alert_daily_tokens),
-            message=(
-                f"Daily token consumption {tokens:,} exceeds "
-                f"{settings.alert_daily_tokens:,}"
-            ),
-            dimension_key="tokens",
-            now=now,
-        )
-        if alert:
-            created.append(alert)
-
-    tool_calls_per_exec = sum(e.tool_calls for e in rows) / count
-    if tool_calls_per_exec >= settings.alert_tool_calls_per_execution:
-        alert = _rule_alert(
-            session,
-            rule_id=f"rule:tool_calls:{day}",
-            severity=_severity(tool_calls_per_exec, settings.alert_tool_calls_per_execution),
-            message=(
-                f"Tool calls per execution {tool_calls_per_exec:.1f} exceeds "
-                f"{settings.alert_tool_calls_per_execution:.1f} (agent loop?)"
-            ),
-            dimension_key="tool_calls",
-            now=now,
-        )
-        if alert:
-            created.append(alert)
-
-    p95 = percentile(
-        [e.duration_ms for e in rows if e.duration_ms is not None], 0.95
-    )
-    if p95 >= settings.alert_p95_latency_ms:
-        alert = _rule_alert(
-            session,
-            rule_id=f"rule:latency_p95:{day}",
-            severity=_severity(p95, settings.alert_p95_latency_ms),
-            message=(
-                f"P95 execution latency {p95:.0f}ms exceeds "
-                f"{settings.alert_p95_latency_ms:.0f}ms today"
-            ),
-            dimension_key="latency_p95",
-            now=now,
-        )
-        if alert:
-            created.append(alert)
-
-    today_cost = sum(float(e.total_cost or 0) for e in rows)
-    baseline_start = day_start - timedelta(days=7)
-    baseline_total = float(
-        session.execute(
-            select(func.coalesce(func.sum(Execution.total_cost), 0)).where(
-                Execution.started_at >= baseline_start,
-                Execution.started_at < day_start,
+        metric = rule.metric
+        if metric == "error_rate":
+            value = sum(1 for e in scoped if e.status == "error") / count
+        elif metric == "daily_tokens":
+            value = float(sum(e.total_tokens for e in scoped))
+        elif metric == "tool_calls_per_execution":
+            value = sum(e.tool_calls for e in scoped) / count
+        elif metric == "p95_latency":
+            value = percentile(
+                [e.duration_ms for e in scoped if e.duration_ms is not None], 0.95
             )
-        ).scalar_one()
-        or 0
-    )
-    baseline_per_day = baseline_total / 7
-    if (
-        baseline_per_day > 0
-        and today_cost >= baseline_per_day * settings.alert_cost_anomaly_factor
-    ):
-        alert = _rule_alert(
-            session,
-            rule_id=f"rule:cost_anomaly:{day}",
-            severity=_severity(
-                today_cost, baseline_per_day * settings.alert_cost_anomaly_factor
-            ),
-            message=(
-                f"Today's cost {today_cost:.4f} is "
-                f"{today_cost / baseline_per_day:.1f}x the 7-day average "
-                f"({baseline_per_day:.4f}/day)"
-            ),
-            dimension_key="cost_anomaly",
-            now=now,
-        )
-        if alert:
+        elif metric == "cost_anomaly":
+            baseline = _baseline_cost_per_day(session, day_start, scope_ids)
+            if baseline <= 0:
+                continue
+            value = sum(float(e.total_cost or 0) for e in scoped) / baseline
+        else:
+            continue
+
+        warning = float(rule.warning_threshold)
+        critical = float(rule.critical_threshold)
+        for severity, threshold in (("critical", critical), ("warning", warning)):
+            if value < threshold:
+                continue
+            rule_key = f"rule:{rule.id}:{day}:{severity}"
+            if _has_open(session, rule_key):
+                continue
+            alert = Alert(
+                rule_id=rule_key,
+                rule_ref=rule.id,
+                severity=severity,
+                message=_rule_message(rule, value, threshold, day),
+                dimension="rule",
+                dimension_key=metric,
+                status="open",
+                triggered_at=now,
+            )
+            session.add(alert)
             created.append(alert)
 
     return created
@@ -332,6 +316,7 @@ def _alert_dict(a: Alert) -> dict:
     return {
         "id": a.id,
         "rule_id": a.rule_id,
+        "rule_ref": a.rule_ref,
         "severity": a.severity,
         "message": a.message,
         "dimension": a.dimension,

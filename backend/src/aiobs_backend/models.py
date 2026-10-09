@@ -406,6 +406,8 @@ class Alert(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     rule_id: Mapped[str] = mapped_column(String(120), index=True)
+    # The configured rule a threshold alert came from (NULL for budget alerts).
+    rule_ref: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     severity: Mapped[str] = mapped_column(String(20), default="warning")
     message: Mapped[str] = mapped_column(Text)
     dimension: Mapped[str] = mapped_column(String(40))
@@ -413,4 +415,30 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
     triggered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, index=True
+    )
+
+
+class AlertRule(Base):
+    """Configurable threshold rule (audit item 7); built-ins seeded from env."""
+
+    __tablename__ = "alert_rules"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120))
+    # error_rate|daily_tokens|tool_calls_per_execution|p95_latency|cost_anomaly
+    metric: Mapped[str] = mapped_column(String(40))
+    warning_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    critical_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    scope_type: Mapped[str] = mapped_column(String(20), default="global")
+    scope_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Built-ins are deletable only when disabled (409 otherwise); they are the
+    # seed of the env-threshold behavior (F04).
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        Index("ix_alert_rules_scope", "scope_type", "scope_id"),
+        Index("ix_alert_rules_enabled", "enabled"),
     )

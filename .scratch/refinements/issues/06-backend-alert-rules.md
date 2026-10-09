@@ -1,7 +1,7 @@
 # 06 — Backend: alert rules model, CRUD, evaluation refactor
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Area: audit item 7 (alerts)
 Estimate: L
@@ -79,3 +79,22 @@ by seeding the current built-in rules from settings.
 - `uv run pytest -q`, ruff, mypy; migration upgrade/downgrade fresh DB.
 
 ## Comments
+
+Implemented. New `alert_rules` table (migration `c9e3f2a51b7d`) + `alerts.rule_ref`
+anchor; five built-in rules seeded idempotently at startup from the historical
+env thresholds (warning = env, critical = 2×, matching the old `_severity`), so
+existing behavior is preserved. `evaluate_threshold_rules` now reads enabled DB
+rules, resolves each rule's scope (global/department/team/project) to its
+project set, computes the metric over that slice, and emits warning/critical
+alerts deduped per `(rule, day, severity)` with `rule_ref` set. New CRUD
+(`GET/POST/PATCH/DELETE /alert-rules`): admin/exec manage any rule, managers
+only scoped ones they cover (global → 403), built-ins reject deletion (409) but
+can be disabled/edited; responses include `scope_name`.
+
+Evidence: new `tests/test_alert_rules_crud.py` (4 tests: seeding, manager CRUD
+matrix incl. sibling/global 403s + validation 422/404 + builtin 409, scoped
+evaluation with cross-team isolation and dedupe, disabled-rule silence);
+existing `test_alert_rules.py` updated to the metric dimension keys. Full
+backend suite **127 passed**; ruff + mypy clean; migration upgrade/check/
+downgrade/upgrade verified. **KPI gate 28/28 with "alert rules" PASSED** against
+a disposable DB (port 8123).

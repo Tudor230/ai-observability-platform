@@ -46,13 +46,16 @@ def test_error_rate_rule_fires_once_per_day(session_factory, project):
         session.commit()
         created = evaluate_alerts(session)
         session.commit()
-    rules = {a["rule_id"] for a in created}
-    assert any(r.startswith("rule:error_rate:") for r in rules), rules
-    assert all(a["dimension"] == "rule" for a in created if a["rule_id"].startswith("rule:error_rate"))
+    rules = {a["dimension_key"] for a in created}
+    assert "error_rate" in rules, created
+    assert all(
+        a["dimension"] == "rule" for a in created if a["dimension_key"] == "error_rate"
+    )
+    assert all(a["rule_ref"] for a in created if a["dimension_key"] == "error_rate")
 
     with session_factory() as session:
         again = evaluate_alerts(session)
-    assert not any(a["rule_id"].startswith("rule:error_rate") for a in again)
+    assert not any(a["dimension_key"] == "error_rate" for a in again)
 
 
 def test_token_tool_and_latency_rules(session_factory, project):
@@ -71,7 +74,7 @@ def test_token_tool_and_latency_rules(session_factory, project):
         created = evaluate_alerts(session)
         session.commit()
     keys = {a["dimension_key"] for a in created}
-    assert {"tokens", "tool_calls", "latency_p95"} <= keys, keys
+    assert {"daily_tokens", "tool_calls_per_execution", "p95_latency"} <= keys, keys
 
 
 def test_rules_need_a_minimum_sample(session_factory, project):
@@ -152,6 +155,6 @@ def test_alerts_are_posted_to_the_webhook(monkeypatch, session_factory, project)
         assert created, "expected the error-rate alert"
         assert sent["url"] == "http://hooks.test/alerts"
         assert sent["payload"]["alerts"]
-        assert sent["payload"]["alerts"][0]["rule_id"].startswith("rule:error_rate")
+        assert sent["payload"]["alerts"][0]["dimension_key"] == "error_rate"
     finally:
         get_settings.cache_clear()

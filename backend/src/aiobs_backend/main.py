@@ -51,6 +51,8 @@ async def _lifespan(app: FastAPI):
     if get_settings().seed_pricing:
         added = seed.seed_pricing()
         logger.info("seeded %s pricing rows", added)
+    seeded_rules = seed.seed_alert_rules()
+    logger.info("seeded %s alert rules", seeded_rules)
     settings = get_settings()
     if settings.admin_email and settings.admin_password:
         seed.seed_admin(settings.admin_email, settings.admin_password)

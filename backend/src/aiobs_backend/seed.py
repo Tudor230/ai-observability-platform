@@ -8,8 +8,18 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from .config import get_settings
 from .db import session_scope
-from .models import Department, Membership, Pricing, Project, ProjectKey, Team, User
+from .models import (
+    AlertRule,
+    Department,
+    Membership,
+    Pricing,
+    Project,
+    ProjectKey,
+    Team,
+    User,
+)
 from .security import generate_api_key, hash_api_key, hash_password, key_hint
 
 # (provider, model, model_match, input/1m, output/1m, cache_read, cache_write, reasoning)
@@ -66,6 +76,67 @@ def seed_pricing() -> int:
             )
             added += 1
     return added
+
+
+def builtin_alert_rules(settings=None) -> list[AlertRule]:
+    """The env-threshold rules seeded when `alert_rules` is empty (#06).
+
+    Warning = the historical env threshold, critical = 2× (matching the old
+    `_severity` escalation), all global and marked ``builtin``.
+    """
+    settings = settings or get_settings()
+    return [
+        AlertRule(
+            name="Error rate",
+            metric="error_rate",
+            warning_threshold=settings.alert_error_rate,
+            critical_threshold=settings.alert_error_rate * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Daily tokens",
+            metric="daily_tokens",
+            warning_threshold=settings.alert_daily_tokens,
+            critical_threshold=settings.alert_daily_tokens * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Tool calls per execution",
+            metric="tool_calls_per_execution",
+            warning_threshold=settings.alert_tool_calls_per_execution,
+            critical_threshold=settings.alert_tool_calls_per_execution * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="P95 latency",
+            metric="p95_latency",
+            warning_threshold=settings.alert_p95_latency_ms,
+            critical_threshold=settings.alert_p95_latency_ms * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Cost anomaly (7-day average)",
+            metric="cost_anomaly",
+            warning_threshold=settings.alert_cost_anomaly_factor,
+            critical_threshold=settings.alert_cost_anomaly_factor * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+    ]
+
+
+def seed_alert_rules() -> int:
+    """Idempotently seed the built-in rules when the table is empty."""
+    with session_scope() as session:
+        if session.execute(select(AlertRule.id).limit(1)).first() is not None:
+            return 0
+        rules = builtin_alert_rules()
+        session.add_all(rules)
+        return len(rules)
 
 
 def seed_demo_project(project_id: str = "proj-1", name: str = "Demo Project") -> str:
