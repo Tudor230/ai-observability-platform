@@ -1,7 +1,7 @@
 # 14 — Frontend: test infrastructure + coverage gate
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Area: audit item 12 (coverage)
 Estimate: M
@@ -58,3 +58,17 @@ baseline and is ratcheted to the 80% target by ticket 16.
 - The seed smoke test + harness self-check (build a component with providers).
 
 ## Comments
+
+Implemented. Dev deps added (`@testing-library/react@16`, `user-event`,
+`jest-dom`, `jsdom@25`, `@vitest/coverage-v8@3.2.7`); Vitest runs in jsdom with
+`src/test/setup.ts` (jest-dom matchers + ResizeObserver/matchMedia/
+scrollIntoView polyfills) and includes `*.test.{ts,tsx}`. Coverage: v8 over
+`src/**` excluding vendored `agent-prism/**`, `main.tsx`, `test/**`; baseline
+thresholds set from the measured run (**6.85% lines/statements, 41.79%
+functions, 67.01% branches** — ratchet to 80 is ticket 16). `npm run
+test:coverage` added; CI frontend job now runs it. `renderWithProviders`
+harness + `profile()` helper in `src/test/harness.tsx`; seed test
+`components/core/Table.test.tsx`.
+
+Evidence: `npm test` (416 passed, 25 files), `npm run test:coverage` passes the
+gate, `npm run lint` + `npm run build` clean; README Testing section added.

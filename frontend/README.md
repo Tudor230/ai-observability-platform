@@ -22,8 +22,19 @@ Point `VITE_API_BASE` at the backend if not using the dev proxy
 ```bash
 npm run build        # typecheck + production build
 npm run lint
-npm test
+npm test             # vitest (jsdom)
+npm run test:coverage  # vitest + v8 coverage (CI gate; baseline floor, ratchets to 80%)
 ```
+
+## Testing
+
+- Component/page tests use Vitest + React Testing Library in jsdom with the
+  shared `renderWithProviders` harness (`src/test/harness.tsx`).
+- `src/api/client` is mocked per test (`vi.mock`) so tests are offline.
+- Coverage is measured with the v8 provider over non-vendor `src/**`
+  (`src/components/agent-prism/**` is excluded — vendored); the threshold
+  starts at the measured baseline and is ratcheted to 80% (tickets 14 → 16 in
+  `.scratch/refinements/`).
 
 ## Layout
 

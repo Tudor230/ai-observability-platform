@@ -37,7 +37,28 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "node",
-    include: ["src/**/*.test.ts"],
+    environment: "jsdom",
+    include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: ["src/test/setup.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov"],
+      include: ["src/**"],
+      exclude: [
+        // Vendored AgentPrism UI/data/types (see components/agent-prism/LOCAL.md).
+        "src/components/agent-prism/**",
+        "src/main.tsx",
+        "src/vite-env.d.ts",
+        "src/test/**",
+        "src/**/*.test.{ts,tsx}",
+      ],
+      // Baseline gate measured in ticket 14; ticket 16 ratchets these to 80.
+      thresholds: {
+        statements: 6,
+        branches: 60,
+        functions: 41,
+        lines: 6,
+      },
+    },
   },
 });
