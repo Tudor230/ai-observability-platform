@@ -1,7 +1,7 @@
 # 04 — Frontend: budgets management UI
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03
 Area: audit item 5 (budgets)
 Estimate: M
@@ -59,3 +59,17 @@ read-only bars and dead-end empty state.
   delete with mocked API); manual verification against the live stack.
 
 ## Comments
+
+Implemented. Manager's Budgets panel is now a management card: scope label per
+row, Edit/Delete actions, "New budget" in the header, and an empty state with a
+create CTA (`EmptyState` gained an `extra` slot for it). New
+`components/BudgetDialog.tsx` covers create + edit (name, amount, period type +
+anchor date, department→team→project SearchableSelects that filter each other,
+optional client/workflow filters, and a "Global budget" checkbox shown only to
+exec/admin). `api.budgets.list/create/update/remove` + `patch` helper, typed
+`BudgetInput`/extended `BudgetStatus`, `useBudgets`, and `useTeams(department?)`
+were added; mutations invalidate `["budgets"]`.
+
+Evidence: `npm run lint` + `npm run build` clean, `npm test` 416 passed;
+backend endpoints live-verified earlier in ticket 03. RTL coverage for the
+create/edit/delete flow lands in ticket 16.

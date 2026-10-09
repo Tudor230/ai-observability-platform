@@ -3,6 +3,7 @@ import type {
   AggregateRow,
   Alert,
   BudgetStatus,
+  BudgetInput,
   DayMetric,
   Department,
   DirectoryProject,
@@ -72,6 +73,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+const patch = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 export function qs(params: Record<string, string | number | undefined>): string {
@@ -118,6 +121,13 @@ export const api = {
     get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key, days: f.days })}`),
   alerts: () => get<List<Alert>>(`/alerts?status=open`),
   budgetStatus: () => get<List<BudgetStatus>>(`/budgets/status`),
+  budgets: {
+    list: () => get<List<BudgetStatus>>(`/budgets`),
+    create: (body: BudgetInput) => post<BudgetStatus>(`/budgets`, body),
+    update: (id: string, body: Partial<BudgetInput>) =>
+      patch<BudgetStatus>(`/budgets/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/budgets/${id}`),
+  },
 
   auth: {
     me: () => get<Profile>("/auth/me"),
@@ -129,7 +139,8 @@ export const api = {
   directory: {
     projects: () => get<List<DirectoryProject>>("/projects"),
     departments: () => get<List<Department>>("/departments"),
-    teams: () => get<List<Team>>("/teams"),
+    teams: (departmentId?: string) =>
+      get<List<Team>>(`/teams${qs({ department_id: departmentId })}`),
   },
 
   requests: {

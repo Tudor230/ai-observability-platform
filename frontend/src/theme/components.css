@@ -682,6 +682,12 @@
   max-width: 420px;
 }
 
+.empty-state__actions {
+  display: flex;
+  gap: var(--global-dimension-size-100);
+  margin-top: var(--global-dimension-size-50);
+}
+
 /* ------------------------------------------------------------------ *
  * Metric tile
  * ------------------------------------------------------------------ */

@@ -142,6 +142,23 @@ export interface BudgetStatus {
   period_start: string;
   period_end: string;
   workflow_name: string | null;
+  project: string | null;
+  client: string | null;
+  department: string | null;
+  team: string | null;
+  scope: string;
+}
+
+export interface BudgetInput {
+  name?: string | null;
+  amount: number;
+  period: string;
+  period_type: string;
+  project?: string | null;
+  client?: string | null;
+  workflow_name?: string | null;
+  department?: string | null;
+  team?: string | null;
 }
 
 export interface Alert {

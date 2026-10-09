@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useAgents,
   useAlerts,
@@ -8,15 +10,21 @@ import {
   useOverview,
   useWorkflows,
 } from "../api/hooks";
+import { api } from "../api/client";
+import type { BudgetStatus } from "../api/types";
+import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterToolbar } from "../components/FilterToolbar";
 import { RefreshButton } from "../components/RefreshButton";
+import { BudgetDialog } from "../components/BudgetDialog";
 import { TrendChart } from "../components/charts/TrendChart";
 import { BreakdownBars } from "../components/charts/BreakdownBars";
 import { SeverityBadge } from "../components/domain";
 import {
+  Button,
   CardPanel,
+  Dialog,
   EmptyState,
   Metric,
   Progress,
@@ -33,6 +41,8 @@ import { formatMoney, formatPct, formatTokens } from "../lib/format";
 
 export default function Manager() {
   const { filters } = useFilters();
+  const { hasRole } = useAuth();
+  const queryClient = useQueryClient();
   const overview = useOverview(filters);
   const costsByWorkflow = useCosts("workflow", filters);
   const costsByClient = useCosts("client", filters);
@@ -42,6 +52,34 @@ export default function Manager() {
   const alerts = useAlerts();
   const trends = useMetrics("total", filters);
   const budgets = useBudgetStatus();
+
+  const canCreateGlobal = hasRole("exec");
+  const [budgetDialog, setBudgetDialog] = useState<{
+    open: boolean;
+    budget: BudgetStatus | null;
+  }>({ open: false, budget: null });
+  const [deletingBudget, setDeletingBudget] = useState<BudgetStatus | null>(null);
+  const [budgetBusy, setBudgetBusy] = useState(false);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+
+  const refreshBudgets = () => {
+    void queryClient.invalidateQueries({ queryKey: ["budgets"] });
+  };
+
+  const removeBudget = async () => {
+    if (!deletingBudget) return;
+    setBudgetBusy(true);
+    setBudgetError(null);
+    try {
+      await api.budgets.remove(deletingBudget.id);
+      setDeletingBudget(null);
+      refreshBudgets();
+    } catch (err) {
+      setBudgetError(err instanceof Error ? err.message : "Failed to delete the budget.");
+    } finally {
+      setBudgetBusy(false);
+    }
+  };
 
   const loadError =
     overview.error ?? costsByWorkflow.error ?? costsByClient.error ?? workflows.error;
@@ -260,23 +298,54 @@ export default function Manager() {
       </CardPanel>
 
       <div className="grid grid-2">
-        <CardPanel title="Budgets" subTitle="Utilization against configured caps">
+        <CardPanel
+          title="Budgets"
+          subTitle="Utilization against configured caps"
+          extra={
+            <Button
+              variant="primary"
+             
+              onClick={() => setBudgetDialog({ open: true, budget: null })}
+            >
+              New budget
+            </Button>
+          }
+        >
+          {budgetError ? (
+            <div style={{ padding: 16 }}>
+              <QueryError what="the budget action" error={new Error(budgetError)} />
+            </div>
+          ) : null}
           {(budgets.data?.items ?? []).length ? (
             <div className="stack stack--loose" style={{ padding: "var(--global-dimension-size-200)" }}>
               {(budgets.data?.items ?? []).map((b) => {
                 const pct = Math.round(b.utilization * 100);
                 return (
-                  <Progress
-                    key={b.id}
-                    fraction={b.utilization}
-                    label={
-                      <>
-                        {b.name ?? `Budget ${b.period}`}
-                        {b.period_type ? <span className="muted"> ({b.period_type})</span> : null}
-                      </>
-                    }
-                    detail={`${formatMoney(b.spend)} / ${formatMoney(b.amount)} · ${pct}%`}
-                  />
+                  <div key={b.id} className="row" style={{ gap: 12, alignItems: "center" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Progress
+                        fraction={b.utilization}
+                        label={
+                          <>
+                            {b.name ?? `Budget ${b.period}`}
+                            <span className="muted"> · {b.scope}</span>
+                            {b.period_type ? <span className="muted"> ({b.period_type})</span> : null}
+                          </>
+                        }
+                        detail={`${formatMoney(b.spend)} / ${formatMoney(b.amount)} · ${pct}%`}
+                      />
+                    </div>
+                    <Button
+                      variant="quiet"
+                     
+                      onClick={() => setBudgetDialog({ open: true, budget: b })}
+                    >
+                      Edit
+                    </Button>
+                    <Button variant="danger" onClick={() => setDeletingBudget(b)}>
+                      Delete
+                    </Button>
+                  </div>
                 );
               })}
             </div>
@@ -286,7 +355,19 @@ export default function Manager() {
               <Skeleton width="50%" />
             </div>
           ) : (
-            <EmptyState title="No budgets configured" description="Create a budget to track spend caps per dimension." />
+            <EmptyState
+              title="No budgets configured"
+              description="Track spend caps per department, team, project, client or workflow."
+              extra={
+                <Button
+                  variant="primary"
+                 
+                  onClick={() => setBudgetDialog({ open: true, budget: null })}
+                >
+                  Create the first budget
+                </Button>
+              }
+            />
           )}
         </CardPanel>
 
@@ -332,6 +413,38 @@ export default function Manager() {
           />
         </div>
       </CardPanel>
+
+      {budgetDialog.open ? (
+        <BudgetDialog
+          key={budgetDialog.budget?.id ?? "new"}
+          open
+          budget={budgetDialog.budget}
+          canCreateGlobal={canCreateGlobal}
+          onClose={() => setBudgetDialog({ open: false, budget: null })}
+          onSaved={refreshBudgets}
+        />
+      ) : null}
+
+      <Dialog
+        open={deletingBudget !== null}
+        title="Delete budget"
+        onClose={() => setDeletingBudget(null)}
+        footer={
+          <>
+            <Button variant="danger" disabled={budgetBusy} onClick={() => void removeBudget()}>
+              Delete budget
+            </Button>
+            <Button variant="quiet" onClick={() => setDeletingBudget(null)}>
+              Cancel
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">
+          {deletingBudget?.name ?? "This budget"} stops tracking and alerting
+          immediately. Historical executions are not affected.
+        </p>
+      </Dialog>
     </div>
   );
 }

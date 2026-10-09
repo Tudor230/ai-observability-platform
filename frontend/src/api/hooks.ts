@@ -74,6 +74,10 @@ export function useBudgetStatus() {
   return useQuery({ queryKey: ["budgets", "status"], queryFn: () => api.budgetStatus() });
 }
 
+export function useBudgets() {
+  return useQuery({ queryKey: ["budgets", "list"], queryFn: () => api.budgets.list() });
+}
+
 export function useDirectoryProjects() {
   return useQuery({
     queryKey: ["directory", "projects"],
@@ -88,10 +92,10 @@ export function useDepartments() {
   });
 }
 
-export function useTeams() {
+export function useTeams(departmentId?: string) {
   return useQuery({
-    queryKey: ["directory", "teams"],
-    queryFn: () => api.directory.teams(),
+    queryKey: ["directory", "teams", departmentId ?? "all"],
+    queryFn: () => api.directory.teams(departmentId),
   });
 }
 
