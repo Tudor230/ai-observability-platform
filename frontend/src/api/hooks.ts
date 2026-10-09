@@ -1,18 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRefetchInterval } from "../state/RefreshContext";
 import { api, type ExecutionQuery } from "./client";
 import type { Filters } from "./types";
 
+/**
+ * Dashboard queries honour the persisted auto-refresh cadence (ticket 12);
+ * detail/mutation-adjacent queries stay manual.
+ */
 export function useOverview(f: Filters) {
+  const refetchInterval = useRefetchInterval();
   return useQuery({
     queryKey: ["overview", f],
     queryFn: () => api.overview(f),
+    refetchInterval,
   });
 }
 
 export function useExecutions(f: Filters, opts: ExecutionQuery = {}) {
+  const refetchInterval = useRefetchInterval();
   return useQuery({
     queryKey: ["executions", f, opts],
     queryFn: () => api.executions(f, opts),
+    refetchInterval,
   });
 }
 
@@ -41,28 +50,47 @@ export function useFailures(id: string) {
 }
 
 export function useWorkflows(f: Filters) {
-  return useQuery({ queryKey: ["workflows", f], queryFn: () => api.workflows(f) });
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["workflows", f],
+    queryFn: () => api.workflows(f),
+    refetchInterval,
+  });
 }
 
 export function useClients(f: Filters) {
-  return useQuery({ queryKey: ["clients", f], queryFn: () => api.clients(f) });
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["clients", f],
+    queryFn: () => api.clients(f),
+    refetchInterval,
+  });
 }
 
 export function useAgents(f: Filters) {
-  return useQuery({ queryKey: ["agents", f], queryFn: () => api.agents(f) });
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["agents", f],
+    queryFn: () => api.agents(f),
+    refetchInterval,
+  });
 }
 
 export function useCosts(dimension: string, f: Filters) {
+  const refetchInterval = useRefetchInterval();
   return useQuery({
     queryKey: ["costs", dimension, f],
     queryFn: () => api.costs(dimension, f),
+    refetchInterval,
   });
 }
 
 export function useMetrics(dimension: string, f: Filters, key?: string) {
+  const refetchInterval = useRefetchInterval();
   return useQuery({
     queryKey: ["metrics", dimension, key, f.days],
     queryFn: () => api.metrics(dimension, f, key),
+    refetchInterval,
   });
 }
 
@@ -77,10 +105,12 @@ export function useAlerts(
     limit?: number;
   } = { status: "open" }
 ) {
+  const refetchInterval = useRefetchInterval();
   return useQuery({
     queryKey: ["alerts", params],
     queryFn: () => api.alerts.list(params),
     enabled,
+    refetchInterval,
   });
 }
 
@@ -101,11 +131,21 @@ export function useAlertChannels(enabled = true) {
 }
 
 export function useBudgetStatus() {
-  return useQuery({ queryKey: ["budgets", "status"], queryFn: () => api.budgetStatus() });
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["budgets", "status"],
+    queryFn: () => api.budgetStatus(),
+    refetchInterval,
+  });
 }
 
 export function useBudgets() {
-  return useQuery({ queryKey: ["budgets", "list"], queryFn: () => api.budgets.list() });
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["budgets", "list"],
+    queryFn: () => api.budgets.list(),
+    refetchInterval,
+  });
 }
 
 export function usePricing(params: {

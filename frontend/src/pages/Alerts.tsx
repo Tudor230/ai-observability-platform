@@ -41,6 +41,7 @@ import {
   TextInput,
   Th,
   Tr,
+  useToast,
 } from "../components/core";
 
 type TabId = "open" | "rules" | "channels";
@@ -95,6 +96,7 @@ export default function Alerts() {
 
 function OpenAlertsPanel() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [status, setStatus] = useState("open");
   const [severity, setSeverity] = useState("");
   const [search, setSearch] = useState("");
@@ -120,9 +122,12 @@ function OpenAlertsPanel() {
     setError(null);
     try {
       await api.alerts.update(alert.id, next);
+      toast.success(next === "closed" ? "Alert closed." : "Alert acknowledged.");
       void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update the alert.");
+      const message = err instanceof Error ? err.message : "Failed to update the alert.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusyId(null);
     }
@@ -219,6 +224,7 @@ function OpenAlertsPanel() {
 
 function RulesPanel({ canGlobal, onChanged }: { canGlobal: boolean; onChanged: () => void }) {
   const rules = useAlertRules();
+  const toast = useToast();
   const [editing, setEditing] = useState<AlertRule | null>(null);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<AlertRule | null>(null);
@@ -230,9 +236,12 @@ function RulesPanel({ canGlobal, onChanged }: { canGlobal: boolean; onChanged: (
     setError(null);
     try {
       await api.alertRules.update(rule.id, { enabled: !rule.enabled });
+      toast.success(rule.enabled ? "Rule disabled." : "Rule enabled.");
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update the rule.");
+      const message = err instanceof Error ? err.message : "Failed to update the rule.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -245,9 +254,12 @@ function RulesPanel({ canGlobal, onChanged }: { canGlobal: boolean; onChanged: (
     try {
       await api.alertRules.remove(deleting.id);
       setDeleting(null);
+      toast.success("Rule deleted.");
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete the rule.");
+      const message = err instanceof Error ? err.message : "Failed to delete the rule.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -385,6 +397,7 @@ function RuleDialog({
   const departments = useDepartments();
   const teams = useTeams();
   const projects = useDirectoryProjects();
+  const toast = useToast();
 
   const [name, setName] = useState(rule?.name ?? "");
   const [metric, setMetric] = useState<AlertMetric>(rule?.metric ?? "error_rate");
@@ -436,9 +449,12 @@ function RuleDialog({
       if (!payload.name) throw new Error("Name is required.");
       if (rule) await api.alertRules.update(rule.id, payload);
       else await api.alertRules.create(payload);
+      toast.success(rule ? "Rule saved." : "Rule created.");
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save the rule.");
+      const message = err instanceof Error ? err.message : "Failed to save the rule.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -551,6 +567,7 @@ function RuleDialog({
 
 function ChannelsPanel() {
   const channels = useAlertChannels();
+  const toast = useToast();
   const [editing, setEditing] = useState<AlertChannel | null>(null);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<AlertChannel | null>(null);
@@ -564,9 +581,12 @@ function ChannelsPanel() {
     try {
       await api.alertChannels.remove(deleting.id);
       setDeleting(null);
+      toast.success("Channel deleted.");
       void channels.refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete the channel.");
+      const message = err instanceof Error ? err.message : "Failed to delete the channel.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -695,6 +715,7 @@ function ChannelDialog({
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const submit = async () => {
     setBusy(true);
@@ -710,9 +731,12 @@ function ChannelDialog({
       }
       if (channel) await api.alertChannels.update(channel.id, body);
       else await api.alertChannels.create(body);
+      toast.success(channel ? "Channel saved." : "Channel created.");
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save the channel.");
+      const message = err instanceof Error ? err.message : "Failed to save the channel.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

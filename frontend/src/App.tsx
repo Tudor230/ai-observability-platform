@@ -1,10 +1,11 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
-import { Skeleton } from "./components/core";
+import { Skeleton, ToastProvider } from "./components/core";
 import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./state/AuthContext";
 import { FiltersProvider } from "./state/FiltersContext";
+import { RefreshProvider } from "./state/RefreshContext";
 import { ThemeProvider } from "./state/ThemeContext";
 
 const Overview = lazy(() => import("./pages/Overview"));
@@ -73,8 +74,10 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <FiltersProvider>
-          <Suspense fallback={<Loading />}>
-            <Routes>
+          <RefreshProvider>
+            <ToastProvider>
+              <Suspense fallback={<Loading />}>
+                <Routes>
               <Route path="/login" element={<Login />} />
               <Route
                 element={
@@ -146,8 +149,10 @@ export default function App() {
                 />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
-            </Routes>
-          </Suspense>
+              </Routes>
+            </Suspense>
+            </ToastProvider>
+          </RefreshProvider>
         </FiltersProvider>
       </AuthProvider>
     </ThemeProvider>

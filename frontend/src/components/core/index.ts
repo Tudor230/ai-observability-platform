@@ -11,4 +11,5 @@ export { SearchableSelect } from "./SearchableSelect";
 export type { SelectOption } from "./SearchableSelect";
 export { Metric, Delta, Progress } from "./Metric";
 export type { Tab } from "./Tabs";
+export { ToastProvider, useToast } from "./Toast";
 export * from "./icons";

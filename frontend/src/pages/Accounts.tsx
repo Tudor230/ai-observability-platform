@@ -29,6 +29,7 @@ import {
   Tr,
 } from "../components/core";
 import { IconCopy, IconKey } from "../components/core/icons";
+import { useToast } from "../components/core";
 import type { Role, UserAccount } from "../api/types";
 
 const ROLES: Role[] = ["admin", "exec", "manager", "engineer", "client"];
@@ -42,6 +43,7 @@ const ROLE_LABELS: Record<Role, string> = {
 
 export default function Accounts() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const users = useUsers();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,8 +71,11 @@ export default function Accounts() {
       setEmail("");
       setPassword("");
       refresh();
+      toast.success("Account created — copy the password now.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create the account.");
+      const message = err instanceof Error ? err.message : "Failed to create the account.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -82,8 +87,11 @@ export default function Accounts() {
     try {
       const result = await api.users.resetPassword(user.id);
       setRevealed({ email: result.email, password: result.password });
+      toast.success("Password reset — copy it now.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset the password.");
+      const message = err instanceof Error ? err.message : "Failed to reset the password.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -95,9 +103,12 @@ export default function Accounts() {
     try {
       if (user.enabled) await api.users.disable(user.id);
       else await api.users.enable(user.id);
+      toast.success(user.enabled ? "Account disabled." : "Account enabled.");
       refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update the account.");
+      const message = err instanceof Error ? err.message : "Failed to update the account.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -280,6 +291,7 @@ function MembershipDialog({
   const departments = useDepartments();
   const teams = useTeams();
   const projects = useDirectoryProjects();
+  const toast = useToast();
   const [role, setRole] = useState<Role>("engineer");
   const [scopeKey, setScopeKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -326,9 +338,12 @@ function MembershipDialog({
         scopeType === "global" ? null : scopeId
       );
       setScopeKey("");
+      toast.success("Membership granted.");
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to grant the membership.");
+      const message = err instanceof Error ? err.message : "Failed to grant the membership.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -340,9 +355,12 @@ function MembershipDialog({
     setError(null);
     try {
       await api.users.revokeMembership(user.id, membershipId);
+      toast.success("Membership revoked.");
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to revoke the membership.");
+      const message = err instanceof Error ? err.message : "Failed to revoke the membership.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

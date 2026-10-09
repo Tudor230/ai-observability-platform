@@ -36,6 +36,7 @@ import {
   Td,
   Th,
   Tr,
+  useToast,
 } from "../components/core";
 import { formatMoney, formatPct, formatTokens } from "../lib/format";
 
@@ -55,6 +56,7 @@ export default function Manager() {
   const budgets = useBudgetStatus();
 
   const canCreateGlobal = hasRole("exec");
+  const toast = useToast();
   const [budgetDialog, setBudgetDialog] = useState<{
     open: boolean;
     budget: BudgetStatus | null;
@@ -73,10 +75,13 @@ export default function Manager() {
     setBudgetError(null);
     try {
       await api.budgets.remove(deletingBudget.id);
+      toast.success("Budget deleted.");
       setDeletingBudget(null);
       refreshBudgets();
     } catch (err) {
-      setBudgetError(err instanceof Error ? err.message : "Failed to delete the budget.");
+      const message = err instanceof Error ? err.message : "Failed to delete the budget.";
+      setBudgetError(message);
+      toast.error(message);
     } finally {
       setBudgetBusy(false);
     }

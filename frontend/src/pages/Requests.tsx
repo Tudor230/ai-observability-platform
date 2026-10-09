@@ -36,6 +36,7 @@ import {
   TextInput,
   Th,
   Tr,
+  useToast,
   type BadgeVariant,
 } from "../components/core";
 import { useAuth } from "../state/AuthContext";
@@ -84,6 +85,7 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 export default function Requests() {
   const queryClient = useQueryClient();
   const { hasRole, canApprove, profile, refresh } = useAuth();
+  const toast = useToast();
   const canRequestDepartments = hasRole("admin", "exec", "manager");
   const [tab, setTab] = useState<TabId>("new");
 
@@ -197,6 +199,7 @@ export default function Requests() {
       (activeType === "membership" && !scopeKey)
     ) {
       setFeedback({ variant: "danger", text: "Select all required fields." });
+      toast.error("Select all required fields.");
       return;
     }
     setBusy(true);
@@ -218,15 +221,14 @@ export default function Requests() {
     }
     try {
       const result = await api.requests.create(activeType, payload);
-      setFeedback({
-        variant: "success",
-        text:
-          result.status === "approved"
-            ? activeType === "create_project"
-              ? "Auto-approved (you cover this scope) — open the project to add an ingest key."
-              : "Auto-approved: you cover this scope."
-            : "Request submitted for approval.",
-      });
+      const text =
+        result.status === "approved"
+          ? activeType === "create_project"
+            ? "Auto-approved (you cover this scope) — open the project to add an ingest key."
+            : "Auto-approved: you cover this scope."
+          : "Request submitted for approval.";
+      setFeedback({ variant: "success", text });
+      toast.success(text);
       setName("");
       setProjectSlug("");
       setProjectName("");
@@ -234,10 +236,9 @@ export default function Requests() {
       invalidateRequests();
       if (result.status === "approved") void refresh();
     } catch (error) {
-      setFeedback({
-        variant: "danger",
-        text: error instanceof Error ? error.message : "Request failed.",
-      });
+      const text = error instanceof Error ? error.message : "Request failed.";
+      setFeedback({ variant: "danger", text });
+      toast.error(text);
     } finally {
       setBusy(false);
     }
@@ -254,14 +255,20 @@ export default function Requests() {
       if (action === "approve") await api.requests.approve(req.id);
       else if (action === "reject") await api.requests.reject(req.id, reason ?? "");
       else await api.requests.cancel(req.id);
+      toast.success(
+        action === "approve"
+          ? "Request approved."
+          : action === "reject"
+            ? "Request rejected."
+            : "Request cancelled."
+      );
       invalidateRequests();
       void queryClient.invalidateQueries({ queryKey: ["directory"] });
       void queryClient.invalidateQueries({ queryKey: ["overview"] });
     } catch (error) {
-      setFeedback({
-        variant: "danger",
-        text: error instanceof Error ? error.message : "Action failed.",
-      });
+      const text = error instanceof Error ? error.message : "Action failed.";
+      setFeedback({ variant: "danger", text });
+      toast.error(text);
     } finally {
       setDecidingId(null);
       setRejecting(null);

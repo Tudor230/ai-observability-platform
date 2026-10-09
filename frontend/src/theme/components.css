@@ -689,6 +689,63 @@
 }
 
 /* ------------------------------------------------------------------ *
+ * Toasts (ticket 12)
+ * ------------------------------------------------------------------ */
+.toast-stack {
+  position: fixed;
+  bottom: var(--global-dimension-size-300);
+  right: var(--global-dimension-size-300);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: var(--global-dimension-size-100);
+  max-width: 360px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--global-dimension-size-100);
+  padding: var(--global-dimension-size-150) var(--global-dimension-size-200);
+  border-radius: var(--global-border-radius-m, 6px);
+  border: 1px solid var(--global-border-color-default);
+  background-color: var(--global-background-color-100, #1d2025);
+  color: var(--global-text-color-700);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+  font-size: var(--global-font-size-s);
+}
+
+.toast[data-variant="success"] {
+  border-left: 3px solid var(--global-success-color, #2e7d32);
+}
+
+.toast[data-variant="danger"] {
+  border-left: 3px solid var(--global-danger-color, #c62828);
+}
+
+.toast[data-variant="info"] {
+  border-left: 3px solid var(--global-info-color, #1565c0);
+}
+
+.toast__message {
+  flex: 1;
+  word-break: break-word;
+}
+
+.toast__close {
+  all: unset;
+  cursor: pointer;
+  color: var(--global-text-color-500);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.toast__close:focus-visible {
+  outline: 2px solid var(--global-border-color-default);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ *
  * Metric tile
  * ------------------------------------------------------------------ */
 .metric {

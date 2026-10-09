@@ -23,6 +23,7 @@ import {
   TextInput,
   Th,
   Tr,
+  useToast,
 } from "../components/core";
 import { formatMoney } from "../lib/format";
 
@@ -36,6 +37,7 @@ function localNow(): string {
 
 export default function PricingPage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("provider");
@@ -72,14 +74,15 @@ export default function PricingPage() {
       await api.pricing.remove(deleting.id);
       setDeleting(null);
       refresh();
+      toast.success("Price deleted.");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message.includes("409")
-            ? "This price is referenced by cost records — add a newer effective-dated price instead of deleting history."
-            : err.message
-          : "Failed to delete the price."
-      );
+      const message = err instanceof Error
+        ? err.message.includes("409")
+          ? "This price is referenced by cost records — add a newer effective-dated price instead of deleting history."
+          : err.message
+        : "Failed to delete the price.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -261,6 +264,7 @@ function AddPricingDialog({
   const [effectiveFrom, setEffectiveFrom] = useState(localNow());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const submit = async () => {
     setBusy(true);
@@ -289,9 +293,12 @@ function AddPricingDialog({
         throw new Error("Prices must be non-negative numbers.");
       }
       await api.pricing.create(payload);
+      toast.success("Price added.");
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create the price.");
+      const message = err instanceof Error ? err.message : "Failed to create the price.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

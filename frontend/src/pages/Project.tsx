@@ -23,6 +23,7 @@ import {
   TextInput,
   Th,
   Tr,
+  useToast,
 } from "../components/core";
 import { IconCopy, IconKey } from "../components/core/icons";
 import { useAuth } from "../state/AuthContext";
@@ -34,6 +35,7 @@ export default function Project() {
   const { hasRole, costVisible } = useAuth();
   const canManageKeys = hasRole("engineer", "manager");
   const queryClient = useQueryClient();
+  const toast = useToast();
   const projects = useDirectoryProjects();
   const overview = useOverview({ days: 30, project_id: projectId });
   const metrics = useMetrics("project", { days: 30, project_id: projectId }, projectId);
@@ -66,8 +68,11 @@ export default function Project() {
       setCreated(await api.projects.createKey(projectId, label.trim() || undefined));
       setLabel("");
       refreshKeys();
+      toast.success("Ingest key added — copy it now.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add the key.");
+      const message = err instanceof Error ? err.message : "Failed to add the key.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -79,8 +84,11 @@ export default function Project() {
     try {
       setRotated(await api.projects.rotateKey(projectId, row.id));
       refreshKeys();
+      toast.success("Key rotated — copy the new value now.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to rotate the key.");
+      const message = err instanceof Error ? err.message : "Failed to rotate the key.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -94,8 +102,11 @@ export default function Project() {
       await api.projects.revokeKey(projectId, revoking.id);
       setRevoking(null);
       refreshKeys();
+      toast.success("Key revoked.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete the key.");
+      const message = err instanceof Error ? err.message : "Failed to delete the key.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

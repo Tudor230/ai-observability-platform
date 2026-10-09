@@ -1,7 +1,7 @@
 # 12 — Frontend: global toasts + auto-refresh intervals
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Area: audit item 11 (UX)
 Estimate: M
@@ -61,3 +61,20 @@ auto-refresh at a chosen cadence, both global and lightweight.
   mutation.
 
 ## Comments
+
+Implemented. `ToastProvider`/`useToast` (default no-op, stacked, auto-dismiss
+4 s, dismiss button, `aria-live="polite"`, `role="status"`) mounted in
+`App.tsx`; wired success+error toasts into every mutation handler: budgets
+(dialog create/edit, delete), project keys (add/rotate/revoke), pricing
+(create, delete incl. the 409 copy), alerts (ack/close, rule save/toggle/delete,
+channel save/delete), accounts (create/reset/enable/disable, membership
+grant/revoke) and requests (submit/approve/reject/cancel). `RefreshProvider`
+persists Off/30s/1m/5m under `aiobs.refresh`; `useRefetchInterval()` feeds
+`refetchInterval` on the dashboard queries (overview, executions, workflows,
+clients, agents, costs, metrics, alerts, budgets, budget status) and the
+`RefreshButton` renders the interval selector next to the manual refresh;
+detail queries stay manual.
+
+Evidence: `npm run lint` + `npm run build` clean, `npm test` 416 passed (the
+no-op context defaults keep provider-less tests safe). Toast/selector unit
+tests land in ticket 15; one toast-after-mutation page assertion in ticket 16.

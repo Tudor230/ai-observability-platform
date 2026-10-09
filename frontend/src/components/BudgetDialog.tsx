@@ -10,6 +10,7 @@ import {
   SearchableSelect,
   Select,
   TextInput,
+  useToast,
 } from "./core";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -54,6 +55,7 @@ export function BudgetDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const departmentOptions = (departments.data?.items ?? []).map((d) => ({
     value: d.id,
@@ -88,10 +90,13 @@ export function BudgetDialog({
       };
       if (budget) await api.budgets.update(budget.id, payload);
       else await api.budgets.create(payload);
+      toast.success(budget ? "Budget updated." : "Budget created.");
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save the budget.");
+      const message = err instanceof Error ? err.message : "Failed to save the budget.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
