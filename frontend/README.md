@@ -32,8 +32,10 @@ npm run test:coverage  # vitest + v8 coverage (CI gate; baseline floor, ratchets
   shared `renderWithProviders` harness (`src/test/harness.tsx`).
 - `src/api/client` is mocked per test (`vi.mock`) so tests are offline.
 - Coverage is measured with the v8 provider over non-vendor `src/**`
-  (`src/components/agent-prism/**` is excluded — vendored); the threshold
-  starts at the measured baseline and is ratcheted to 80% (tickets 14 → 16 in
+  (`src/components/agent-prism/**` is excluded — vendored); the CI gate is
+  **80% lines/statements** plus raised floors for functions (65%) and branches
+  (70%) — the 80% goal for those two is a documented exception (JSX callback
+  density), ratcheted up from the ticket-14 baseline (tickets 14 → 16 in
   `.scratch/refinements/`).
 
 ## Layout

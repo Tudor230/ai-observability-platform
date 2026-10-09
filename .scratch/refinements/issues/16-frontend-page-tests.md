@@ -1,7 +1,7 @@
 # 16 — Frontend: page/route tests + ratchet the 80% coverage gate
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 14
 Area: audit item 12 (coverage)
 Estimate: L
@@ -68,3 +68,27 @@ from the ticket 14 baseline to 80%.
   the comments, including any directory below target and why.
 
 ## Comments
+
+Implemented. New `src/pages/pages.test.tsx` (37 tests) renders every route with
+rich mocked API data and exercises the critical flows: Overview KPIs + new
+trend panels + FilterToolbar (days/client/workflow/Clear), Engineering
+sort/pagination/empty CTA, ExecutionDetail (KPIs, span explorer, failure tree,
+business context, 404), Manager (panels, budget create/edit/delete, scope
+pickers), Executive, Client (cost-free + workflow drill-down), Projects/Project
+(key add/rotate/revoke), Requests (submit, approve, reason-gated reject),
+Accounts (create/reveal, memberships grant/revoke, reset, disable), Pricing
+(list/add/delete-409 copy), Alerts (tabs by role, ack, rule create/edit/toggle,
+channel create/delete), Login; plus `src/App.test.tsx` (auth redirect, role
+guard, nav filtering, sidebar/theme/user-menu, refresh cadence) and
+`src/components/domain.test.tsx` (badges/icons). The harness gained
+`FiltersProvider` (the toolbar's no-op default was masking URL writes).
+
+Coverage: **88.28% lines/statements, 74.14% branches, 68.83% functions**
+(baseline was 6.85/67.01/41.79). CI gate ratcheted to **80% lines + 80%
+statements** (the goal) with functions 65 / branches 70 as a documented
+exception — JSX callbacks keep those metrics below 80; the floors nonetheless
+rose substantially (functions 41.8 → 68.8).
+
+Evidence: `npm test` **36 files / 506 passed**; `npm run test:coverage` passes
+the gate; `npm run lint` + `npm run build` clean. `src/App.test.tsx` waits use a
+5 s timeout for lazy chunks under load (fixed one flake at 1 s).

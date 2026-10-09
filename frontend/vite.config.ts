@@ -52,12 +52,15 @@ export default defineConfig({
         "src/test/**",
         "src/**/*.test.{ts,tsx}",
       ],
-      // Baseline gate measured in ticket 14; ticket 16 ratchets these to 80.
+      // Gate (ticket 16): lines/statements meet the 80% goal; functions and
+      // branches were raised from the ticket-14 baseline (41.79/67.01) to the
+      // measured levels minus margin and remain a documented exception
+      // (JSX-callback density keeps them below 80 without diminishing value).
       thresholds: {
-        statements: 6,
-        branches: 60,
-        functions: 41,
-        lines: 6,
+        statements: 80,
+        branches: 70,
+        functions: 65,
+        lines: 80,
       },
     },
   },

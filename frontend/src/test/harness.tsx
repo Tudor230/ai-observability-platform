@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
 import { AuthProvider } from "../state/AuthContext";
+import { FiltersProvider } from "../state/FiltersContext";
 import { ThemeProvider } from "../state/ThemeContext";
 
 interface Options {
@@ -26,7 +27,9 @@ export function renderWithProviders(
   });
 
   const withRouter = (children: ReactNode) => (
-    <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+    <MemoryRouter initialEntries={[route]}>
+      <FiltersProvider>{children}</FiltersProvider>
+    </MemoryRouter>
   );
 
   return render(
