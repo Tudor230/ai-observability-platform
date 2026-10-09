@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { Table, TableEmpty, Td, Th, Tr } from "./Table";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { SortableTh, Table, TableEmpty, Td, Th, Tr } from "./Table";
 
 describe("Table primitives", () => {
   it("renders headers, rows and cells", () => {
@@ -32,5 +32,60 @@ describe("Table primitives", () => {
       </Table>
     );
     expect(screen.getByText("Nothing here")).toBeInTheDocument();
+  });
+
+  describe("SortableTh", () => {
+    it("exposes aria-sort and calls onSort with the key", () => {
+      const onSort = vi.fn();
+      render(
+        <Table>
+          <thead>
+            <tr>
+              <SortableTh sortKey="cost" active direction="desc" onSort={onSort}>
+                Cost
+              </SortableTh>
+            </tr>
+          </thead>
+        </Table>
+      );
+      const header = screen.getByRole("columnheader", { name: /Cost/ });
+      expect(header).toHaveAttribute("aria-sort", "descending");
+      fireEvent.click(screen.getByRole("button", { name: /Cost/ }));
+      expect(onSort).toHaveBeenCalledWith("cost");
+    });
+
+    it("reports aria-sort none when inactive", () => {
+      render(
+        <Table>
+          <thead>
+            <tr>
+              <SortableTh sortKey="cost" active={false} direction="asc" onSort={() => {}}>
+                Cost
+              </SortableTh>
+            </tr>
+          </thead>
+        </Table>
+      );
+      expect(screen.getByRole("columnheader", { name: /Cost/ })).toHaveAttribute(
+        "aria-sort",
+        "none"
+      );
+    });
+
+    it("marks plain headers with scope=col", () => {
+      render(
+        <Table>
+          <thead>
+            <tr>
+              <Th>Workflow</Th>
+            </tr>
+          </thead>
+        </Table>
+      );
+      expect(screen.getByRole("columnheader", { name: "Workflow" })).toHaveAttribute(
+        "scope",
+        "col"
+      );
+    });
   });
 });

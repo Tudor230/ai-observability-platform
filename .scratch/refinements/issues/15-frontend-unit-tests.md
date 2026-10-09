@@ -1,7 +1,7 @@
 # 15 — Frontend: unit tests — state, core components, API client, hooks
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 14
 Area: audit item 12 (coverage)
 Estimate: L
@@ -59,3 +59,25 @@ the fetch wrapper, hooks, and chart components.
   needs a follow-up.
 
 ## Comments
+
+Implemented. New unit suites: `api/client.test.ts` (qs/filterQuery, execution
+query params, CSRF header on mutations, PATCH, ApiError status, 401 handler,
+204), `state/AuthContext.test.tsx` (profile/roles/cost visibility/admin
+override/failed me/login/logout), `state/FiltersContext.test.tsx` (URL read,
+default fallback, write preserving non-filter params, dropping defaults),
+`state/RefreshContext.test.tsx` (off default, persistence, restore),
+`components/core/Toast.test.tsx` (stack, dismiss, fake-timer auto-dismiss),
+`components/core/Dialog.test.tsx` (semantics, initial focus, ESC/backdrop,
+Tab trap, closed), `components/core/controls.test.tsx`
+(SearchableSelect filter/mousedown/keyboard/disabled, Metric/Delta/Progress),
+`components/core/Table.test.tsx` extended with SortableTh aria-sort+
+`scope="col"`, and `components/charts/charts.test.tsx` (accessible chart
+containers + links).
+
+Also required: explicit RTL `cleanup()` in `src/test/setup.ts` (auto-cleanup
+needs vitest globals, which this repo doesn't enable) — this fixed 24 cascading
+duplicate-DOM failures.
+
+Evidence: `npm test` **33 files / 463 passed**; coverage now **18.28% lines**
+overall (state 84%, lib 94%, api 40% — `hooks.ts` is exercised by ticket 16's
+page tests); `npm run lint` clean.

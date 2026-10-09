@@ -1,4 +1,11 @@
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+
+// RTL auto-cleanup depends on globals; vitest runs without them, so do it here.
+afterEach(() => {
+  cleanup();
+});
 
 // jsdom lacks these browser APIs that Recharts / Radix / our components touch.
 class ResizeObserverStub {
