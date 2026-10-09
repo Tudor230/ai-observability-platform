@@ -1,8 +1,10 @@
-"""Alerts: list + status management."""
+"""Alerts: list (filterable, searchable, sortable) + status management."""
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.orm import Session
 
 from ...models import Alert
@@ -11,35 +13,46 @@ from ..queries import alert_scope_clause
 
 router = APIRouter(tags=["alerts"])
 
+AlertSort = Literal["triggered_at", "severity"]
+
+
+def _sort_clause(sort: str, order: str):
+    col = Alert.triggered_at if sort == "triggered_at" else Alert.severity
+    order_fn = asc if order == "asc" else desc
+    return order_fn(col), order_fn(Alert.id)
+
 
 @router.get("/alerts")
 def list_alerts(
     session: Session = Depends(get_db),
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
+    sort: AlertSort = Query(default="triggered_at"),
+    order: Literal["asc", "desc"] = Query(default="desc"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     access: AccessScope = Depends(require_access()),
 ) -> dict:
     # Rule alerts are global; budget alerts follow their budget's project.
     scope_clause = alert_scope_clause(access.resolve_project_filter(None))
-    stmt = select(Alert)
-    if scope_clause is not None:
-        stmt = stmt.where(scope_clause)
-    if status:
-        stmt = stmt.where(Alert.status == status)
-    if severity:
-        stmt = stmt.where(Alert.severity == severity)
+
+    def _apply_filters(query):
+        if scope_clause is not None:
+            query = query.where(scope_clause)
+        if status:
+            query = query.where(Alert.status == status)
+        if severity:
+            query = query.where(Alert.severity == severity)
+        if q:
+            query = query.where(Alert.message.ilike(f"%{q}%"))
+        return query
+
+    stmt = _apply_filters(select(Alert))
+    count_stmt = _apply_filters(select(func.count()).select_from(Alert))
     rows = session.execute(
-        stmt.order_by(Alert.triggered_at.desc()).limit(limit).offset(offset)
+        stmt.order_by(*_sort_clause(sort, order)).limit(limit).offset(offset)
     ).scalars().all()
-    count_stmt = select(func.count()).select_from(Alert)
-    if scope_clause is not None:
-        count_stmt = count_stmt.where(scope_clause)
-    if status:
-        count_stmt = count_stmt.where(Alert.status == status)
-    if severity:
-        count_stmt = count_stmt.where(Alert.severity == severity)
     total = session.execute(count_stmt).scalar_one()
     items = [
         {

@@ -1,7 +1,8 @@
-"""Executions: list (paginated, filtered), detail, span list, failure tree."""
+"""Executions: list (paginated, filtered, searchable/sortable), detail, span list, failure tree."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -13,6 +14,10 @@ from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
 router = APIRouter(tags=["executions"])
+
+ExecutionSort = Literal[
+    "started_at", "duration_ms", "total_cost", "total_tokens", "error_count", "status"
+]
 
 
 def _scoped_execution(
@@ -41,6 +46,9 @@ def list_executions(
     client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
+    sort: ExecutionSort = Query(default="started_at"),
+    order: Literal["asc", "desc"] = Query(default="desc"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     access: AccessScope = Depends(require_access("engineer", "manager", "client")),
@@ -57,6 +65,9 @@ def list_executions(
         client_id=client_id,
         workflow=workflow,
         status=status,
+        q=q,
+        sort=sort,
+        order=order,
     )
     total = session.execute(
         select(func.count()).select_from(base.subquery())

@@ -453,7 +453,9 @@ def test_budget_alert(client, session_factory, project):
     assert created, "expected at least one alert"
     alerts_list = client.get("/api/v1/alerts?status=open").json()
     assert alerts_list["total"] >= 1
-    assert alerts_list["items"][0]["severity"] == "critical"
+    # Both the critical and the warning alert exist; same triggered_at, so the
+    # list order between them is not meaningful (stable tiebreaker is the id).
+    assert any(a["severity"] == "critical" for a in alerts_list["items"])
 
 
 # ---------------------------------------------------------------------------

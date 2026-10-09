@@ -4,12 +4,22 @@ from __future__ import annotations
 from collections.abc import Collection
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import Select, and_, false, func, select
+from sqlalchemy import Select, and_, asc, desc, false, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import Alert, Budget, Client, Execution, Project, Team
 
 EXTERNAL = (Execution, Project.project_id, Client.external_key)
+
+# Whitelisted sort keys for `GET /executions` (audit item 4).
+EXECUTION_SORTS = {
+    "started_at": Execution.started_at,
+    "duration_ms": Execution.duration_ms,
+    "total_cost": Execution.total_cost,
+    "total_tokens": Execution.total_tokens,
+    "error_count": Execution.error_count,
+    "status": Execution.status,
+}
 
 
 def _project_scope_clause(project_ids: Collection[str] | None):
@@ -77,6 +87,9 @@ def exec_rows(
     client_id: str | None = None,
     workflow: str | None = None,
     status: str | None = None,
+    q: str | None = None,
+    sort: str | None = None,
+    order: str | None = None,
 ) -> Select:
     """Select (Execution, project_ext, client_ext) with the given filters applied."""
     stmt = select(*EXTERNAL).join(Project, Project.id == Execution.project_id).outerjoin(
@@ -97,8 +110,21 @@ def exec_rows(
         stmt = stmt.where(Execution.workflow_name == workflow)
     if status:
         stmt = stmt.where(Execution.status == status)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                Execution.trace_id.ilike(pattern),
+                Execution.workflow_name.ilike(pattern),
+                Execution.root_error_message.ilike(pattern),
+            )
+        )
     # Stable ordering for pagination and every aggregate consumer (F11).
-    return stmt.order_by(Execution.started_at.desc(), Execution.id.desc())
+    # The whitelisted sort key is validated by the route; unknown values fall
+    # back to the default instead of raising here.
+    sort_col = EXECUTION_SORTS.get(sort or "started_at", Execution.started_at)
+    order_fn = desc if (order or "desc").lower() == "desc" else asc
+    return stmt.order_by(order_fn(sort_col), order_fn(Execution.id))
 
 
 def fetch_exec_rows(session: Session, **filters) -> list[tuple[Execution, str | None, str | None]]:

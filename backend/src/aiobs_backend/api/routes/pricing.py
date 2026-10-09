@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import asc, desc, or_, select
 from sqlalchemy.orm import Session
 
 from ...models import CostRecord, Pricing
@@ -28,9 +29,26 @@ class PricingIn(BaseModel):
 
 
 @router.get("/pricing")
-def list_pricing(session: Session = Depends(get_db)) -> dict:
+def list_pricing(
+    session: Session = Depends(get_db),
+    q: str | None = Query(default=None, max_length=200),
+    sort: Literal["provider", "model", "effective_from"] = Query(default="provider"),
+    order: Literal["asc", "desc"] = Query(default="asc"),
+) -> dict:
+    stmt = select(Pricing)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(Pricing.provider.ilike(pattern), Pricing.model.ilike(pattern))
+        )
+    sort_col = {
+        "provider": Pricing.provider,
+        "model": Pricing.model,
+        "effective_from": Pricing.effective_from,
+    }[sort]
+    order_fn = asc if order == "asc" else desc
     rows = session.execute(
-        select(Pricing).order_by(Pricing.provider, Pricing.model)
+        stmt.order_by(order_fn(sort_col), order_fn(Pricing.model))
     ).scalars().all()
     items = [
         {
