@@ -32,6 +32,9 @@ export default function Overview() {
     executions: m.executions,
     input_tokens: m.input_tokens,
     output_tokens: m.output_tokens,
+    p50_duration_ms: m.p50_duration_ms,
+    p95_duration_ms: m.p95_duration_ms,
+    error_rate: m.error_rate,
   }));
 
   const loadError = overview.error ?? metrics.error;
@@ -133,6 +136,32 @@ export default function Overview() {
                   ]}
                   valueFormatter={(v) => formatTokens(v)}
                   height={220}
+                />
+              </div>
+            </CardPanel>
+            <CardPanel title="Latency over time" subTitle="p50 / p95 per day">
+              <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                <TrendChart
+                  data={series}
+                  series={[
+                    { key: "p50_duration_ms", label: "p50", colorIndex: 0 },
+                    { key: "p95_duration_ms", label: "p95", colorIndex: 3 },
+                  ]}
+                  valueFormatter={(v) => formatMs(v)}
+                  height={220}
+                />
+              </div>
+            </CardPanel>
+          </div>
+
+          <div className="grid grid-2">
+            <CardPanel title="Error rate over time" subTitle="Failed executions per day">
+              <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                <TrendChart
+                  data={series}
+                  series={[{ key: "error_rate", label: "Error rate", colorIndex: 5 }]}
+                  valueFormatter={(v) => formatPct(v)}
+                  height={200}
                 />
               </div>
             </CardPanel>

@@ -95,6 +95,7 @@ export default function Manager() {
     day: m.day.slice(5),
     total_cost: m.total_cost,
     executions: m.executions,
+    tool_calls: m.tool_calls,
   }));
 
   return (
@@ -403,16 +404,27 @@ export default function Manager() {
         </CardPanel>
       </div>
 
-      <CardPanel title="Consumption trend" subTitle="Cost per day">
-        <div style={{ padding: "var(--global-dimension-size-100)" }}>
-          <TrendChart
-            data={trendSeries}
-            series={[{ key: "total_cost", label: "Cost", type: "bar", colorIndex: 0 }]}
-            valueFormatter={(v) => formatMoney(v)}
-            height={220}
-          />
-        </div>
-      </CardPanel>
+      <div className="grid grid-2">
+        <CardPanel title="Consumption trend" subTitle="Cost per day">
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            <TrendChart
+              data={trendSeries}
+              series={[{ key: "total_cost", label: "Cost", type: "bar", colorIndex: 0 }]}
+              valueFormatter={(v) => formatMoney(v)}
+              height={220}
+            />
+          </div>
+        </CardPanel>
+        <CardPanel title="Tool calls per day" subTitle="Agent tool usage">
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            <TrendChart
+              data={trendSeries}
+              series={[{ key: "tool_calls", label: "Tool calls", colorIndex: 6 }]}
+              height={220}
+            />
+          </div>
+        </CardPanel>
+      </div>
 
       {budgetDialog.open ? (
         <BudgetDialog
