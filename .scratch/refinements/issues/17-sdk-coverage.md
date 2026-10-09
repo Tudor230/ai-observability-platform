@@ -1,7 +1,7 @@
 # 17 — SDK: coverage measurement + CI floor
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Area: audit item 12 (coverage)
 Estimate: S
@@ -43,3 +43,13 @@ coverage" goal across all three components (backend already at 86%).
   paste the table into the comments.
 
 ## Comments
+
+Implemented. `pytest-cov` added to the SDK dev group; measured baseline
+**TOTAL 87%** (2589 stmts, 328 missed) across `ai_observability` +
+`mock_workflows` — above the 80% target, so the CI unit job now runs
+`--cov-fail-under=80`. Biggest remaining gaps (documented, not blocking):
+`mock_workflows/cli.py` 0% (exercised only via the `aiobs-mock` subprocess) and
+`_retries.py` 36%. README Development section updated.
+
+Evidence: `uv run pytest -q --cov=…` → 161 passed, 1 skipped, TOTAL 87%;
+`uv.lock` refreshed.

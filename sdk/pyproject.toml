@@ -63,6 +63,7 @@ dev = [
     "ollama>=0.4.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
+    "pytest-cov>=7.1.0",
     "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "llama-index-llms-openai>=0.8.1",

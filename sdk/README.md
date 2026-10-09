@@ -198,6 +198,7 @@ dev/                     inspect tooling (SQL over the shared platform Postgres)
 ```bash
 uv sync --group dev
 uv run pytest
+uv run pytest --cov=ai_observability --cov=mock_workflows --cov-fail-under=80  # CI floor
 AI_OBSERVABILITY_E2E=1 uv run pytest -m e2e   # requires the shared stack (`docker compose up -d --wait postgres phoenix` at the repo root)
 ```
 
