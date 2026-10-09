@@ -305,6 +305,31 @@
   border-right: 1px solid var(--global-border-color-default);
 }
 
+.table__sort {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  border-radius: 3px;
+}
+
+.table__sort:focus-visible {
+  outline: 2px solid var(--global-focus-color, var(--global-border-color-default));
+  outline-offset: 2px;
+}
+
+.table__sort-indicator {
+  font-size: 9px;
+  opacity: 0.55;
+}
+
+.table__sort:hover .table__sort-indicator {
+  opacity: 0.9;
+}
+
 .table tbody tr {
   height: 100%;
 }

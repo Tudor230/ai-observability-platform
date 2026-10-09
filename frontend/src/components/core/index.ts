@@ -2,7 +2,7 @@ export { Badge } from "./Badge";
 export type { BadgeVariant } from "./Badge";
 export { Button } from "./Button";
 export { Card, CardHeader, CardBody, CardPanel } from "./Card";
-export { Table, TableWrap, TableEmpty, Td, Th, Tr } from "./Table";
+export { Table, TableWrap, TableEmpty, Td, Th, Tr, SortableTh } from "./Table";
 export { Tabs } from "./Tabs";
 export { Alert, QueryError, Skeleton, EmptyState } from "./Feedback";
 export { Dialog } from "./Dialog";

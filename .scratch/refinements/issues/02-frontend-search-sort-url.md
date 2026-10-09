@@ -1,7 +1,7 @@
 # 02 — Frontend: Engineering search/sort + URL-persisted filters
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01
 Area: audit item 4 (search / sort)
 Estimate: M
@@ -61,3 +61,21 @@ sortable table header primitive.
   `SortableTh` interaction tests in ticket 15.
 
 ## Comments
+
+Implemented. New `SortableTh` (aria-sort, keyboard button, toggle via
+`toggleSort`) with `.table__sort` styles; `FiltersContext` is now URL-backed
+(`days|project_id|client_id|workflow`, replace-navigation, other query params
+preserved) so Manager drill-down links feed the same state and the one-shot
+`appliedDrilldown` effect is gone. Engineering gained a debounced search box
+(300 ms) and sortable columns (Status/Duration/Tokens/Cost/Started) with
+`q|sort|order|status|limit` synced to the URL; `api.executions`/`useExecutions`
+take an `ExecutionQuery` options object and Client's calls were migrated.
+Implementing the debounce via render-time state adjustment (not an effect)
+satisfies the new `react-hooks/set-state-in-effect` lint rule.
+
+Deferred (marked optional in the ticket): client-side sorting for the small
+Manager aggregate tables — no API change needed; revisit if the tables grow.
+
+Evidence: `npm test` 416 passed, `npm run lint` + `npm run build` clean; live
+backend (rebuilt container, migrations applied) verified `q`/`sort`/`order` on
+`/executions` and the admin `alert-rules` endpoint.

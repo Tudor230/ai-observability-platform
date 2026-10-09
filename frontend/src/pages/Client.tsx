@@ -39,11 +39,10 @@ export default function Client() {
   const alerts = useAlerts();
   const [drilldown, setDrilldown] = useState<string | null>(null);
 
-  const recent = useExecutions(filters, undefined, 20);
+  const recent = useExecutions(filters, { limit: 20 });
   const errors = useExecutions(
     { ...filters, workflow: drilldown ?? undefined },
-    "error",
-    200
+    { status: "error", limit: 200 }
   );
 
   const failuresByKind = useMemo(() => {

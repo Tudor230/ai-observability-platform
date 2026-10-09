@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useExecutions } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
@@ -13,10 +13,12 @@ import {
   Select,
   Skeleton,
   QueryError,
+  SortableTh,
   Table,
   TableEmpty,
   TableWrap,
   Td,
+  TextInput,
   Th,
   Tr,
 } from "../components/core";
@@ -24,31 +26,68 @@ import { formatMoney, formatMs, formatTokens } from "../lib/format";
 
 const PAGE_SIZE = 100;
 
+type SortKey =
+  | "started_at"
+  | "duration_ms"
+  | "total_tokens"
+  | "total_cost"
+  | "error_count"
+  | "status";
+
 export default function Engineering() {
-  const { filters, setFilters } = useFilters();
+  const { filters } = useFilters();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState<"" | "ok" | "error">("");
-  const [limit, setLimit] = useState(PAGE_SIZE);
-  const appliedDrilldown = useRef(false);
+  const [params, setParams] = useSearchParams();
 
-  // Manager breakdown links arrive as `?workflow=` / `?client_id=` — fold them
-  // into the shared filters once so the table is scoped on arrival.
-  useEffect(() => {
-    if (appliedDrilldown.current) return;
-    appliedDrilldown.current = true;
-    const workflow = searchParams.get("workflow") ?? undefined;
-    const clientId = searchParams.get("client_id") ?? undefined;
-    if (workflow || clientId) {
-      setFilters({ ...filters, workflow, client_id: clientId });
-    }
-  }, [searchParams, filters, setFilters]);
+  const q = params.get("q") ?? "";
+  const sort = (params.get("sort") as SortKey | null) ?? "started_at";
+  const order = (params.get("order") as "asc" | "desc" | null) ?? "desc";
+  const status = (params.get("status") as "" | "ok" | "error" | null) ?? "";
+  const limit = Number(params.get("limit")) || PAGE_SIZE;
 
-  const { data, isLoading, isError, error, isFetching } = useExecutions(
-    filters,
-    status || undefined,
-    limit
+  const [searchDraft, setSearchDraft] = useState(q);
+  // Keep the draft aligned with the URL (back/forward, drill-down links) by
+  // adjusting state during render instead of in an effect.
+  const [syncedQ, setSyncedQ] = useState(q);
+  if (q !== syncedQ) {
+    setSyncedQ(q);
+    setSearchDraft(q);
+  }
+
+  const updateParams = useCallback(
+    (changes: Record<string, string | number | undefined>) => {
+      const next = new URLSearchParams(params);
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === undefined || value === "") next.delete(key);
+        else next.set(key, String(value));
+      }
+      setParams(next, { replace: true });
+    },
+    [params, setParams]
   );
+
+  // Debounced server-side search (300 ms); resets the extended limit.
+  useEffect(() => {
+    if (searchDraft === q) return;
+    const timer = setTimeout(
+      () => updateParams({ q: searchDraft || undefined, limit: undefined }),
+      300
+    );
+    return () => clearTimeout(timer);
+  }, [searchDraft, q, updateParams]);
+
+  const toggleSort = (key: string) => {
+    if (key === sort) updateParams({ order: order === "asc" ? "desc" : "asc" });
+    else updateParams({ sort: key, order: "desc" });
+  };
+
+  const { data, isLoading, isError, error, isFetching } = useExecutions(filters, {
+    status: status || undefined,
+    q: q || undefined,
+    sort,
+    order,
+    limit,
+  });
   const items = data?.items ?? [];
 
   return (
@@ -58,12 +97,18 @@ export default function Engineering() {
         subTitle="Trace explorer — every agent execution with status, latency and cost."
         extra={
           <>
+            <TextInput
+              variant="search"
+              value={searchDraft}
+              aria-label="Search executions"
+              placeholder="Search trace, workflow, error…"
+              onChange={(e) => setSearchDraft(e.target.value)}
+            />
             <Select
               value={status}
               aria-label="Filter by status"
               onChange={(e) => {
-                setStatus(e.target.value as "" | "ok" | "error");
-                setLimit(PAGE_SIZE);
+                updateParams({ status: e.target.value || undefined, limit: undefined });
               }}
             >
               <option value="">All statuses</option>
@@ -81,7 +126,9 @@ export default function Engineering() {
       <CardPanel
         title="Executions"
         subTitle={
-          isLoading ? "Loading…" : `${items.length}${data && data.total > items.length ? ` of ${data.total}` : ""} in range`
+          isLoading
+            ? "Loading…"
+            : `${items.length}${data && data.total > items.length ? ` of ${data.total}` : ""} in range`
         }
         extra={isFetching && !isLoading ? <Badge variant="info">Refreshing</Badge> : undefined}
       >
@@ -98,12 +145,50 @@ export default function Engineering() {
                 <tr>
                   <Th>Workflow</Th>
                   <Th>Client</Th>
-                  <Th>Status</Th>
+                  <SortableTh
+                    sortKey="status"
+                    active={sort === "status"}
+                    direction={order}
+                    onSort={toggleSort}
+                  >
+                    Status
+                  </SortableTh>
                   <Th>Failure kind</Th>
-                  <Th align="right">Duration</Th>
-                  <Th align="right">Tokens</Th>
-                  <Th align="right">Cost</Th>
-                  <Th>Started</Th>
+                  <SortableTh
+                    sortKey="duration_ms"
+                    active={sort === "duration_ms"}
+                    direction={order}
+                    onSort={toggleSort}
+                    align="right"
+                  >
+                    Duration
+                  </SortableTh>
+                  <SortableTh
+                    sortKey="total_tokens"
+                    active={sort === "total_tokens"}
+                    direction={order}
+                    onSort={toggleSort}
+                    align="right"
+                  >
+                    Tokens
+                  </SortableTh>
+                  <SortableTh
+                    sortKey="total_cost"
+                    active={sort === "total_cost"}
+                    direction={order}
+                    onSort={toggleSort}
+                    align="right"
+                  >
+                    Cost
+                  </SortableTh>
+                  <SortableTh
+                    sortKey="started_at"
+                    active={sort === "started_at"}
+                    direction={order}
+                    onSort={toggleSort}
+                  >
+                    Started
+                  </SortableTh>
                 </tr>
               </thead>
               {items.length > 0 ? (
@@ -161,7 +246,9 @@ export default function Engineering() {
         )}
         {!isLoading && items.length >= limit ? (
           <div className="row" style={{ justifyContent: "center", padding: 12 }}>
-            <Button onClick={() => setLimit(limit + PAGE_SIZE)}>Load more</Button>
+            <Button onClick={() => updateParams({ limit: limit + PAGE_SIZE })}>
+              Load more
+            </Button>
           </div>
         ) : null}
       </CardPanel>

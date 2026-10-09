@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "./client";
+import { api, type ExecutionQuery } from "./client";
 import type { Filters } from "./types";
 
 export function useOverview(f: Filters) {
@@ -9,10 +9,10 @@ export function useOverview(f: Filters) {
   });
 }
 
-export function useExecutions(f: Filters, status?: string, limit = 100) {
+export function useExecutions(f: Filters, opts: ExecutionQuery = {}) {
   return useQuery({
-    queryKey: ["executions", f, status, limit],
-    queryFn: () => api.executions(f, status, limit),
+    queryKey: ["executions", f, opts],
+    queryFn: () => api.executions(f, opts),
   });
 }
 

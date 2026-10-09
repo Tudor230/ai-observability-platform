@@ -92,11 +92,21 @@ interface List<T> {
   total: number;
 }
 
+export interface ExecutionQuery {
+  status?: string;
+  /** Case-insensitive search over trace id, workflow and error message. */
+  q?: string;
+  sort?: "started_at" | "duration_ms" | "total_cost" | "total_tokens" | "error_count" | "status";
+  order?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
 export const api = {
   get,
   overview: (f: Filters) => get<Overview>(`/overview${filterQuery(f)}`),
-  executions: (f: Filters, status?: string, limit = 100, offset = 0) =>
-    get<List<Execution>>(`/executions${qs({ ...f, status, limit, offset })}`),
+  executions: (f: Filters, opts: ExecutionQuery = {}) =>
+    get<List<Execution>>(`/executions${qs({ ...f, limit: 100, ...opts })}`),
   execution: (id: string) => get<Execution>(`/executions/${id}`),
   spans: (id: string) => get<List<Span>>(`/executions/${id}/spans`),
   failures: (id: string) => get<FailureTree>(`/executions/${id}/failures`),

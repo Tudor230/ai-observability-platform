@@ -31,6 +31,38 @@ export function Th({
   );
 }
 
+export function SortableTh({
+  children,
+  sortKey,
+  active,
+  direction,
+  onSort,
+  align,
+  ...rest
+}: {
+  children?: ReactNode;
+  sortKey: string;
+  active: boolean;
+  direction: "asc" | "desc";
+  onSort: (key: string) => void;
+  align?: "left" | "right";
+} & ThHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <th
+      align={align}
+      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
+      {...rest}
+    >
+      <button type="button" className="table__sort" onClick={() => onSort(sortKey)}>
+        {children}
+        <span aria-hidden="true" className="table__sort-indicator">
+          {active ? (direction === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 export function Td({
   children,
   align,
