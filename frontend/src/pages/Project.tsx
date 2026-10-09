@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { useDirectoryProjects, useOverview, useProjectKeys } from "../api/hooks";
+import { useDirectoryProjects, useMetrics, useOverview, useProjectKeys } from "../api/hooks";
 import { PageHeader } from "../components/PageHeader";
 import { RefreshButton } from "../components/RefreshButton";
+import { TrendChart } from "../components/charts/TrendChart";
 import {
   Alert,
   Badge,
@@ -25,16 +26,17 @@ import {
 } from "../components/core";
 import { IconCopy, IconKey } from "../components/core/icons";
 import { useAuth } from "../state/AuthContext";
-import { formatMs, formatPct, formatTokens } from "../lib/format";
+import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
 import type { ProjectKey, ProjectKeyRow } from "../api/types";
 
 export default function Project() {
   const { projectId = "" } = useParams();
-  const { hasRole } = useAuth();
+  const { hasRole, costVisible } = useAuth();
   const canManageKeys = hasRole("engineer", "manager");
   const queryClient = useQueryClient();
   const projects = useDirectoryProjects();
   const overview = useOverview({ days: 30, project_id: projectId });
+  const metrics = useMetrics("project", { days: 30, project_id: projectId }, projectId);
   const keys = useProjectKeys(projectId, canManageKeys);
 
   const [label, setLabel] = useState("");
@@ -45,6 +47,12 @@ export default function Project() {
   const [error, setError] = useState<string | null>(null);
 
   const project = projects.data?.items.find((item) => item.project_id === projectId);
+  const chartSeries = (metrics.data?.items ?? []).map((m) => ({
+    day: m.day.slice(5),
+    executions: m.executions,
+    failed: m.failed_executions,
+    cost: m.total_cost,
+  }));
 
   const refreshKeys = () => {
     void queryClient.invalidateQueries({ queryKey: ["project-keys", projectId] });
@@ -183,6 +191,51 @@ export default function Project() {
           </div>
         </div>
       </CardPanel>
+
+      <div className="grid grid-2">
+        <CardPanel title="Executions over time" subTitle="This project, last 30 days">
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            {metrics.isLoading ? (
+              <Skeleton shape="chart" />
+            ) : chartSeries.length ? (
+              <TrendChart
+                data={chartSeries}
+                series={[
+                  { key: "executions", label: "Executions", type: "bar", colorIndex: 6 },
+                  { key: "failed", label: "Failed", type: "line", colorIndex: 3 },
+                ]}
+                height={220}
+              />
+            ) : (
+              <EmptyState
+                title="No activity in range"
+                description="Executions appear once the SDK ingests traces for this project."
+              />
+            )}
+          </div>
+        </CardPanel>
+        {costVisible ? (
+          <CardPanel title="Cost over time" subTitle="USD per day">
+            <div style={{ padding: "var(--global-dimension-size-100)" }}>
+              {metrics.isLoading ? (
+                <Skeleton shape="chart" />
+              ) : chartSeries.length ? (
+                <TrendChart
+                  data={chartSeries}
+                  series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
+                  valueFormatter={(v) => formatMoney(v)}
+                  height={220}
+                />
+              ) : (
+                <EmptyState
+                  title="No cost in range"
+                  description="Costs appear once executions are priced."
+                />
+              )}
+            </div>
+          </CardPanel>
+        ) : null}
+      </div>
 
       {error ? <Alert variant="danger" message={error} /> : null}
 

@@ -1,7 +1,7 @@
 # 11 — Frontend: cost-by-model, team dimension, project page graphs
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Area: audit item 10 (more graphs)
 Estimate: M
@@ -52,3 +52,15 @@ as charts, and give the Project page its missing trends.
   values on the live stack.
 
 ## Comments
+
+Implemented. Executive gained a "Cost by model" `BreakdownBars` panel from
+`/costs?dimension=model` above the existing tables. Manager gained a full-width
+"Cost by team" panel from `/costs?dimension=team`. The Project page now shows
+"Executions over time" (executions + failed line) and "Cost over time" panels
+from `/metrics?dimension=project&dimension_key=…` (cost panel hidden when
+`costVisible` is false), each with loading/empty states. The optional Projects
+list sparkline was skipped (per-row overview calls already exist; not needed).
+
+Evidence: `npm run lint` + `npm run build` clean, `npm test` 416 passed; the
+charts reuse API data verified live in tickets 03/06. Render assertions land in
+ticket 16.

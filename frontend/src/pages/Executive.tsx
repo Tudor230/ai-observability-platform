@@ -4,6 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { FilterToolbar } from "../components/FilterToolbar";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
+import { BreakdownBars } from "../components/charts/BreakdownBars";
 import {
   CardPanel,
   EmptyState,
@@ -128,6 +129,32 @@ export default function Executive() {
           <EmptyState
             title="Not enough cost history to forecast"
             description={`At least 3 days with cost are required — currently ${series.filter((p) => (p.cost ?? 0) > 0).length}.`}
+          />
+        )}
+      </CardPanel>
+
+      <CardPanel title="Cost by model" subTitle="Provider · model spend">
+        {(byModel.data?.items ?? []).length ? (
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            <BreakdownBars
+              rows={(byModel.data?.items ?? []).map((m) => ({
+                key: m.key ?? `${m.provider}-${m.model}`,
+                label: [m.provider, m.model].filter(Boolean).join(" · ") || "unknown",
+                value: m.total_cost ?? 0,
+                valueLabel: formatMoney(m.total_cost),
+                sublabel: `${m.executions} executions`,
+              }))}
+            />
+          </div>
+        ) : byModel.isLoading ? (
+          <div className="stack" style={{ padding: 16 }}>
+            <Skeleton width="80%" />
+            <Skeleton width="60%" />
+          </div>
+        ) : (
+          <EmptyState
+            title="No model usage in range"
+            description="Costs appear once executions are priced."
           />
         )}
       </CardPanel>

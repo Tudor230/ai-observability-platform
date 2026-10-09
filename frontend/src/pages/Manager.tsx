@@ -46,6 +46,7 @@ export default function Manager() {
   const overview = useOverview(filters);
   const costsByWorkflow = useCosts("workflow", filters);
   const costsByClient = useCosts("client", filters);
+  const costsByTeam = useCosts("team", filters);
   const workflows = useWorkflows(filters);
   const clients = useClients(filters);
   const agents = useAgents(filters);
@@ -258,6 +259,32 @@ export default function Manager() {
           </TableWrap>
         </CardPanel>
       </div>
+
+      <CardPanel title="Cost by team" subTitle="Spend per team in your scope">
+        {(costsByTeam.data?.items ?? []).length ? (
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            <BreakdownBars
+              rows={(costsByTeam.data?.items ?? []).map((item) => ({
+                key: item.key ?? String(item.name),
+                label: item.key ?? item.name ?? "unassigned",
+                value: item.total_cost ?? 0,
+                valueLabel: formatMoney(item.total_cost),
+                sublabel: `${item.executions} executions`,
+              }))}
+            />
+          </div>
+        ) : costsByTeam.isLoading ? (
+          <div className="stack" style={{ padding: 16 }}>
+            <Skeleton width="80%" />
+            <Skeleton width="60%" />
+          </div>
+        ) : (
+          <EmptyState
+            title="No team cost yet"
+            description="Costs roll up to the team of a project's owner."
+          />
+        )}
+      </CardPanel>
 
       <CardPanel title="Agent efficiency" subTitle="Per-agent cost, tokens and error rate">
         <TableWrap>
