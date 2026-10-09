@@ -81,6 +81,7 @@ export default function Projects() {
           <EmptyState
             title="No projects yet"
             description="Register a project through Requests — it appears here once approved."
+            extra={<Link to="/requests">Open Requests</Link>}
           />
         )}
       </CardPanel>

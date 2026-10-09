@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAgents,
@@ -431,7 +432,11 @@ export default function Manager() {
               <Skeleton width="80%" />
             </div>
           ) : (
-            <EmptyState title="No open alerts" description="Nothing is crossing its configured threshold." />
+            <EmptyState
+              title="No open alerts"
+              description="Nothing is crossing its configured threshold."
+              extra={<Link to="/alerts">Configure rules</Link>}
+            />
           )}
         </CardPanel>
       </div>

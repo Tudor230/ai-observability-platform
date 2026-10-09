@@ -44,6 +44,8 @@ export default function Engineering() {
   const order = (params.get("order") as "asc" | "desc" | null) ?? "desc";
   const status = (params.get("status") as "" | "ok" | "error" | null) ?? "";
   const limit = Number(params.get("limit")) || PAGE_SIZE;
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const offset = (page - 1) * limit;
 
   const [searchDraft, setSearchDraft] = useState(q);
   // Keep the draft aligned with the URL (back/forward, drill-down links) by
@@ -70,15 +72,15 @@ export default function Engineering() {
   useEffect(() => {
     if (searchDraft === q) return;
     const timer = setTimeout(
-      () => updateParams({ q: searchDraft || undefined, limit: undefined }),
+      () => updateParams({ q: searchDraft || undefined, limit: undefined, page: undefined }),
       300
     );
     return () => clearTimeout(timer);
   }, [searchDraft, q, updateParams]);
 
   const toggleSort = (key: string) => {
-    if (key === sort) updateParams({ order: order === "asc" ? "desc" : "asc" });
-    else updateParams({ sort: key, order: "desc" });
+    if (key === sort) updateParams({ order: order === "asc" ? "desc" : "asc", page: undefined });
+    else updateParams({ sort: key, order: "desc", page: undefined });
   };
 
   const { data, isLoading, isError, error, isFetching } = useExecutions(filters, {
@@ -87,6 +89,7 @@ export default function Engineering() {
     sort,
     order,
     limit,
+    offset,
   });
   const items = data?.items ?? [];
 
@@ -108,7 +111,7 @@ export default function Engineering() {
               value={status}
               aria-label="Filter by status"
               onChange={(e) => {
-                updateParams({ status: e.target.value || undefined, limit: undefined });
+              updateParams({ status: e.target.value || undefined, limit: undefined, page: undefined });
               }}
             >
               <option value="">All statuses</option>
@@ -238,17 +241,48 @@ export default function Engineering() {
                 </tbody>
               ) : (
                 <TableEmpty colSpan={8}>
-                  No executions in range. Point the SDK at the ingest endpoint, or widen the filters.
+                  No executions in range. <Link to="/requests">Register a project</Link>{" "}
+                  or point the SDK at the ingest endpoint, then widen the filters if needed.
                 </TableEmpty>
               )}
             </Table>
           </TableWrap>
         )}
-        {!isLoading && items.length >= limit ? (
-          <div className="row" style={{ justifyContent: "center", padding: 12 }}>
-            <Button onClick={() => updateParams({ limit: limit + PAGE_SIZE })}>
-              Load more
-            </Button>
+        {!isLoading && data && data.total > 0 ? (
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", padding: 12, gap: 12, flexWrap: "wrap" }}
+          >
+            <span className="muted">
+              Showing {offset + 1}–{Math.min(offset + items.length, data.total)} of {data.total}
+            </span>
+            <span className="row" style={{ gap: 8, alignItems: "center" }}>
+              <Select
+                value={String(limit)}
+                aria-label="Rows per page"
+                onChange={(e) =>
+                  updateParams({ limit: Number(e.target.value), page: undefined })
+                }
+              >
+                <option value="25">25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100">100 / page</option>
+              </Select>
+              <Button
+                variant="quiet"
+                disabled={page <= 1}
+                onClick={() => updateParams({ page: page - 1 })}
+              >
+                Prev
+              </Button>
+              <Button
+                variant="quiet"
+                disabled={offset + items.length >= data.total}
+                onClick={() => updateParams({ page: page + 1 })}
+              >
+                Next
+              </Button>
+            </span>
           </div>
         ) : null}
       </CardPanel>

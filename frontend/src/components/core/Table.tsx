@@ -25,7 +25,7 @@ export function Th({
   ...rest
 }: { children?: ReactNode; align?: "left" | "right" } & ThHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <th align={align} {...rest}>
+    <th scope="col" align={align} {...rest}>
       {children}
     </th>
   );
@@ -49,6 +49,7 @@ export function SortableTh({
 } & ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
+      scope="col"
       align={align}
       aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
       {...rest}

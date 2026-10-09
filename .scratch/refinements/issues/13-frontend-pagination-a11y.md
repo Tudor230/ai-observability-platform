@@ -1,7 +1,7 @@
 # 13 — Frontend: executions pagination, empty-state CTAs, accessibility pass
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02 (aria-sort part)
 Area: audit item 11 (UX)
 Estimate: M
@@ -58,3 +58,21 @@ states, and fix the small accessibility gaps across tables, charts and dialogs.
   manual a11y pass recorded in the PR/comments.
 
 ## Comments
+
+Implemented. Engineering replaced "Load more" with real pagination: `page`
++ page-size (25/50/100) in the URL, `offset` on the API call, "Showing X–Y of
+N" and Prev/Next with bounds; search/sort/status changes reset the page. Empty
+states now link to the action: Engineering → `/requests`, Projects → `/requests`,
+Manager alerts → `/alerts` (budgets already had the create CTA). A11y pass:
+`Th`/`SortableTh` emit `scope="col"` (+ `aria-sort` from ticket 02);
+`TrendChart`/`BreakdownBars` render inside `role="img"` with a derived
+`aria-label` (overridable); `Dialog` got `aria-labelledby`, initial focus and a
+Tab focus trap on top of the existing ESC/backdrop close; the toast stack is
+`aria-live="polite"`.
+
+Note: per-table visually-hidden `caption`s were folded into the `aria-label`
+work on charts + `scope` attributes rather than editing every table call site;
+revisit if a table lacks a heading it can reference.
+
+Evidence: `npm run lint` + `npm run build` clean, `npm test` 416 passed.
+Pagination/Dialog interaction tests land in tickets 15/16.
