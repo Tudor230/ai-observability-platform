@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useAgents,
   useAlerts,
+  useBudgetSeries,
   useBudgetStatus,
   useClients,
   useCosts,
@@ -63,8 +64,18 @@ export default function Manager() {
     budget: BudgetStatus | null;
   }>({ open: false, budget: null });
   const [deletingBudget, setDeletingBudget] = useState<BudgetStatus | null>(null);
+  const [burningDown, setBurningDown] = useState<BudgetStatus | null>(null);
   const [budgetBusy, setBudgetBusy] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const burnSeries = useBudgetSeries(burningDown?.id ?? null);
+  const burn = burnSeries.data;
+  const burnRows = burn
+    ? burn.items.map((point) => ({
+        day: point.day.slice(5),
+        cumulative: point.cumulative,
+        cap: burn.amount,
+      }))
+    : [];
 
   const refreshBudgets = () => {
     void queryClient.invalidateQueries({ queryKey: ["budgets"] });
@@ -374,9 +385,11 @@ export default function Manager() {
                         detail={`${formatMoney(b.spend)} / ${formatMoney(b.amount)} · ${pct}%`}
                       />
                     </div>
+                    <Button variant="quiet" onClick={() => setBurningDown(b)}>
+                      Burn-down
+                    </Button>
                     <Button
                       variant="quiet"
-                     
                       onClick={() => setBudgetDialog({ open: true, budget: b })}
                     >
                       Edit
@@ -400,7 +413,6 @@ export default function Manager() {
               extra={
                 <Button
                   variant="primary"
-                 
                   onClick={() => setBudgetDialog({ open: true, budget: null })}
                 >
                   Create the first budget
@@ -468,6 +480,32 @@ export default function Manager() {
         </CardPanel>
       </div>
 
+      <CardPanel title="Cost by agent" subTitle="Spend per agent">
+        {(agents.data?.items ?? []).length ? (
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            <BreakdownBars
+              rows={(agents.data?.items ?? []).map((agent) => ({
+                key: agent.name ?? "unknown",
+                label: agent.name ?? "unknown",
+                value: agent.total_cost ?? 0,
+                valueLabel: formatMoney(agent.total_cost),
+                sublabel: `${agent.executions} executions · ${formatTokens(agent.total_tokens)} tokens`,
+              }))}
+            />
+          </div>
+        ) : agents.isLoading ? (
+          <div className="stack" style={{ padding: 16 }}>
+            <Skeleton width="80%" />
+            <Skeleton width="60%" />
+          </div>
+        ) : (
+          <EmptyState
+            title="No agent cost yet"
+            description="Agent spend appears once executions with AGENT spans are priced."
+          />
+        )}
+      </CardPanel>
+
       {budgetDialog.open ? (
         <BudgetDialog
           key={budgetDialog.budget?.id ?? "new"}
@@ -498,6 +536,38 @@ export default function Manager() {
           {deletingBudget?.name ?? "This budget"} stops tracking and alerting
           immediately. Historical executions are not affected.
         </p>
+      </Dialog>
+      <Dialog
+        open={burningDown !== null}
+        title="Budget burn-down"
+        onClose={() => setBurningDown(null)}
+        footer={
+          <Button variant="quiet" onClick={() => setBurningDown(null)}>
+            Close
+          </Button>
+        }
+      >
+        {burnSeries.isError ? (
+          <QueryError what="the budget series" error={burnSeries.error} />
+        ) : burnSeries.isLoading || !burn ? (
+          <Skeleton shape="chart" />
+        ) : (
+          <>
+            <p className="muted" style={{ margin: 0 }}>
+              {burn.budget.name ?? "Budget"} · cap {formatMoney(burn.amount)} ·{" "}
+              {burn.period_start.slice(0, 10)} → {burn.period_end.slice(0, 10)}
+            </p>
+            <TrendChart
+              data={burnRows}
+              series={[
+                { key: "cumulative", label: "Spent", colorIndex: 0 },
+                { key: "cap", label: "Budget cap", colorIndex: 3, dashed: true },
+              ]}
+              valueFormatter={(v) => formatMoney(v)}
+              height={240}
+            />
+          </>
+        )}
       </Dialog>
     </div>
   );

@@ -43,6 +43,7 @@ export default function Executive() {
   const overview = useOverview(filters);
   const byClient = useCosts("client", filters);
   const byModel = useCosts("model", filters);
+  const byProject = useCosts("project", filters);
   const trends = useMetrics("total", filters);
 
   const data = overview.data;
@@ -60,7 +61,8 @@ export default function Executive() {
   const tokens = data?.total_tokens ?? 0;
   const costPer1kTokens = tokens ? (totalCost / tokens) * 1000 : null;
 
-  const anyError = overview.isError || byClient.isError || byModel.isError;
+  const anyError =
+    overview.isError || byClient.isError || byModel.isError || byProject.isError;
   const loadError = overview.error ?? byClient.error ?? byModel.error;
 
   return (
@@ -138,7 +140,33 @@ export default function Executive() {
         )}
       </CardPanel>
 
-      <CardPanel title="Cost by model" subTitle="Provider · model spend">
+        <CardPanel title="Cost by project" subTitle="Spend per project">
+          {(byProject.data?.items ?? []).length ? (
+            <div style={{ padding: "var(--global-dimension-size-100)" }}>
+              <BreakdownBars
+                rows={(byProject.data?.items ?? []).map((item) => ({
+                  key: item.key ?? String(item.name),
+                  label: item.key ?? item.name ?? "unknown",
+                  value: item.total_cost ?? 0,
+                  valueLabel: formatMoney(item.total_cost),
+                  sublabel: `${item.executions} executions`,
+                }))}
+              />
+            </div>
+          ) : byProject.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="80%" />
+              <Skeleton width="60%" />
+            </div>
+          ) : (
+            <EmptyState
+              title="No project spend in range"
+              description="Costs roll up to the project that ingested the traces."
+            />
+          )}
+        </CardPanel>
+
+        <CardPanel title="Cost by model" subTitle="Provider · model spend">
         {(byModel.data?.items ?? []).length ? (
           <div style={{ padding: "var(--global-dimension-size-100)" }}>
             <BreakdownBars

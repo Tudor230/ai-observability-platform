@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   alertsList: vi.fn(),
   alertsUpdate: vi.fn(),
   alertsRemove: vi.fn(),
+  failuresSeries: vi.fn(),
+  budgetSeries: vi.fn(),
   rulesList: vi.fn(),
   rulesCreate: vi.fn(),
   rulesUpdate: vi.fn(),
@@ -97,7 +99,9 @@ vi.mock("../api/client", () => ({
       create: h.budgetCreate,
       update: h.budgetUpdate,
       remove: h.budgetRemove,
+      series: h.budgetSeries,
     },
+    failuresSeries: h.failuresSeries,
     pricing: { list: h.pricingList, create: h.pricingCreate, remove: h.pricingRemove },
     directory: {
       projects: h.dirProjects,
@@ -340,6 +344,20 @@ function resetMocks() {
   h.alertsList.mockResolvedValue({ items: [alert], total: 1 });
   h.alertsUpdate.mockResolvedValue({ id: "a1", status: "acknowledged" });
   h.alertsRemove.mockResolvedValue({ deleted: "a1" });
+  h.failuresSeries.mockResolvedValue({
+    items: [{ day: "2026-10-01", kind: "rate_limit", count: 2 }],
+    kinds: ["rate_limit"],
+  });
+  h.budgetSeries.mockResolvedValue({
+    budget,
+    amount: 100,
+    period_start: "2026-10-01T00:00:00Z",
+    period_end: "2026-11-01T00:00:00Z",
+    items: [
+      { day: "2026-10-01", spend: 10, cumulative: 10 },
+      { day: "2026-10-02", spend: 15, cumulative: 25 },
+    ],
+  });
   h.rulesList.mockResolvedValue({ items: [rule], total: 1 });
   h.rulesUpdate.mockResolvedValue(rule);
   h.rulesCreate.mockResolvedValue(rule);
@@ -417,6 +435,7 @@ describe("Overview", () => {
     expect(screen.getByText("$1.23")).toBeInTheDocument();
     expect(screen.getByText("Latency over time")).toBeInTheDocument();
     expect(screen.getByText("Error rate over time")).toBeInTheDocument();
+    expect(screen.getByText("Failures by kind")).toBeInTheDocument();
     expect(screen.getAllByText("Open alerts").length).toBeGreaterThan(0);
     expect(screen.getByText(/Error rate 60%/)).toBeInTheDocument();
   });
@@ -492,7 +511,15 @@ describe("Manager", () => {
     expect(await screen.findByText("Cost by workflow")).toBeInTheDocument();
     expect(screen.getByText("Cost by team")).toBeInTheDocument();
     expect(screen.getByText("Tool calls per day")).toBeInTheDocument();
+    expect(screen.getByText("Cost by agent")).toBeInTheDocument();
     expect(screen.getByText("Team cap")).toBeInTheDocument();
+  });
+
+  it("opens the budget burn-down chart", async () => {
+    renderWithProviders(<Manager />);
+    fireEvent.click(await screen.findByRole("button", { name: "Burn-down" }));
+    expect(await screen.findByText("Budget burn-down")).toBeInTheDocument();
+    await waitFor(() => expect(h.budgetSeries).toHaveBeenCalledWith("b1"));
   });
 
   it("creates a budget from the dialog", async () => {
@@ -516,6 +543,7 @@ describe("Executive", () => {
     renderWithProviders(<Executive />);
     expect(await screen.findByText("Total AI cost")).toBeInTheDocument();
     expect(screen.getAllByText("Cost by model").length).toBeGreaterThan(0);
+    expect(screen.getByText("Cost by project")).toBeInTheDocument();
     expect(screen.getByText("Forecast")).toBeInTheDocument();
   });
 });

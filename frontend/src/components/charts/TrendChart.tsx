@@ -99,7 +99,8 @@ export function TrendChart({
   );
 
   const renders = series.map((s) => {
-    const color = theme.series[s.colorIndex ?? 0];
+    const colors = theme.series;
+    const color = colors[(s.colorIndex ?? 0) % colors.length];
     return { ...s, color };
   });
 

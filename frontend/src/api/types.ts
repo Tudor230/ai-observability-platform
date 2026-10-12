@@ -188,6 +188,31 @@ export interface PricingInput {
   effective_from?: string | null;
 }
 
+export interface FailureSeriesItem {
+  day: string;
+  kind: string;
+  count: number;
+}
+
+export interface FailureSeries {
+  items: FailureSeriesItem[];
+  kinds: string[];
+}
+
+export interface BudgetSeriesPoint {
+  day: string;
+  spend: number;
+  cumulative: number;
+}
+
+export interface BudgetSeries {
+  budget: BudgetStatus;
+  amount: number;
+  period_start: string;
+  period_end: string;
+  items: BudgetSeriesPoint[];
+}
+
 export interface Alert {
   id: string;
   rule_id: string;

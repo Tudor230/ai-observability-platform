@@ -148,6 +148,24 @@ export function useBudgets() {
   });
 }
 
+export function useFailuresSeries(f: Filters, enabled = true) {
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["failures-series", f],
+    queryFn: () => api.failuresSeries(f),
+    enabled,
+    refetchInterval,
+  });
+}
+
+export function useBudgetSeries(id: string | null) {
+  return useQuery({
+    queryKey: ["budget-series", id],
+    queryFn: () => api.budgets.series(id as string),
+    enabled: !!id,
+  });
+}
+
 export function usePricing(params: {
   q?: string;
   sort?: "provider" | "model" | "effective_from";

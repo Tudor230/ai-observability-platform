@@ -1,5 +1,11 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useAlerts, useMetrics, useOverview } from "../api/hooks";
+import {
+  useAlerts,
+  useFailuresSeries,
+  useMetrics,
+  useOverview,
+} from "../api/hooks";
 import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
@@ -19,22 +25,40 @@ import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
 
 export default function Overview() {
   const { filters } = useFilters();
-  const { costVisible } = useAuth();
+  const { costVisible, hasRole } = useAuth();
   const overview = useOverview(filters);
   const metrics = useMetrics("total", filters);
   const alerts = useAlerts();
+  const canSeeFailures = hasRole("engineer", "manager", "client");
+  const failures = useFailuresSeries(filters, canSeeFailures);
 
   const data = overview.data;
   const series = (metrics.data?.items ?? []).map((m) => ({
     day: m.day.slice(5),
     cost: m.total_cost,
     executions: m.executions,
+    ok: Math.max(0, m.executions - m.failed_executions),
+    failed: m.failed_executions,
     input_tokens: m.input_tokens,
     output_tokens: m.output_tokens,
     p50_duration_ms: m.p50_duration_ms,
     p95_duration_ms: m.p95_duration_ms,
+    p99_duration_ms: m.p99_duration_ms,
     error_rate: m.error_rate,
   }));
+
+  const failureKinds = failures.data?.kinds ?? [];
+  const failureRows = useMemo(() => {
+    const byDay = new Map<string, Record<string, number>>();
+    for (const item of failures.data?.items ?? []) {
+      const row = byDay.get(item.day) ?? {};
+      row[item.kind] = (row[item.kind] ?? 0) + item.count;
+      byDay.set(item.day, row);
+    }
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, counts]) => ({ day: day.slice(5), ...counts }));
+  }, [failures.data]);
 
   const loadError = overview.error ?? metrics.error;
   const loading = overview.isLoading;
@@ -118,11 +142,14 @@ export default function Overview() {
                 </div>
               </CardPanel>
             ) : null}
-            <CardPanel title="Executions over time" subTitle="Completed workflow roots per day">
+            <CardPanel title="Executions over time" subTitle="Succeeded vs failed per day">
               <div style={{ padding: "var(--global-dimension-size-100)" }}>
                 <TrendChart
                   data={series}
-                  series={[{ key: "executions", label: "Executions", type: "bar", colorIndex: 6 }]}
+                  series={[
+                    { key: "ok", label: "Succeeded", type: "bar", stack: true, colorIndex: 6 },
+                    { key: "failed", label: "Failed", type: "bar", stack: true, colorIndex: 3 },
+                  ]}
                   height={240}
                 />
               </div>
@@ -143,13 +170,14 @@ export default function Overview() {
                 />
               </div>
             </CardPanel>
-            <CardPanel title="Latency over time" subTitle="p50 / p95 per day">
+            <CardPanel title="Latency over time" subTitle="p50 / p95 / p99 per day">
               <div style={{ padding: "var(--global-dimension-size-100)" }}>
                 <TrendChart
                   data={series}
                   series={[
                     { key: "p50_duration_ms", label: "p50", colorIndex: 0 },
                     { key: "p95_duration_ms", label: "p95", colorIndex: 3 },
+                    { key: "p99_duration_ms", label: "p99", colorIndex: 5, dashed: true },
                   ]}
                   valueFormatter={(v) => formatMs(v)}
                   height={220}
@@ -157,6 +185,33 @@ export default function Overview() {
               </div>
             </CardPanel>
           </div>
+
+          {canSeeFailures ? (
+            <CardPanel title="Failures by kind" subTitle="Failing executions per day">
+              <div style={{ padding: "var(--global-dimension-size-100)" }}>
+                {failures.isLoading ? (
+                  <Skeleton shape="chart" />
+                ) : failureRows.length ? (
+                  <TrendChart
+                    data={failureRows}
+                    series={failureKinds.map((kind, index) => ({
+                      key: kind,
+                      label: kind,
+                      type: "bar" as const,
+                      stack: true,
+                      colorIndex: index,
+                    }))}
+                    height={220}
+                  />
+                ) : (
+                  <EmptyState
+                    title="No failures in range"
+                    description="Every captured execution completed without a classified failure."
+                  />
+                )}
+              </div>
+            </CardPanel>
+          ) : null}
 
           <div className="grid grid-2">
             <CardPanel title="Error rate over time" subTitle="Failed executions per day">

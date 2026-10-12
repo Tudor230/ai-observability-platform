@@ -8,10 +8,12 @@ import type {
   AlertRuleInput,
   BudgetStatus,
   BudgetInput,
+  BudgetSeries,
   DayMetric,
   Department,
   DirectoryProject,
   Execution,
+  FailureSeries,
   FailureTree,
   Filters,
   Membership,
@@ -162,7 +164,9 @@ export const api = {
     update: (id: string, body: Partial<BudgetInput>) =>
       patch<BudgetStatus>(`/budgets/${id}`, body),
     remove: (id: string) => del<{ deleted: string }>(`/budgets/${id}`),
+    series: (id: string) => get<BudgetSeries>(`/budgets/${id}/series`),
   },
+  failuresSeries: (f: Filters) => get<FailureSeries>(`/failures/series${filterQuery(f)}`),
   pricing: {
     list: (params: {
       q?: string;
