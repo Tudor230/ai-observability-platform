@@ -434,6 +434,23 @@ class AlertChannel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class AlertDelivery(Base):
+    """One delivery attempt (refinements v2): channel test + alert routing."""
+
+    __tablename__ = "alert_deliveries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    alert_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    channel_type: Mapped[str] = mapped_column(String(20))  # email|slack|webhook
+    target: Mapped[str] = mapped_column(String(320))
+    status: Mapped[str] = mapped_column(String(20), index=True)  # sent|failed
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, index=True
+    )
+
+
 # Rule ↔ channel selection (a rule with no links falls back to the global webhook).
 alert_rule_channels = Table(
     "alert_rule_channels",

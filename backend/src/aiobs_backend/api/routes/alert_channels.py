@@ -7,12 +7,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import AlertChannel
+from ... import notify
+from ...models import AlertChannel, AlertDelivery
 from ..deps import AccessScope, get_db, require_access
 
 router = APIRouter(tags=["alert-channels"])
@@ -129,3 +130,59 @@ def delete_channel(
     session.delete(channel)
     session.commit()
     return {"deleted": channel_id}
+
+
+@router.post("/alert-channels/{channel_id}/test")
+def test_channel(
+    channel_id: str,
+    session: Session = Depends(get_db),
+    access: AccessScope = Depends(require_access("exec")),
+) -> dict:
+    """Send a test notification and record it in the delivery history."""
+    channel = _load_channel(session, channel_id)
+    ok, error = notify.send_test(session, channel)
+    session.commit()
+    return {"ok": ok, "error": error}
+
+
+@router.get("/alert-deliveries")
+def list_deliveries(
+    channel_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_db),
+    access: AccessScope = Depends(require_access("exec")),
+) -> dict:
+    """Recent delivery attempts (alerts + tests), newest first."""
+    stmt = select(AlertDelivery)
+    count_stmt = select(func.count()).select_from(AlertDelivery)
+    if channel_id:
+        stmt = stmt.where(AlertDelivery.channel_id == channel_id)
+        count_stmt = count_stmt.where(AlertDelivery.channel_id == channel_id)
+    if status:
+        stmt = stmt.where(AlertDelivery.status == status)
+        count_stmt = count_stmt.where(AlertDelivery.status == status)
+    rows = session.execute(
+        stmt.order_by(AlertDelivery.created_at.desc()).limit(limit).offset(offset)
+    ).scalars().all()
+    total = session.execute(count_stmt).scalar_one()
+    names = {
+        cid: name
+        for cid, name in session.execute(select(AlertChannel.id, AlertChannel.name)).all()
+    }
+    items = [
+        {
+            "id": d.id,
+            "alert_id": d.alert_id,
+            "channel_id": d.channel_id,
+            "channel_name": names.get(d.channel_id) if d.channel_id else None,
+            "channel_type": d.channel_type,
+            "target": d.target,
+            "status": d.status,
+            "error": d.error,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in rows
+    ]
+    return {"items": items, "total": total, "limit": limit, "offset": offset}

@@ -1,9 +1,9 @@
 """Alert delivery: email (SMTP) + Slack/webhook channels (audit item 7).
 
 Best-effort by design: every sender failure is logged and never propagates into
-alert evaluation. Rules with linked channels deliver to exactly those; rules
-(and budget alerts) without links fall back to ``AIOBS_ALERT_WEBHOOK_URL`` as a
-single batched POST, preserving the F37 behavior.
+alert evaluation, but each attempt is recorded in ``alert_deliveries`` so the
+dashboard can show a delivery history and per-channel test results
+(refinements v2).
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import Alert, AlertChannel, alert_rule_channels
+from .models import Alert, AlertChannel, AlertDelivery, alert_rule_channels
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,28 @@ def channels_for_alert(session: Session, alert: Alert) -> list[AlertChannel]:
     )
 
 
+def _record(
+    session: Session,
+    *,
+    alert_id: str | None,
+    channel_id: str | None,
+    channel_type: str,
+    target: str,
+    ok: bool,
+    error: str | None = None,
+) -> None:
+    session.add(
+        AlertDelivery(
+            alert_id=alert_id,
+            channel_id=channel_id,
+            channel_type=channel_type,
+            target=target,
+            status="sent" if ok else "failed",
+            error=error,
+        )
+    )
+
+
 def _post_json(url: str, payload: dict, timeout: float) -> None:
     request = urllib.request.Request(
         url,
@@ -68,22 +90,16 @@ def _post_json(url: str, payload: dict, timeout: float) -> None:
         pass
 
 
-def _send_email(channel: AlertChannel, alert: Alert, settings) -> None:
+def _send_email_message(
+    target: str, settings, *, subject: str, body: str
+) -> None:
     if not settings.smtp_host or not settings.smtp_from:
-        logger.warning(
-            "email channel %r skipped: AIOBS_SMTP_HOST/AIOBS_SMTP_FROM not set",
-            channel.name,
-        )
-        return
+        raise RuntimeError("SMTP is not configured (AIOBS_SMTP_HOST/AIOBS_SMTP_FROM)")
     message = EmailMessage()
-    message["Subject"] = f"[{alert.severity.upper()}] {alert.message[:140]}"
+    message["Subject"] = subject
     message["From"] = settings.smtp_from
-    message["To"] = channel.target
-    message.set_content(
-        f"{alert.message}\n\n"
-        f"Severity: {alert.severity}\n"
-        f"Triggered: {alert.triggered_at.isoformat() if alert.triggered_at else ''}\n"
-    )
+    message["To"] = target
+    message.set_content(body)
     with smtplib.SMTP(
         settings.smtp_host, settings.smtp_port, timeout=settings.alert_webhook_timeout_s
     ) as smtp:
@@ -96,7 +112,16 @@ def _send_email(channel: AlertChannel, alert: Alert, settings) -> None:
 
 def _send_channel(channel: AlertChannel, alert: Alert, settings) -> None:
     if channel.type == "email":
-        _send_email(channel, alert, settings)
+        _send_email_message(
+            channel.target,
+            settings,
+            subject=f"[{alert.severity.upper()}] {alert.message[:140]}",
+            body=(
+                f"{alert.message}\n\n"
+                f"Severity: {alert.severity}\n"
+                f"Triggered: {alert.triggered_at.isoformat() if alert.triggered_at else ''}\n"
+            ),
+        )
     elif channel.type == "slack":
         _post_json(
             channel.target,
@@ -112,7 +137,7 @@ def _send_channel(channel: AlertChannel, alert: Alert, settings) -> None:
 
 
 def deliver(session: Session, alerts: list[Alert]) -> None:
-    """Route created alerts to their channels; never raise."""
+    """Route created alerts to their channels; never raise. Attempts are recorded."""
     if not alerts:
         return
     settings = get_settings()
@@ -129,12 +154,30 @@ def deliver(session: Session, alerts: list[Alert]) -> None:
         for channel in channels:
             try:
                 _send_channel(channel, alert, settings)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     "alert delivery failed via %s channel %r",
                     channel.type,
                     channel.name,
                     exc_info=True,
+                )
+                _record(
+                    session,
+                    alert_id=alert.id,
+                    channel_id=channel.id,
+                    channel_type=channel.type,
+                    target=channel.target,
+                    ok=False,
+                    error=str(exc) or exc.__class__.__name__,
+                )
+            else:
+                _record(
+                    session,
+                    alert_id=alert.id,
+                    channel_id=channel.id,
+                    channel_type=channel.type,
+                    target=channel.target,
+                    ok=True,
                 )
     if fallback and settings.alert_webhook_url:
         try:
@@ -143,5 +186,71 @@ def deliver(session: Session, alerts: list[Alert]) -> None:
                 {"alerts": [_alert_payload(a) for a in fallback]},
                 settings.alert_webhook_timeout_s,
             )
-        except Exception:
+        except Exception as exc:
             logger.warning("alert webhook delivery failed", exc_info=True)
+            for alert in fallback:
+                _record(
+                    session,
+                    alert_id=alert.id,
+                    channel_id=None,
+                    channel_type="webhook",
+                    target=settings.alert_webhook_url,
+                    ok=False,
+                    error=str(exc) or exc.__class__.__name__,
+                )
+        else:
+            for alert in fallback:
+                _record(
+                    session,
+                    alert_id=alert.id,
+                    channel_id=None,
+                    channel_type="webhook",
+                    target=settings.alert_webhook_url,
+                    ok=True,
+                )
+
+
+def send_test(session: Session, channel: AlertChannel) -> tuple[bool, str | None]:
+    """Send a test notification through one channel and record the attempt."""
+    settings = get_settings()
+    subject = "Test alert from AI Observability Platform"
+    body = (
+        f"This is a test notification for channel “{channel.name}”. "
+        "If you can read this, the channel is configured correctly."
+    )
+    try:
+        if channel.type == "email":
+            _send_email_message(channel.target, settings, subject=subject, body=body)
+        elif channel.type == "slack":
+            _post_json(
+                channel.target,
+                {"text": f"[TEST] {subject}: {body}"},
+                settings.alert_webhook_timeout_s,
+            )
+        else:
+            _post_json(
+                channel.target,
+                {"test": True, "message": body},
+                settings.alert_webhook_timeout_s,
+            )
+    except Exception as exc:
+        error = str(exc) or exc.__class__.__name__
+        _record(
+            session,
+            alert_id=None,
+            channel_id=channel.id,
+            channel_type=channel.type,
+            target=channel.target,
+            ok=False,
+            error=error,
+        )
+        return False, error
+    _record(
+        session,
+        alert_id=None,
+        channel_id=channel.id,
+        channel_type=channel.type,
+        target=channel.target,
+        ok=True,
+    )
+    return True, None

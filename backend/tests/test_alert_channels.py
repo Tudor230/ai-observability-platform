@@ -9,7 +9,13 @@ from helpers import seed_user
 from aiobs_backend import notify
 from aiobs_backend.alerts import evaluate_alerts
 from aiobs_backend.config import get_settings
-from aiobs_backend.models import AlertChannel, AlertRule, Execution, alert_rule_channels
+from aiobs_backend.models import (
+    AlertChannel,
+    AlertDelivery,
+    AlertRule,
+    Execution,
+    alert_rule_channels,
+)
 
 _COUNTER = iter(range(30_000))
 
@@ -363,4 +369,95 @@ def test_email_without_smtp_config_is_skipped(monkeypatch, session_factory, proj
     # Evaluation succeeds even though the email cannot be sent.
     assert created
     assert not _FakeSMTP.instances
+    # ...but the failed attempt is recorded for the operator.
+    with session_factory() as session:
+        rows = session.query(AlertDelivery).all()
+        assert rows and all(r.status == "failed" for r in rows)
+        assert "SMTP" in (rows[0].error or "")
+    get_settings.cache_clear()
+
+
+def test_channel_test_endpoint_and_history(anon, monkeypatch, session_factory):
+    with session_factory() as session:
+        _, exec_key = seed_user(session, "exec-h@x", role="exec", scope_type="global")
+        _, mgr_key = seed_user(session, "mgr-h@x", role="manager", scope_type="team")
+        session.commit()
+    exec_headers = {"x-api-key": exec_key}
+
+    created = anon.post(
+        "/api/v1/alert-channels",
+        json={"name": "Ops hook", "type": "webhook", "target": "http://hooks.test/ops"},
+        headers=exec_headers,
+    ).json()
+
+    sent: list[dict] = []
+    _capture_urlopen(monkeypatch, sent)
+    ok = anon.post(f"/api/v1/alert-channels/{created['id']}/test", headers=exec_headers)
+    assert ok.status_code == 200, ok.text
+    assert ok.json() == {"ok": True, "error": None}
+    assert sent and sent[0]["payload"]["test"] is True
+
+    # A failing channel reports the error and still lands in the history.
+    def boom(request, timeout=None):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(notify.urllib.request, "urlopen", boom)
+    failed = anon.post(f"/api/v1/alert-channels/{created['id']}/test", headers=exec_headers)
+    assert failed.json()["ok"] is False
+    assert "connection refused" in failed.json()["error"]
+
+    history = anon.get("/api/v1/alert-deliveries", headers=exec_headers).json()
+    assert history["total"] == 2
+    by_status = {item["status"]: item for item in history["items"]}
+    assert set(by_status) == {"sent", "failed"}
+    failed_row = by_status["failed"]
+    assert "channel_name" in failed_row and failed_row["channel_name"] == "Ops hook"
+    assert failed_row["channel_type"] == "webhook"
+    assert failed_row["alert_id"] is None
+
+    # Managers cannot read the delivery history.
+    assert (
+        anon.get("/api/v1/alert-deliveries", headers={"x-api-key": mgr_key}).status_code
+        == 403
+    )
+
+
+def test_delivery_history_records_alert_routing(monkeypatch, session_factory, project):
+    sent: list[dict] = []
+    _capture_urlopen(monkeypatch, sent)
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "alert_webhook_url", None)
+
+    with session_factory() as session:
+        for rule in session.query(AlertRule).all():
+            rule.enabled = False
+        channel = AlertChannel(
+            type="webhook", name="routed", target="http://hooks.test/routed", enabled=True
+        )
+        session.add(channel)
+        session.flush()
+        rule = AlertRule(
+            name="routed-history",
+            metric="error_rate",
+            warning_threshold=0.4,
+            critical_threshold=0.9,
+            scope_type="global",
+        )
+        session.add(rule)
+        session.flush()
+        session.execute(
+            alert_rule_channels.insert(),
+            [{"rule_id": rule.id, "channel_id": channel.id}],
+        )
+        now = datetime.now(timezone.utc)
+        for _ in range(6):
+            _add_execution(session, project, started=now)
+        session.commit()
+        created = evaluate_alerts(session)
+        session.commit()
+        rows = session.query(AlertDelivery).all()
+        assert created
+        assert rows and all(r.status == "sent" for r in rows)
+        assert all(r.channel_id == channel.id for r in rows)
+        assert all(r.alert_id for r in rows)
     get_settings.cache_clear()
