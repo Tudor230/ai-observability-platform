@@ -80,12 +80,10 @@ def budget_window(
     return start, end
 
 
-def budget_spend(
-    session: Session, budget: Budget, now: datetime | None = None
+def budget_spend_between(
+    session: Session, budget: Budget, start: datetime, end: datetime
 ) -> float:
-    now = now or _utcnow()
-    start, end = budget_window(budget, now)
-    end = min(end, now)  # only realized spend inside the current window
+    """Sum realized cost inside ``[start, end)`` for the budget's dimensions."""
     q = select(func.coalesce(func.sum(Execution.total_cost), 0)).where(
         Execution.started_at >= start,
         Execution.started_at < end,
@@ -106,6 +104,15 @@ def budget_spend(
         if budget.department_id:
             q = q.where(Team.department_id == budget.department_id)
     return float(session.execute(q).scalar_one() or 0)
+
+
+def budget_spend(
+    session: Session, budget: Budget, now: datetime | None = None
+) -> float:
+    now = now or _utcnow()
+    start, end = budget_window(budget, now)
+    end = min(end, now)  # only realized spend inside the current window
+    return budget_spend_between(session, budget, start, end)
 
 
 def _has_open(session: Session, rule_id: str) -> bool:

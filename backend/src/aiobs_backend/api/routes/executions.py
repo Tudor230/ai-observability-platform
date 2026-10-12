@@ -80,6 +80,63 @@ def list_executions(
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+@router.get("/failures/series")
+def failures_series(
+    session: Session = Depends(get_db),
+    start: str | None = Query(default=None),
+    end: str | None = Query(default=None),
+    days: int = Query(default=30, ge=1, le=3650),
+    project_id: str | None = Query(default=None),
+    client_id: str | None = Query(default=None),
+    workflow: str | None = Query(default=None),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
+) -> dict:
+    """Daily failure counts grouped by failure kind (scoped, refinements v2).
+
+    Powers the stacked ``Failures by kind`` chart; kinds are ordered by total
+    count so the legend stays stable across days.
+    """
+    end_dt = parse_dt(end, end_of_day=True) or datetime.now(timezone.utc)
+    start_dt = parse_dt(start) or end_dt - timedelta(days=days)
+    scoped = access.resolve_project_filter(project_id)
+    if scoped is not None and not scoped:
+        return {"items": [], "kinds": []}
+    day_col = func.date(Execution.started_at)
+    stmt = (
+        select(
+            day_col.label("day"),
+            Execution.root_error_kind.label("kind"),
+            func.count().label("count"),
+        )
+        .join(Project, Project.id == Execution.project_id)
+        .where(
+            Execution.started_at >= start_dt,
+            Execution.started_at < end_dt,
+            Execution.status == "error",
+            Execution.root_error_kind.isnot(None),
+        )
+        .group_by(day_col, Execution.root_error_kind)
+        .order_by(day_col)
+    )
+    if scoped is not None:
+        stmt = stmt.where(Project.project_id.in_(scoped))
+    if client_id:
+        stmt = stmt.join(Client, Client.id == Execution.client_id).where(
+            Client.external_key == client_id
+        )
+    if workflow:
+        stmt = stmt.where(Execution.workflow_name == workflow)
+    rows = session.execute(stmt).all()
+    items = [
+        {"day": str(row.day), "kind": row.kind, "count": row.count} for row in rows
+    ]
+    totals: dict[str, int] = {}
+    for item in items:
+        totals[item["kind"]] = totals.get(item["kind"], 0) + item["count"]
+    kinds = sorted(totals, key=lambda kind: totals[kind], reverse=True)
+    return {"items": items, "kinds": kinds}
+
+
 @router.get("/executions/{execution_id}")
 def get_execution(
     execution_id: str,

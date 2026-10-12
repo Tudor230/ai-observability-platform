@@ -7,7 +7,7 @@ workflow are additional filters. Global (unscoped) budgets stay exec/admin-only.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...alerts import budget_spend, budget_window
+from ...alerts import budget_spend, budget_spend_between, budget_window
 from ...models import Budget, Client, Department, Project, Team
 from ..deps import AccessScope, get_db, require_access
 from ..memberships import approved_memberships, covers_scope
@@ -253,6 +253,50 @@ def create_budget(
     session.flush()
     session.commit()
     return _budget_item(session, budget)
+
+
+@router.get("/budgets/{budget_id}/series")
+def budget_series(
+    budget_id: str,
+    session: Session = Depends(get_db),
+    access: AccessScope = Depends(require_access("manager", "exec")),
+) -> dict:
+    """Per-day spend + cumulative within the budget's current window.
+
+    Powers the burn-down chart; visibility matches the caller's budget scope
+    (covered managers, exec/admin), otherwise 404 to hide existence.
+    """
+    budget = session.execute(
+        select(Budget).where(Budget.id == budget_id)
+    ).scalar_one_or_none()
+    if budget is None or not _can_manage_budget(session, access, budget):
+        raise HTTPException(status_code=404, detail="budget not found")
+
+    now = datetime.now(timezone.utc)
+    window_start, window_end = budget_window(budget, now)
+    end = min(window_end, now)
+    items = []
+    cumulative = 0.0
+    day = window_start
+    while day < end:
+        next_day = min(day + timedelta(days=1), end)
+        spend = budget_spend_between(session, budget, day, next_day)
+        cumulative += spend
+        items.append(
+            {
+                "day": day.date().isoformat(),
+                "spend": round(spend, 6),
+                "cumulative": round(cumulative, 6),
+            }
+        )
+        day = next_day
+    return {
+        "budget": _budget_item(session, budget),
+        "amount": float(budget.amount),
+        "period_start": window_start.isoformat(),
+        "period_end": window_end.isoformat(),
+        "items": items,
+    }
 
 
 @router.patch("/budgets/{budget_id}")
