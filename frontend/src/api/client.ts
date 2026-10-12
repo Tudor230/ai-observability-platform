@@ -4,6 +4,7 @@ import type {
   Alert,
   AlertChannel,
   AlertChannelInput,
+  AlertDelivery,
   AlertRule,
   AlertRuleInput,
   BudgetStatus,
@@ -156,6 +157,13 @@ export const api = {
     update: (id: string, body: Partial<AlertChannelInput>) =>
       patch<AlertChannel>(`/alert-channels/${id}`, body),
     remove: (id: string) => del<{ deleted: string }>(`/alert-channels/${id}`),
+    test: (id: string) =>
+      post<{ ok: boolean; error: string | null }>(`/alert-channels/${id}/test`),
+  },
+  alertDeliveries: {
+    list: (
+      params: { channel_id?: string; status?: string; limit?: number } = {}
+    ) => get<List<AlertDelivery>>(`/alert-deliveries${qs(params)}`),
   },
   budgetStatus: () => get<List<BudgetStatus>>(`/budgets/status`),
   budgets: {

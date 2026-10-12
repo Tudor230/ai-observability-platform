@@ -276,6 +276,18 @@ export interface AlertChannelInput {
   enabled: boolean;
 }
 
+export interface AlertDelivery {
+  id: string;
+  alert_id: string | null;
+  channel_id: string | null;
+  channel_name: string | null;
+  channel_type: string;
+  target: string;
+  status: "sent" | "failed";
+  error: string | null;
+  created_at: string | null;
+}
+
 export interface Filters {
   days: number;
   project_id?: string;

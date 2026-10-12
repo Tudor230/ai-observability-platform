@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import {
   useAlertChannels,
+  useAlertDeliveries,
   useAlertRules,
   useAlerts,
   useDepartments,
@@ -615,12 +616,28 @@ function RuleDialog({
 
 function ChannelsPanel() {
   const channels = useAlertChannels();
+  const deliveries = useAlertDeliveries();
   const toast = useToast();
   const [editing, setEditing] = useState<AlertChannel | null>(null);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<AlertChannel | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const testChannel = async (channel: AlertChannel) => {
+    setTesting(channel.id);
+    try {
+      const result = await api.alertChannels.test(channel.id);
+      if (result.ok) toast.success(`Test notification sent via ${channel.name}.`);
+      else toast.error(result.error ?? "Test delivery failed.");
+      void deliveries.refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Test delivery failed.");
+    } finally {
+      setTesting(null);
+    }
+  };
 
   const remove = async () => {
     if (!deleting) return;
@@ -641,9 +658,10 @@ function ChannelsPanel() {
   };
 
   return (
-    <CardPanel
-      title="Delivery channels"
-      subTitle="Email (SMTP), Slack-compatible and generic webhooks"
+    <>
+      <CardPanel
+        title="Delivery channels"
+        subTitle="Email (SMTP), Slack-compatible and generic webhooks"
       extra={
         <Button variant="primary" onClick={() => setAdding(true)}>
           New channel
@@ -688,6 +706,13 @@ function ChannelsPanel() {
                     </Td>
                     <Td align="right">
                       <span className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
+                        <Button
+                          variant="quiet"
+                          disabled={testing === channel.id}
+                          onClick={() => void testChannel(channel)}
+                        >
+                          {testing === channel.id ? "Testing…" : "Test"}
+                        </Button>
                         <Button variant="quiet" onClick={() => setEditing(channel)}>
                           Edit
                         </Button>
@@ -744,7 +769,69 @@ function ChannelsPanel() {
           to the global webhook.
         </p>
       </Dialog>
-    </CardPanel>
+      </CardPanel>
+
+      <CardPanel title="Delivery history" subTitle="Latest attempts (alerts + channel tests)">
+        {deliveries.isError ? (
+          <div style={{ padding: 16 }}>
+            <QueryError what="delivery history" error={deliveries.error} />
+          </div>
+        ) : deliveries.isLoading ? (
+          <div style={{ padding: 16 }}>
+            <Skeleton width="70%" />
+          </div>
+        ) : deliveries.data?.items.length ? (
+          <TableWrap>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Time</Th>
+                  <Th>Channel</Th>
+                  <Th>Type</Th>
+                  <Th>Target</Th>
+                  <Th>Status</Th>
+                  <Th>Error</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveries.data.items.map((delivery) => (
+                  <Tr key={delivery.id}>
+                    <Td className="muted num">
+                      {delivery.created_at
+                        ? new Date(delivery.created_at).toLocaleString()
+                        : "—"}
+                    </Td>
+                    <Td className="table__cell--primary">
+                      {delivery.channel_name ?? "fallback webhook"}
+                    </Td>
+                    <Td>
+                      <Badge variant={delivery.channel_type === "email" ? "info" : "default"}>
+                        {delivery.channel_type}
+                      </Badge>
+                    </Td>
+                    <Td className="inline-code truncate" style={{ maxWidth: 220 }}>
+                      {delivery.target}
+                    </Td>
+                    <Td>
+                      <Badge variant={delivery.status === "sent" ? "success" : "danger"}>
+                        {delivery.status}
+                      </Badge>
+                    </Td>
+                    <Td className="muted truncate" style={{ maxWidth: 260 }}>
+                      {delivery.error ?? "—"}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </TableWrap>
+        ) : (
+          <TableEmpty colSpan={6}>
+            No deliveries recorded yet — use “Test” on a channel or trigger an alert.
+          </TableEmpty>
+        )}
+      </CardPanel>
+    </>
   );
 }
 

@@ -130,6 +130,14 @@ export function useAlertChannels(enabled = true) {
   });
 }
 
+export function useAlertDeliveries(enabled = true) {
+  return useQuery({
+    queryKey: ["alert-deliveries"],
+    queryFn: () => api.alertDeliveries.list({ limit: 50 }),
+    enabled,
+  });
+}
+
 export function useBudgetStatus() {
   const refetchInterval = useRefetchInterval();
   return useQuery({

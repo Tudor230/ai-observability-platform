@@ -116,6 +116,10 @@ exec/admin manage any rule, managers only rules within their covered
 department/team/project. Channels (`/api/v1/alert-channels`, admin/exec) select
 per rule; a rule with no channels falls back to `AIOBS_ALERT_WEBHOOK_URL`.
 Delivery is best-effort — send failures are logged and never break evaluation.
+`POST /api/v1/alert-channels/{id}/test` fires a test notification, and every
+attempt (tests plus routed alerts, including the fallback webhook) is recorded
+in `alert_deliveries`, exposed newest-first via `GET /api/v1/alert-deliveries`
+(admin/exec, filterable by `channel_id`/`status`).
 
 ## Layout
 

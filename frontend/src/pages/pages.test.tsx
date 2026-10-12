@@ -30,6 +30,8 @@ const h = vi.hoisted(() => ({
   channelsCreate: vi.fn(),
   channelsUpdate: vi.fn(),
   channelsRemove: vi.fn(),
+  channelTest: vi.fn(),
+  deliveriesList: vi.fn(),
   budgetStatus: vi.fn(),
   budgetCreate: vi.fn(),
   budgetUpdate: vi.fn(),
@@ -92,7 +94,9 @@ vi.mock("../api/client", () => ({
       create: h.channelsCreate,
       update: h.channelsUpdate,
       remove: h.channelsRemove,
+      test: h.channelTest,
     },
+    alertDeliveries: { list: h.deliveriesList },
     budgetStatus: h.budgetStatus,
     budgets: {
       list: h.budgetStatus,
@@ -366,6 +370,23 @@ function resetMocks() {
   h.channelsCreate.mockResolvedValue(channel);
   h.channelsUpdate.mockResolvedValue(channel);
   h.channelsRemove.mockResolvedValue({ deleted: "ch1" });
+  h.channelTest.mockResolvedValue({ ok: true, error: null });
+  h.deliveriesList.mockResolvedValue({
+    items: [
+      {
+        id: "d1",
+        alert_id: "a1",
+        channel_id: "ch1",
+        channel_name: "Ops email",
+        channel_type: "email",
+        target: "ops@example.com",
+        status: "sent",
+        error: null,
+        created_at: "2026-10-01T10:00:00Z",
+      },
+    ],
+    total: 1,
+  });
   h.budgetStatus.mockResolvedValue({ items: [budget], total: 1 });
   h.budgetCreate.mockResolvedValue(budget);
   h.budgetUpdate.mockResolvedValue(budget);
@@ -888,6 +909,12 @@ describe("Alerts rules & channels management", () => {
         expect.objectContaining({ name: "Slack ops", target: "https://hooks.test/x" })
       )
     );
+
+    // Test the channel and see the attempt in the delivery history.
+    fireEvent.click(screen.getAllByRole("button", { name: "Test" })[0]);
+    await waitFor(() => expect(h.channelTest).toHaveBeenCalledWith("ch1"));
+    expect(await screen.findByText("Delivery history")).toBeInTheDocument();
+    expect(h.deliveriesList).toHaveBeenCalled();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
     fireEvent.click(await screen.findByRole("button", { name: "Delete channel" }));
