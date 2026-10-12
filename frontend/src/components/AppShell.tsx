@@ -43,7 +43,7 @@ const NAV_ITEMS: (NavItem | "separator")[] = [
   { to: "/alerts", label: "Alerts", icon: IconAlertTriangle, allow: ALL_ROLES },
   "separator",
   { to: "/projects", label: "Projects", icon: IconLayers, allow: ALL_ROLES },
-  { to: "/requests", label: "Requests", icon: IconInbox, allow: ALL_ROLES },
+  { to: "/requests", label: "Requests", icon: IconInbox, allow: ["admin", "exec", "manager", "engineer"] },
   "separator",
   { to: "/pricing", label: "Pricing", icon: IconCoins, allow: ["admin"] },
   { to: "/accounts", label: "Accounts", icon: IconUserCog, allow: ["admin"] },

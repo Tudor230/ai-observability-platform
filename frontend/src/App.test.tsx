@@ -109,6 +109,21 @@ describe("App routing", () => {
     expect(screen.queryByRole("link", { name: /Accounts/ })).not.toBeInTheDocument();
   });
 
+  it("redirects clients away from /requests and hides the tab", async () => {
+    h.me.mockResolvedValue(profile(["client"]));
+    renderApp("/requests");
+    expect(
+      await screen.findByText(
+        "Usage, cost and reliability across every agent execution.",
+        {},
+        { timeout: 5000 }
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Requests/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Pricing/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Accounts/ })).not.toBeInTheDocument();
+  });
+
   it("collapses the sidebar, toggles the theme and logs out", async () => {
     h.me.mockResolvedValue(profile(["admin"]));
     renderApp("/");

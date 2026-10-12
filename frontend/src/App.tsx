@@ -127,7 +127,14 @@ export default function App() {
                     </RequireRoles>
                   }
                 />
-                <Route path="requests" element={<Requests />} />
+                <Route
+                  path="requests"
+                  element={
+                    <RequireRoles allow={["admin", "exec", "manager", "engineer"]}>
+                      <Requests />
+                    </RequireRoles>
+                  }
+                />
                 <Route path="alerts" element={<Alerts />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="projects/:projectId" element={<Project />} />

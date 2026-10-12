@@ -14,7 +14,6 @@ import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { SeverityBadge, StatusBadge } from "../components/domain";
 import {
-  Alert,
   Button,
   CardPanel,
   EmptyState,
@@ -72,12 +71,6 @@ export default function Client() {
         extra={<RefreshButton />}
       />
       <FilterToolbar />
-
-      <Alert
-        variant="info"
-        message="Scoped to your project memberships."
-        detail="Cost and budget data are not exposed to client accounts; raw spans and prompts stay hidden."
-      />
 
       {overview.isError ? <QueryError what="the client overview" error={loadError} /> : null}
 

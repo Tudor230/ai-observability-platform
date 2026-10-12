@@ -8,7 +8,6 @@ import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { SeverityBadge } from "../components/domain";
 import {
-  Alert,
   CardPanel,
   Delta,
   EmptyState,
@@ -209,14 +208,6 @@ export default function Overview() {
 
           {metrics.isError ? <QueryError what="time series metrics" error={metrics.error} /> : null}
         </>
-      )}
-
-      {overview.isLoading ? null : (
-        <Alert
-          variant="info"
-          message="All values are computed by the backend from ingested OTLP traces."
-          detail="Unpriced models appear without a cost until a matching price is configured."
-        />
       )}
     </div>
   );
