@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   metrics: vi.fn(),
   alertsList: vi.fn(),
   alertsUpdate: vi.fn(),
+  alertsRemove: vi.fn(),
   rulesList: vi.fn(),
   rulesCreate: vi.fn(),
   rulesUpdate: vi.fn(),
@@ -77,7 +78,7 @@ vi.mock("../api/client", () => ({
     agents: h.agents,
     costs: h.costs,
     metrics: h.metrics,
-    alerts: { list: h.alertsList, update: h.alertsUpdate },
+    alerts: { list: h.alertsList, update: h.alertsUpdate, remove: h.alertsRemove },
     alertRules: {
       list: h.rulesList,
       create: h.rulesCreate,
@@ -338,6 +339,7 @@ function resetMocks() {
   h.metrics.mockResolvedValue({ items: [dayMetric], total: 1 });
   h.alertsList.mockResolvedValue({ items: [alert], total: 1 });
   h.alertsUpdate.mockResolvedValue({ id: "a1", status: "acknowledged" });
+  h.alertsRemove.mockResolvedValue({ deleted: "a1" });
   h.rulesList.mockResolvedValue({ items: [rule], total: 1 });
   h.rulesUpdate.mockResolvedValue(rule);
   h.rulesCreate.mockResolvedValue(rule);
@@ -631,14 +633,25 @@ describe("Pricing", () => {
 });
 
 describe("Alerts", () => {
-  it("shows the tabs and acks an alert", async () => {
+  it("shows the tabs and keeps read alerts visible", async () => {
     renderWithProviders(<AlertsPage />);
     expect(await screen.findByRole("tab", { name: /Rules/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Channels/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ack" }));
+    expect(h.alertsList).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "open,acknowledged" })
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Mark read" }));
     await waitFor(() =>
       expect(h.alertsUpdate).toHaveBeenCalledWith("a1", "acknowledged")
     );
+  });
+
+  it("deletes an alert only after explicit confirmation", async () => {
+    renderWithProviders(<AlertsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(h.alertsRemove).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Delete alert" }));
+    await waitFor(() => expect(h.alertsRemove).toHaveBeenCalledWith("a1"));
   });
 
   it("renders rules for managers without channel management", async () => {

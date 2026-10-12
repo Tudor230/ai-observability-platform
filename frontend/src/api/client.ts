@@ -139,6 +139,7 @@ export const api = {
     ) => get<List<Alert>>(`/alerts${qs(params)}`),
     update: (id: string, status: string) =>
       patch<{ id: string; status: string }>(`/alerts/${id}?status=${encodeURIComponent(status)}`),
+    remove: (id: string) => del<{ deleted: string }>(`/alerts/${id}`),
   },
   alertRules: {
     list: () => get<List<AlertRule>>(`/alert-rules`),

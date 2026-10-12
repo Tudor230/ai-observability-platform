@@ -97,11 +97,14 @@ export default function Alerts() {
 function OpenAlertsPanel() {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [status, setStatus] = useState("open");
+  // Two-state read (refinements v2): "active" keeps read alerts visible;
+  // removal is always an explicit delete.
+  const [status, setStatus] = useState("active");
   const [severity, setSeverity] = useState("");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Alert | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -110,7 +113,7 @@ function OpenAlertsPanel() {
   }, [search]);
 
   const alerts = useAlerts(true, {
-    status: status || undefined,
+    status: status === "active" ? "open,acknowledged" : status || undefined,
     severity: severity || undefined,
     q: q || undefined,
     limit: 200,
@@ -122,10 +125,28 @@ function OpenAlertsPanel() {
     setError(null);
     try {
       await api.alerts.update(alert.id, next);
-      toast.success(next === "closed" ? "Alert closed." : "Alert acknowledged.");
+      toast.success("Alert marked as read.");
       void queryClient.invalidateQueries({ queryKey: ["alerts"] });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update the alert.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async () => {
+    if (!deleting) return;
+    setBusyId(deleting.id);
+    setError(null);
+    try {
+      await api.alerts.remove(deleting.id);
+      toast.success("Alert deleted.");
+      setDeleting(null);
+      void queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete the alert.";
       setError(message);
       toast.error(message);
     } finally {
@@ -160,8 +181,9 @@ function OpenAlertsPanel() {
             aria-label="Filter by status"
             onChange={(e) => setStatus(e.target.value)}
           >
-            <option value="open">Open</option>
-            <option value="acknowledged">Acknowledged</option>
+            <option value="active">Active (unread + read)</option>
+            <option value="open">Unread</option>
+            <option value="acknowledged">Read</option>
             <option value="closed">Closed</option>
             <option value="">All statuses</option>
           </Select>
@@ -178,7 +200,12 @@ function OpenAlertsPanel() {
       ) : items.length ? (
         <div className="stack stack--loose" style={{ padding: "var(--global-dimension-size-200)" }}>
           {items.map((alert) => (
-            <div key={alert.id} className="row" style={{ gap: 12, alignItems: "center" }}>
+            <div
+              key={alert.id}
+              className="row"
+              data-read={alert.status !== "open"}
+              style={{ gap: 12, alignItems: "center" }}
+            >
               <SeverityBadge severity={alert.severity} />
               <div className="list-row__main" style={{ flex: 1, minWidth: 0 }}>
                 <span className="truncate">{alert.message}</span>
@@ -189,24 +216,24 @@ function OpenAlertsPanel() {
                 </span>
               </div>
               <Badge variant={alert.status === "open" ? "warning" : "default"}>
-                {alert.status}
+                {alert.status === "open" ? "unread" : alert.status}
               </Badge>
-              {alert.can_ack && alert.status !== "acknowledged" ? (
+              {alert.can_ack && alert.status === "open" ? (
                 <Button
                   variant="quiet"
                   disabled={busyId === alert.id}
                   onClick={() => void update(alert, "acknowledged")}
                 >
-                  Ack
+                  Mark read
                 </Button>
               ) : null}
-              {alert.can_ack && alert.status !== "closed" ? (
+              {alert.can_ack ? (
                 <Button
-                  variant="quiet"
+                  variant="danger"
                   disabled={busyId === alert.id}
-                  onClick={() => void update(alert, "closed")}
+                  onClick={() => setDeleting(alert)}
                 >
-                  Close
+                  Delete
                 </Button>
               ) : null}
             </div>
@@ -218,6 +245,27 @@ function OpenAlertsPanel() {
           description="Alerts appear when a threshold rule or budget crosses its configured limit."
         />
       )}
+
+      <Dialog
+        open={deleting !== null}
+        title="Delete alert"
+        onClose={() => setDeleting(null)}
+        footer={
+          <>
+            <Button variant="danger" disabled={busyId === deleting?.id} onClick={() => void remove()}>
+              Delete alert
+            </Button>
+            <Button variant="quiet" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">
+          This removes the alert permanently. Read alerts stay listed until you
+          delete them.
+        </p>
+      </Dialog>
     </CardPanel>
   );
 }
