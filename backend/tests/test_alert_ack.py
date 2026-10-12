@@ -176,3 +176,62 @@ def test_client_sees_alert_but_cannot_ack(anon, session_factory):
         ).status_code
         == 403
     )
+
+
+def test_status_list_filter_keeps_read_alerts_visible(anon, session_factory):
+    """Acknowledged alerts stay listed when the caller asks for active states."""
+    with session_factory() as session:
+        ids = _seed_org(session)
+        _, mgr_key = seed_user(
+            session, "mgr3@x", role="manager", scope_type="team", scope_id=ids["team_a"]
+        )
+        budget_alert = session.get(Alert, ids["budget_a"])
+        budget_alert.status = "acknowledged"
+        session.commit()
+
+    mgr = {"x-api-key": mgr_key}
+    active = anon.get(
+        "/api/v1/alerts", params={"status": "open,acknowledged"}, headers=mgr
+    ).json()
+    visible = {a["id"]: a for a in active["items"]}
+    assert visible[ids["budget_a"]]["status"] == "acknowledged"
+    assert ids["rule_team_a"] in visible
+
+    open_only = anon.get("/api/v1/alerts", params={"status": "open"}, headers=mgr).json()
+    assert ids["budget_a"] not in {a["id"] for a in open_only["items"]}
+
+
+def test_delete_alert_is_scoped_and_permanent(anon, session_factory):
+    with session_factory() as session:
+        ids = _seed_org(session)
+        _, mgr_key = seed_user(
+            session, "mgr4@x", role="manager", scope_type="team", scope_id=ids["team_a"]
+        )
+        from aiobs_backend.models import Project
+
+        p1 = session.get(Project, ids["p1"])
+        _, client_key = seed_user(
+            session, "cli2@x", role="client", scope_type="project", scope_id=p1.id
+        )
+        session.commit()
+
+    mgr = {"x-api-key": mgr_key}
+    # Out of scope / clients cannot delete.
+    assert (
+        anon.delete(f"/api/v1/alerts/{ids['budget_b']}", headers=mgr).status_code == 403
+    )
+    assert (
+        anon.delete(
+            f"/api/v1/alerts/{ids['budget_a']}", headers={"x-api-key": client_key}
+        ).status_code
+        == 403
+    )
+
+    assert (
+        anon.delete(f"/api/v1/alerts/{ids['budget_a']}", headers=mgr).status_code == 200
+    )
+    remaining = anon.get("/api/v1/alerts", params={"status": "open,acknowledged,closed"}, headers=mgr)
+    assert ids["budget_a"] not in {a["id"] for a in remaining.json()["items"]}
+    assert (
+        anon.delete(f"/api/v1/alerts/{ids['budget_a']}", headers=mgr).status_code == 404
+    )

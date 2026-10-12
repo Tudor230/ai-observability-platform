@@ -102,7 +102,9 @@ def list_alerts(
         if scope_clause is not None:
             query = query.where(scope_clause)
         if status:
-            query = query.where(Alert.status == status)
+            statuses = [s for s in status.split(",") if s]
+            if statuses:
+                query = query.where(Alert.status.in_(statuses))
         if severity:
             query = query.where(Alert.severity == severity)
         if q:
@@ -117,6 +119,26 @@ def list_alerts(
     total = session.execute(count_stmt).scalar_one()
     items = [_alert_item(session, access, a) for a in rows]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.delete("/alerts/{alert_id}")
+def delete_alert(
+    alert_id: str,
+    session: Session = Depends(get_db),
+    access: AccessScope = Depends(require_access()),
+) -> dict:
+    """Explicit deletion (refinements v2): acknowledging keeps the alert visible;
+    removing it is always a deliberate, scoped action."""
+    alert = session.execute(
+        select(Alert).where(Alert.id == alert_id)
+    ).scalar_one_or_none()
+    if alert is None:
+        raise HTTPException(status_code=404, detail="alert not found")
+    if not _can_ack(session, access, alert):
+        raise HTTPException(status_code=403, detail="you do not manage this alert's scope")
+    session.delete(alert)
+    session.commit()
+    return {"deleted": alert_id}
 
 
 @router.patch("/alerts/{alert_id}")
