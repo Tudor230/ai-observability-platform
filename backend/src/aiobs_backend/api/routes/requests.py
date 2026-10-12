@@ -34,10 +34,24 @@ from ..memberships import (
 # Only these roles may ask for a brand-new department (they can become its
 # initial manager); engineers and clients cannot request one.
 DEPARTMENT_REQUESTERS = {"admin", "exec", "manager"}
+# Clients are outsiders: admins provision their memberships; they cannot use
+# the self-service request flow at all (refinements v2).
+INTERNAL_REQUEST_ROLES = {"admin", "exec", "manager", "engineer"}
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
 REQUEST_TYPES = ("create_department", "create_team", "create_project", "membership")
+
+
+def _require_internal(access: AccessScope) -> None:
+    """403 for callers whose only membership(s) are client memberships."""
+    if access.unrestricted:
+        return
+    if access.roles and not (access.roles & INTERNAL_REQUEST_ROLES):
+        raise HTTPException(
+            status_code=403,
+            detail="clients cannot use access requests; memberships are provisioned by an admin",
+        )
 
 
 class CreateDepartmentPayload(BaseModel):
@@ -155,6 +169,7 @@ def list_requests(
     session: Session = Depends(get_db),
 ) -> dict:
     """Requests the caller made or can decide on."""
+    _require_internal(access)
     memberships = (
         approved_memberships(session, access.user.id) if access.user else []
     )
@@ -215,6 +230,7 @@ def create_request(
     access: AccessScope = Depends(require_access()),
     session: Session = Depends(get_db),
 ) -> dict:
+    _require_internal(access)
     if access.user is None:
         raise HTTPException(status_code=403, detail="a user session is required")
     memberships = approved_memberships(session, access.user.id)
@@ -365,6 +381,7 @@ def approve_request(
     access: AccessScope = Depends(require_access()),
     session: Session = Depends(get_db),
 ) -> dict:
+    _require_internal(access)
     req = _load_pending(session, request_id)
     approver = _require_approver(session, access, req)
     req.approver_id = approver.id if approver else None
@@ -386,6 +403,7 @@ def reject_request(
     reason = (body.reason or "").strip()
     if not reason:
         raise HTTPException(status_code=422, detail="a rejection reason is required")
+    _require_internal(access)
     req = _load_pending(session, request_id)
     approver = _require_approver(session, access, req)
     req.status = "rejected"
@@ -403,6 +421,7 @@ def cancel_request(
     access: AccessScope = Depends(require_access()),
     session: Session = Depends(get_db),
 ) -> dict:
+    _require_internal(access)
     req = _load_pending(session, request_id)
     if access.user is None or req.requester_id != access.user.id:
         raise HTTPException(status_code=403, detail="only the requester can cancel")

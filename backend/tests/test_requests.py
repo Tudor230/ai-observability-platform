@@ -69,15 +69,26 @@ def test_engineer_and_client_cannot_request_departments(app, session_factory):
         )
         session.commit()
 
-    for key in (engineer_key, client_key):
-        caller = TestClient(app, headers={"x-api-key": key})
-        denied = caller.post(
+    # Engineer: department requests stay admin/exec/manager-only; the rest of
+    # the surface stays open.
+    engineer = TestClient(app, headers={"x-api-key": engineer_key})
+    denied = engineer.post(
+        "/api/v1/requests",
+        json={"type": "create_department", "payload": {"name": "Nope"}},
+    )
+    assert denied.status_code == 403, denied.text
+    assert engineer.get("/api/v1/requests").status_code == 200
+
+    # Client: the whole self-service surface is closed (refinements v2).
+    client_caller = TestClient(app, headers={"x-api-key": client_key})
+    assert (
+        client_caller.post(
             "/api/v1/requests",
             json={"type": "create_department", "payload": {"name": "Nope"}},
-        )
-        assert denied.status_code == 403, denied.text
-        # Other request types are unaffected.
-        assert caller.get("/api/v1/requests").status_code == 200
+        ).status_code
+        == 403
+    )
+    assert client_caller.get("/api/v1/requests").status_code == 403
 
 
 def test_request_lifecycle_guards(anon, client, session_factory):

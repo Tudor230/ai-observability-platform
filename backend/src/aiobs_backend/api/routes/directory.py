@@ -56,7 +56,7 @@ def list_visible_projects(
 
 @router.get("/departments")
 def list_departments(
-    access: AccessScope = Depends(require_access()),
+    access: AccessScope = Depends(require_access("engineer", "manager", "exec")),
     session: Session = Depends(get_db),
 ) -> dict:
     rows = session.execute(select(Department).order_by(Department.name)).scalars().all()
@@ -66,7 +66,7 @@ def list_departments(
 
 @router.get("/teams")
 def list_teams(
-    access: AccessScope = Depends(require_access()),
+    access: AccessScope = Depends(require_access("engineer", "manager", "exec")),
     department_id: str | None = Query(default=None),
     session: Session = Depends(get_db),
 ) -> dict:
