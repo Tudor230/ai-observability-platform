@@ -9,7 +9,7 @@ import {
 } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { SeverityBadge, StatusBadge } from "../components/domain";
@@ -68,9 +68,14 @@ export default function Client() {
       <PageHeader
         title="Client"
         subTitle="Read-only usage view for the projects you belong to."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days", "project"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days", "project"]} />
 
       {overview.isError ? <QueryError what="the client overview" error={loadError} /> : null}
 

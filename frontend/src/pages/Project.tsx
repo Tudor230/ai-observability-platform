@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useDirectoryProjects, useMetrics, useOverview, useProjectKeys } from "../api/hooks";
+import { useFilters } from "../state/FiltersContext";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { PageHeader } from "../components/PageHeader";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
@@ -32,13 +34,18 @@ import type { ProjectKey, ProjectKeyRow } from "../api/types";
 
 export default function Project() {
   const { projectId = "" } = useParams();
+  const { filters } = useFilters();
   const { hasRole, costVisible } = useAuth();
   const canManageKeys = hasRole("engineer", "manager");
   const queryClient = useQueryClient();
   const toast = useToast();
   const projects = useDirectoryProjects();
-  const overview = useOverview({ days: 30, project_id: projectId });
-  const metrics = useMetrics("project", { days: 30, project_id: projectId }, projectId);
+  const overview = useOverview({ days: filters.days, project_id: projectId });
+  const metrics = useMetrics(
+    "project",
+    { days: filters.days, project_id: projectId },
+    projectId
+  );
   const keys = useProjectKeys(projectId, canManageKeys);
 
   const [label, setLabel] = useState("");
@@ -157,6 +164,7 @@ export default function Project() {
         subTitle={`${project.team_name} · ${project.department_name}`}
         extra={
           <>
+            <FiltersControl dimensions={["days"]} />
             <Link to="/projects" className="button" data-size="S">
               All projects
             </Link>
@@ -164,6 +172,7 @@ export default function Project() {
           </>
         }
       />
+      <FilterChips dimensions={["days"]} />
 
       {overview.isError ? <QueryError what="the project overview" error={overview.error} /> : null}
 
@@ -204,7 +213,7 @@ export default function Project() {
       </CardPanel>
 
       <div className="grid grid-2">
-        <CardPanel title="Executions over time" subTitle="This project, last 30 days">
+        <CardPanel title="Executions over time" subTitle={`This project, last ${filters.days} days`}>
           <div style={{ padding: "var(--global-dimension-size-100)" }}>
             {metrics.isLoading ? (
               <Skeleton shape="chart" />

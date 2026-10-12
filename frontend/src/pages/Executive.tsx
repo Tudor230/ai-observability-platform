@@ -1,7 +1,7 @@
 import { useCosts, useMetrics, useOverview } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { BreakdownBars } from "../components/charts/BreakdownBars";
@@ -68,9 +68,14 @@ export default function Executive() {
       <PageHeader
         title="Executive"
         subTitle="Unit economics of agentic AI — total spend, cost per execution and forecast."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days", "project"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days", "project"]} />
 
       {anyError ? <QueryError what="executive data" error={loadError} /> : null}
 

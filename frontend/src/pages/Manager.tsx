@@ -16,7 +16,7 @@ import type { BudgetStatus } from "../api/types";
 import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { BudgetDialog } from "../components/BudgetDialog";
 import { TrendChart } from "../components/charts/TrendChart";
@@ -110,9 +110,14 @@ export default function Manager() {
       <PageHeader
         title="Manager"
         subTitle="Spend by workflow and client, budget health and agent efficiency."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days", "project", "client", "workflow"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days", "project", "client", "workflow"]} />
 
       {anyError ? <QueryError what="manager data" error={loadError} /> : null}
 

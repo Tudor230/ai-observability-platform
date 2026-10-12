@@ -564,22 +564,62 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Toolbar (filter bar)
+ * Filters control + chips (refinements v2)
  * ------------------------------------------------------------------ */
-.toolbar {
+.filters-control {
+  position: relative;
+}
+
+.filters-control__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 160;
+  width: 320px;
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  gap: var(--global-dimension-size-200);
-  flex-wrap: wrap;
-  padding: var(--global-dimension-size-150) var(--global-dimension-size-200);
+  flex-direction: column;
+  gap: var(--global-dimension-size-150);
+  padding: var(--global-dimension-size-200);
+  background-color: var(--global-color-gray-75);
   border: 1px solid var(--global-border-color-default);
   border-radius: var(--global-rounding-medium);
+  box-shadow: 0 4px 14px var(--global-overlay-shadow-color);
+}
+
+.filter-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--global-dimension-size-100);
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--global-dimension-size-50);
+  padding: 2px var(--global-dimension-size-100);
+  border: 1px solid var(--global-border-color-default);
+  border-radius: var(--global-rounding-full);
+  font-size: var(--global-font-size-xs);
+  color: var(--global-text-color-700);
   background-color: var(--global-color-gray-75);
 }
 
-.toolbar__spacer {
-  flex: 1 1 auto;
+.filter-chip button {
+  all: unset;
+  display: inline-flex;
+  cursor: pointer;
+  color: var(--global-text-color-500);
+  border-radius: var(--global-rounding-full);
+}
+
+.filter-chip button:hover {
+  color: var(--global-text-color-900);
+}
+
+.filter-chip button:focus-visible {
+  outline: 2px solid var(--global-border-color-default);
+  outline-offset: 1px;
 }
 
 /* ------------------------------------------------------------------ *

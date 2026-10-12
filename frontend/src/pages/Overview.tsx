@@ -3,7 +3,7 @@ import { useAlerts, useMetrics, useOverview } from "../api/hooks";
 import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { SeverityBadge } from "../components/domain";
@@ -44,9 +44,14 @@ export default function Overview() {
       <PageHeader
         title="Overview"
         subTitle="Usage, cost and reliability across every agent execution."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days", "project"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days", "project"]} />
 
       {overview.isError ? (
         <QueryError what="the overview" error={loadError} />

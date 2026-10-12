@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useExecutions } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { StatusBadge } from "../components/domain";
 import {
@@ -100,6 +100,7 @@ export default function Engineering() {
         subTitle="Trace explorer — every agent execution with status, latency and cost."
         extra={
           <>
+            <FiltersControl dimensions={["days", "project", "client", "workflow"]} />
             <TextInput
               variant="search"
               value={searchDraft}
@@ -122,7 +123,7 @@ export default function Engineering() {
           </>
         }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days", "project", "client", "workflow"]} />
 
       {isError ? <QueryError what="executions" error={error} /> : null}
 

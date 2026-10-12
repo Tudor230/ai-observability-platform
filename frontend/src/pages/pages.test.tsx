@@ -666,39 +666,46 @@ describe("Login", () => {
   });
 });
 
-describe("FilterToolbar", () => {
-  it("writes day/client/workflow changes into the query", async () => {
-    renderWithProviders(<Overview />);
-    const range = await screen.findByLabelText("Time range in days");
-    fireEvent.change(range, { target: { value: "7" } });
-    await waitFor(() =>
-      expect(h.overview).toHaveBeenLastCalledWith(expect.objectContaining({ days: 7 }))
-    );
+describe("Filters control", () => {
+  it("writes filters, shows chips and clears them", async () => {
+    renderWithProviders(<Manager />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Filters/ }));
+    const panel = screen.getByRole("dialog", { name: "Filters" });
 
-    fireEvent.change(screen.getByPlaceholderText("client id"), {
+    fireEvent.change(within(panel).getByLabelText("Time range"), {
+      target: { value: "7" },
+    });
+    fireEvent.change(within(panel).getByLabelText("Client"), {
       target: { value: "client-42" },
     });
-    await waitFor(() =>
-      expect(h.overview).toHaveBeenLastCalledWith(
-        expect.objectContaining({ client_id: "client-42" })
-      )
-    );
-
-    fireEvent.change(screen.getByPlaceholderText("workflow"), {
+    fireEvent.change(within(panel).getByLabelText("Workflow"), {
       target: { value: "checkout" },
     });
     await waitFor(() =>
       expect(h.overview).toHaveBeenLastCalledWith(
-        expect.objectContaining({ workflow: "checkout" })
+        expect.objectContaining({ days: 7, client_id: "client-42", workflow: "checkout" })
       )
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Clear/ }));
-    await waitFor(() =>
-      expect(h.overview).toHaveBeenLastCalledWith(
-        expect.not.objectContaining({ client_id: "client-42" })
-      )
-    );
+    // Close the panel: chips summarize the active filters.
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    expect(await screen.findByText("Last 7 days")).toBeInTheDocument();
+    expect(screen.getByText("Client: client-42")).toBeInTheDocument();
+    expect(screen.getByText("Workflow: checkout")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Remove Client: client-42"));
+    await waitFor(() => {
+      const calls = h.overview.mock.calls;
+      const last = calls[calls.length - 1]?.[0] as { client_id?: string };
+      expect(last.client_id).toBeUndefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => {
+      const calls = h.overview.mock.calls;
+      const last = calls[calls.length - 1]?.[0] as { days?: number };
+      expect(last.days).toBe(30);
+    });
   });
 });
 
