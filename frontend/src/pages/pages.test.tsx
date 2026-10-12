@@ -971,16 +971,17 @@ describe("BudgetDialog scope pickers", () => {
 
     const department = within(dialog).getByLabelText("Budget department");
     fireEvent.focus(department);
-    fireEvent.mouseDown(await within(dialog).findByText("Ops"));
+    const optionsList = () => document.querySelector(".combobox__list") as HTMLElement;
+    fireEvent.mouseDown(await within(optionsList()).findByText("Ops"));
 
     const team = within(dialog).getByLabelText("Budget team");
     expect(team).not.toBeDisabled();
     fireEvent.focus(team);
-    fireEvent.mouseDown(await within(dialog).findByText("A (Ops)"));
+    fireEvent.mouseDown(await within(optionsList()).findByText("A (Ops)"));
 
     const project = within(dialog).getByLabelText("Budget project");
     fireEvent.focus(project);
-    fireEvent.mouseDown(await within(dialog).findByText("p1 · Checkout"));
+    fireEvent.mouseDown(await within(optionsList()).findByText("p1 · Checkout"));
 
     fireEvent.change(within(dialog).getByPlaceholderText("100"), { target: { value: "25" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create budget" }));

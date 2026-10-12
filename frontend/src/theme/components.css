@@ -1073,6 +1073,9 @@
   .modal {
     width: 100%;
     max-width: var(--global-modal-width-S);
+    max-height: calc(100vh - (2 * var(--global-dimension-size-400)));
+    display: flex;
+    flex-direction: column;
     background-color: var(--global-color-gray-75);
     border: 1px solid var(--global-border-color-default);
     border-radius: var(--global-rounding-medium);
@@ -1098,6 +1101,7 @@
     flex-direction: column;
     gap: var(--global-dimension-size-150);
     padding: var(--global-dimension-size-200);
+    overflow-y: auto;
   }
 
   .modal__body p {
@@ -1217,12 +1221,7 @@
   }
 
   .combobox__list {
-    position: absolute;
-    z-index: 100;
-    top: calc(100% + var(--global-dimension-size-50));
-    left: 0;
-    right: 0;
-    max-height: 260px;
+    z-index: 2000;
     overflow-y: auto;
     margin: 0;
     padding: var(--global-dimension-size-50);

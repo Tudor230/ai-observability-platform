@@ -1,4 +1,14 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
+import { createPortal } from "react-dom";
 import { IconChevronDown } from "./icons";
 
 export interface SelectOption {
@@ -6,7 +16,23 @@ export interface SelectOption {
   label: string;
 }
 
-/** Combobox with a filterable, scrollable option list. */
+interface Placement {
+  left: number;
+  width: number;
+  maxHeight: number;
+  up: boolean;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * Combobox with a filterable, scrollable option list.
+ *
+ * The list renders in a portal with fixed positioning and flips above the
+ * input when there is not enough room below (and caps its height to the
+ * available viewport), so it is never clipped by page or modal bounds
+ * (refinements v2).
+ */
 export function SearchableSelect({
   value,
   onChange,
@@ -25,6 +51,7 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const [placement, setPlacement] = useState<Placement | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -37,12 +64,46 @@ export function SearchableSelect({
     return options.filter((option) => option.label.toLowerCase().includes(needle));
   }, [options, query]);
 
+  const measure = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const gap = 4;
+    const margin = 12;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - margin;
+    const spaceAbove = rect.top - gap - margin;
+    const up = spaceBelow < 200 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(140, Math.min(260, up ? spaceAbove : spaceBelow));
+    setPlacement({
+      left: rect.left,
+      width: rect.width,
+      maxHeight,
+      up,
+      top: rect.bottom + gap,
+      bottom: window.innerHeight - rect.top + gap,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onViewportChange = () => measure();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [open, measure]);
+
   useEffect(() => {
     if (!open) return;
     const onDocMouseDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      // The list lives in a portal outside the root; clicks inside it are
+      // handled by the option's own mousedown.
+      if ((target as HTMLElement).closest?.(".combobox__list")) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
@@ -50,6 +111,7 @@ export function SearchableSelect({
 
   const openList = () => {
     if (disabled) return;
+    measure();
     setQuery("");
     setHighlight(0);
     setOpen(true);
@@ -84,6 +146,17 @@ export function SearchableSelect({
     }
   };
 
+  const listStyle: CSSProperties | undefined = placement
+    ? {
+        position: "fixed",
+        left: placement.left,
+        width: placement.width,
+        maxHeight: placement.maxHeight,
+        zIndex: 2000,
+        ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
+      }
+    : undefined;
+
   return (
     <div className="combobox" ref={rootRef}>
       <input
@@ -107,7 +180,7 @@ export function SearchableSelect({
         onChange={(event) => {
           setQuery(event.target.value);
           setHighlight(0);
-          if (!open) setOpen(true);
+          if (!open) openList();
         }}
         onKeyDown={onKeyDown}
         onBlur={closeList}
@@ -115,32 +188,36 @@ export function SearchableSelect({
       <span className="combobox__chevron">
         <IconChevronDown size={14} />
       </span>
-      {open ? (
-        <ul
-          className="combobox__list"
-          id={listId}
-          role="listbox"
-          onMouseDown={(event) => event.preventDefault()}
-        >
-          {filtered.length ? (
-            filtered.map((option, index) => (
-              <li
-                key={option.value}
-                role="option"
-                aria-selected={option.value === value}
-                className="combobox__option"
-                data-highlighted={index === highlight}
-                onMouseEnter={() => setHighlight(index)}
-                onMouseDown={() => choose(option)}
-              >
-                {option.label}
-              </li>
-            ))
-          ) : (
-            <li className="combobox__empty">No matches</li>
-          )}
-        </ul>
-      ) : null}
+      {open && listStyle
+        ? createPortal(
+            <ul
+              className="combobox__list"
+              id={listId}
+              role="listbox"
+              style={listStyle}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              {filtered.length ? (
+                filtered.map((option, index) => (
+                  <li
+                    key={option.value}
+                    role="option"
+                    aria-selected={option.value === value}
+                    className="combobox__option"
+                    data-highlighted={index === highlight}
+                    onMouseEnter={() => setHighlight(index)}
+                    onMouseDown={() => choose(option)}
+                  >
+                    {option.label}
+                  </li>
+                ))
+              ) : (
+                <li className="combobox__empty">No matches</li>
+              )}
+            </ul>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
