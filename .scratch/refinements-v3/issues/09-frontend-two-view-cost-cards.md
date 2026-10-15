@@ -1,7 +1,7 @@
 # 09 — Frontend: two-view cost cards, capped tables, shared pagination
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 04, 08
 Area: refinements v3, table UX
 Estimate: L
@@ -46,3 +46,22 @@ tables get a height cap with paging.
 ## Tests
 
 - `npm run test` (+ coverage gate), `npm run lint`, `npm run build`.
+
+## Comments
+
+Done. Extracted Engineering's inline pager into `components/core/Pagination.tsx`
+(Engineering switched over with no behaviour change) and added a `capped`
+variant to `TableWrap` (`.table-wrap--capped`, max-height 380px, sticky header)
+plus `.table-wrap--capped` CSS. New `components/CostCard.tsx` renders `Tabs`
+with a **Breakdown** (bars) and **Detail** view over the same query result, the
+detail table capped and paged client-side at 10 rows. Manager now has four
+two-view cards — Workflows, Projects, Teams, Agents (the old separate bars +
+table cards and the duplicate "Cost by agent" card are gone; the `/workflows`
+query is no longer needed) — and Executive merged its project/model bars and
+tables into two-view cards (Projects, Models). Breakdown rows keep their
+Engineering drill-downs (`?workflow=` / `?project_id=`).
+
+Evidence: `npm run test` **510 passed** — new coverage: switching a card to
+Detail renders the capped table, and a 12-row fixture pages 1–10 → 11–12 via
+the shared pager; `npm run lint` + `npm run build` clean; coverage 88.8% stmts /
+73.5% branches / 68.6% funcs (gates 80/70/65).

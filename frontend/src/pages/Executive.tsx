@@ -5,18 +5,13 @@ import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { BreakdownBars } from "../components/charts/BreakdownBars";
+import { CostCard } from "../components/CostCard";
 import {
   CardPanel,
   EmptyState,
   Metric,
   QueryError,
   Skeleton,
-  Table,
-  TableEmpty,
-  TableWrap,
-  Td,
-  Th,
-  Tr,
 } from "../components/core";
 import { formatMoney, formatPct, formatTokens } from "../lib/format";
 import { buildForecast, forecastAsOf } from "../lib/forecast";
@@ -139,139 +134,71 @@ export default function Executive() {
         )}
       </CardPanel>
 
-        <CardPanel title="Cost by project" subTitle="Spend per project">
-          {(byProject.data?.items ?? []).length ? (
+      <div className="grid grid-2">
+        <CostCard
+          title="Projects"
+          subTitle="Cost, reliability and volume per project"
+          loading={byProject.isLoading}
+          emptyBreakdown="No project spend in range"
+          emptyDetail="No project spend in range."
+          columns={["Project", "Executions", "Error rate", "Tokens", "Cost"]}
+          rows={(byProject.data?.items ?? []).map((item) => ({
+            key: item.key ?? String(item.name),
+            cells: [
+              projectNames.get(item.key ?? "") ?? item.key ?? "—",
+              item.executions,
+              <span className={item.error_rate ? "text-danger" : ""}>
+                {formatPct(item.error_rate)}
+              </span>,
+              formatTokens(item.total_tokens),
+              formatMoney(item.total_cost),
+            ],
+          }))}
+          breakdown={
             <div style={{ padding: "var(--global-dimension-size-100)" }}>
               <BreakdownBars
                 rows={(byProject.data?.items ?? []).map((item) => ({
                   key: item.key ?? String(item.name),
-                  label: item.key ?? item.name ?? "unknown",
+                  label: projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "unknown",
                   value: item.total_cost ?? 0,
                   valueLabel: formatMoney(item.total_cost),
                   sublabel: `${item.executions} executions`,
                 }))}
               />
             </div>
-          ) : byProject.isLoading ? (
-            <div className="stack" style={{ padding: 16 }}>
-              <Skeleton width="80%" />
-              <Skeleton width="60%" />
+          }
+        />
+
+        <CostCard
+          title="Models"
+          subTitle="Provider · model spend"
+          loading={byModel.isLoading}
+          emptyBreakdown="No model usage in range"
+          emptyDetail="No model usage in range."
+          columns={["Provider · model", "Cost", "Input tokens", "Output tokens"]}
+          rows={(byModel.data?.items ?? []).map((m) => ({
+            key: m.key ?? `${m.provider}-${m.model}`,
+            cells: [
+              [m.provider, m.model].filter(Boolean).join(" · ") || "unknown",
+              formatMoney(m.total_cost),
+              formatTokens(m.input_tokens),
+              formatTokens(m.output_tokens),
+            ],
+          }))}
+          breakdown={
+            <div style={{ padding: "var(--global-dimension-size-100)" }}>
+              <BreakdownBars
+                rows={(byModel.data?.items ?? []).map((m) => ({
+                  key: m.key ?? `${m.provider}-${m.model}`,
+                  label: [m.provider, m.model].filter(Boolean).join(" · ") || "unknown",
+                  value: m.total_cost ?? 0,
+                  valueLabel: formatMoney(m.total_cost),
+                  sublabel: `${m.executions} executions`,
+                }))}
+              />
             </div>
-          ) : (
-            <EmptyState
-              title="No project spend in range"
-              description="Costs roll up to the project that ingested the traces."
-            />
-          )}
-        </CardPanel>
-
-        <CardPanel title="Cost by model" subTitle="Provider · model spend">
-        {(byModel.data?.items ?? []).length ? (
-          <div style={{ padding: "var(--global-dimension-size-100)" }}>
-            <BreakdownBars
-              rows={(byModel.data?.items ?? []).map((m) => ({
-                key: m.key ?? `${m.provider}-${m.model}`,
-                label: [m.provider, m.model].filter(Boolean).join(" · ") || "unknown",
-                value: m.total_cost ?? 0,
-                valueLabel: formatMoney(m.total_cost),
-                sublabel: `${m.executions} executions`,
-              }))}
-            />
-          </div>
-        ) : byModel.isLoading ? (
-          <div className="stack" style={{ padding: 16 }}>
-            <Skeleton width="80%" />
-            <Skeleton width="60%" />
-          </div>
-        ) : (
-          <EmptyState
-            title="No model usage in range"
-            description="Costs appear once executions are priced."
-          />
-        )}
-      </CardPanel>
-
-      <div className="grid grid-2">
-        <CardPanel title="Projects" subTitle="Spend and volume per project">
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Project</Th>
-                  <Th align="right">Cost</Th>
-                  <Th align="right">Executions</Th>
-                  <Th align="right">Error rate</Th>
-                  <Th align="right">Last seen</Th>
-                </tr>
-              </thead>
-              {byProject.data?.items?.length ? (
-                <tbody>
-                  {byProject.data.items.map((p) => (
-                    <Tr key={p.key}>
-                      <Td className="table__cell--primary">
-                        {projectNames.get(p.key ?? "") ?? p.key ?? "—"}
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatMoney(p.total_cost)}
-                      </Td>
-                      <Td align="right" className="num">
-                        {p.executions}
-                      </Td>
-                      <Td align="right" className="num">
-                        <span className={p.error_rate ? "text-danger" : ""}>
-                          {formatPct(p.error_rate)}
-                        </span>
-                      </Td>
-                      <Td align="right" className="muted">
-                        {p.last_seen ? new Date(p.last_seen).toLocaleDateString() : "—"}
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              ) : (
-                <TableEmpty colSpan={5}>No project spend in range.</TableEmpty>
-              )}
-            </Table>
-          </TableWrap>
-        </CardPanel>
-
-        <CardPanel title="Cost by model" subTitle="Provider and model consumption">
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Provider · model</Th>
-                  <Th align="right">Cost</Th>
-                  <Th align="right">Input tokens</Th>
-                  <Th align="right">Output tokens</Th>
-                </tr>
-              </thead>
-              {byModel.data?.items?.length ? (
-                <tbody>
-                  {byModel.data.items.map((m) => (
-                    <Tr key={m.key}>
-                      <Td className="table__cell--primary">
-                        {m.provider ? `${m.provider} · ` : ""}
-                        {m.model}
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatMoney(m.total_cost)}
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatTokens(m.input_tokens)}
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatTokens(m.output_tokens)}
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              ) : (
-                <TableEmpty colSpan={4}>No model usage in range.</TableEmpty>
-              )}
-            </Table>
-          </TableWrap>
-        </CardPanel>
+          }
+        />
       </div>
 
       <CardPanel title="Cost trend" subTitle="USD per day">

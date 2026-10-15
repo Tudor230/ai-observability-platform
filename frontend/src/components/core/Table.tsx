@@ -1,8 +1,19 @@
 import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 
 /** A scroll container so the header can stick. */
-export function TableWrap({ children }: { children: ReactNode }) {
-  return <div className="table-wrap">{children}</div>;
+export function TableWrap({
+  children,
+  capped = false,
+}: {
+  children: ReactNode;
+  /** Caps the height (sticky header + scroll) for long breakdown tables. */
+  capped?: boolean;
+}) {
+  return (
+    <div className={capped ? "table-wrap table-wrap--capped" : "table-wrap"}>
+      {children}
+    </div>
+  );
 }
 
 export function Table({

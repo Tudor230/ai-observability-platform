@@ -10,7 +10,6 @@ import {
   useMetrics,
   useOverview,
   useProjectNameMap,
-  useWorkflows,
 } from "../api/hooks";
 import { api } from "../api/client";
 import type { BudgetStatus } from "../api/types";
@@ -22,6 +21,7 @@ import { RefreshButton } from "../components/RefreshButton";
 import { BudgetDialog } from "../components/BudgetDialog";
 import { TrendChart } from "../components/charts/TrendChart";
 import { BreakdownBars } from "../components/charts/BreakdownBars";
+import { CostCard } from "../components/CostCard";
 import { SeverityBadge } from "../components/domain";
 import {
   Button,
@@ -32,12 +32,6 @@ import {
   Progress,
   QueryError,
   Skeleton,
-  Table,
-  TableEmpty,
-  TableWrap,
-  Td,
-  Th,
-  Tr,
   useToast,
 } from "../components/core";
 import { formatMoney, formatPct, formatTokens } from "../lib/format";
@@ -50,7 +44,6 @@ export default function Manager() {
   const costsByWorkflow = useCosts("workflow", filters);
   const costsByProject = useCosts("project", filters);
   const costsByTeam = useCosts("team", filters);
-  const workflows = useWorkflows(filters);
   const projectNames = useProjectNameMap();
   const agents = useAgents(filters);
   const alerts = useAlerts();
@@ -100,12 +93,11 @@ export default function Manager() {
   };
 
   const loadError =
-    overview.error ?? costsByWorkflow.error ?? costsByProject.error ?? workflows.error;
+    overview.error ?? costsByWorkflow.error ?? costsByProject.error ?? agents.error;
   const anyError =
     overview.isError ||
     costsByWorkflow.isError ||
     costsByProject.isError ||
-    workflows.isError ||
     alerts.isError ||
     budgets.isError;
 
@@ -156,142 +148,99 @@ export default function Manager() {
       )}
 
       <div className="grid grid-2">
-        <CardPanel title="Cost by workflow" subTitle="USD in range">
-          {(costsByWorkflow.data?.items ?? []).length ? (
-            <BreakdownBars
-              rows={(costsByWorkflow.data?.items ?? []).map((item) => ({
-                key: item.key ?? String(item.name),
-                label: item.key ?? item.name ?? "—",
-                value: item.total_cost ?? 0,
-                valueLabel: formatMoney(item.total_cost),
-                sublabel: [
-                  `${item.executions} executions`,
-                  item.error_rate !== undefined && item.error_rate !== null
-                    ? `${formatPct(item.error_rate)} errors`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-                href: `/engineering?workflow=${encodeURIComponent(item.key ?? item.name ?? "")}`,
-              }))}
-            />
-          ) : costsByWorkflow.isLoading ? (
-            <div className="stack" style={{ padding: 16 }}>
-              <Skeleton width="80%" />
-              <Skeleton width="60%" />
-              <Skeleton width="70%" />
+        <CostCard
+          title="Workflows"
+          subTitle="Cost, reliability and volume per workflow"
+          loading={costsByWorkflow.isLoading}
+          emptyBreakdown="No workflow cost yet"
+          emptyDetail="No workflows in range."
+          columns={["Workflow", "Executions", "Error rate", "Tokens", "Cost"]}
+          rows={(costsByWorkflow.data?.items ?? []).map((item) => ({
+            key: item.key ?? String(item.name),
+            cells: [
+              item.key ?? item.name ?? "—",
+              item.executions,
+              <span className={item.error_rate ? "text-danger" : ""}>
+                {formatPct(item.error_rate)}
+              </span>,
+              formatTokens(item.total_tokens),
+              formatMoney(item.total_cost),
+            ],
+          }))}
+          drilldown={(row) => `/engineering?workflow=${encodeURIComponent(row.key)}`}
+          breakdown={
+            <div style={{ padding: "var(--global-dimension-size-100)" }}>
+              <BreakdownBars
+                rows={(costsByWorkflow.data?.items ?? []).map((item) => ({
+                  key: item.key ?? String(item.name),
+                  label: item.key ?? item.name ?? "—",
+                  value: item.total_cost ?? 0,
+                  valueLabel: formatMoney(item.total_cost),
+                  sublabel: `${item.executions} executions`,
+                  href: `/engineering?workflow=${encodeURIComponent(item.key ?? item.name ?? "")}`,
+                }))}
+              />
             </div>
-          ) : (
-            <EmptyState title="No workflow cost yet" description="Costs appear once executions are priced." />
-          )}
-        </CardPanel>
+          }
+        />
 
-        <CardPanel title="Cost by project" subTitle="USD in range">
-          {(costsByProject.data?.items ?? []).length ? (
-            <BreakdownBars
-              rows={(costsByProject.data?.items ?? []).map((item) => ({
-                key: item.key ?? String(item.name),
-                label: projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "—",
-                value: item.total_cost ?? 0,
-                valueLabel: formatMoney(item.total_cost),
-                sublabel: `${item.executions} executions · ${formatTokens(item.total_tokens)} tokens`,
-                href: `/engineering?project_id=${encodeURIComponent(item.key ?? "")}`,
-              }))}
-            />
-          ) : costsByProject.isLoading ? (
-            <div className="stack" style={{ padding: 16 }}>
-              <Skeleton width="80%" />
-              <Skeleton width="60%" />
-              <Skeleton width="70%" />
+        <CostCard
+          title="Projects"
+          subTitle="Cost, reliability and volume per project"
+          loading={costsByProject.isLoading}
+          emptyBreakdown="No project cost yet"
+          emptyDetail="No project spend in range."
+          columns={["Project", "Executions", "Error rate", "Tokens", "Cost"]}
+          rows={(costsByProject.data?.items ?? []).map((item) => ({
+            key: item.key ?? String(item.name),
+            cells: [
+              projectNames.get(item.key ?? "") ?? item.key ?? "—",
+              item.executions,
+              <span className={item.error_rate ? "text-danger" : ""}>
+                {formatPct(item.error_rate)}
+              </span>,
+              formatTokens(item.total_tokens),
+              formatMoney(item.total_cost),
+            ],
+          }))}
+          drilldown={(row) => `/engineering?project_id=${encodeURIComponent(row.key)}`}
+          breakdown={
+            <div style={{ padding: "var(--global-dimension-size-100)" }}>
+              <BreakdownBars
+                rows={(costsByProject.data?.items ?? []).map((item) => ({
+                  key: item.key ?? String(item.name),
+                  label: projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "—",
+                  value: item.total_cost ?? 0,
+                  valueLabel: formatMoney(item.total_cost),
+                  sublabel: `${item.executions} executions · ${formatTokens(item.total_tokens)} tokens`,
+                  href: `/engineering?project_id=${encodeURIComponent(item.key ?? "")}`,
+                }))}
+              />
             </div>
-          ) : (
-            <EmptyState title="No project cost yet" description="Costs appear once executions are priced." />
-          )}
-        </CardPanel>
+          }
+        />
       </div>
 
-      <div className="grid grid-2">
-        <CardPanel title="Workflows" subTitle="Reliability and cost per workflow">
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Workflow</Th>
-                  <Th align="right">Executions</Th>
-                  <Th align="right">Error rate</Th>
-                  <Th align="right">Cost</Th>
-                </tr>
-              </thead>
-              {workflows.data?.items?.length ? (
-                <tbody>
-                  {workflows.data.items.map((w) => (
-                    <Tr key={w.name}>
-                      <Td className="table__cell--primary">{w.name}</Td>
-                      <Td align="right" className="num">
-                        {w.executions}
-                      </Td>
-                      <Td align="right" className="num">
-                        <span className={w.error_rate ? "text-danger" : ""}>{formatPct(w.error_rate)}</span>
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatMoney(w.total_cost)}
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              ) : (
-                <TableEmpty colSpan={4}>No workflows in range.</TableEmpty>
-              )}
-            </Table>
-          </TableWrap>
-        </CardPanel>
-
-        <CardPanel title="Projects" subTitle="Consumption and cost per project">
-          <TableWrap>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Project</Th>
-                  <Th align="right">Executions</Th>
-                  <Th align="right">Error rate</Th>
-                  <Th align="right">Tokens</Th>
-                  <Th align="right">Cost</Th>
-                </tr>
-              </thead>
-              {costsByProject.data?.items?.length ? (
-                <tbody>
-                  {costsByProject.data.items.map((p) => (
-                    <Tr key={p.key ?? String(p.name)}>
-                      <Td className="table__cell--primary">
-                        {projectNames.get(p.key ?? "") ?? p.key ?? "—"}
-                      </Td>
-                      <Td align="right" className="num">
-                        {p.executions}
-                      </Td>
-                      <Td align="right" className="num">
-                        <span className={p.error_rate ? "text-danger" : ""}>
-                          {formatPct(p.error_rate)}
-                        </span>
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatTokens(p.total_tokens)}
-                      </Td>
-                      <Td align="right" className="num">
-                        {formatMoney(p.total_cost)}
-                      </Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              ) : (
-                <TableEmpty colSpan={5}>No project spend in range.</TableEmpty>
-              )}
-            </Table>
-          </TableWrap>
-        </CardPanel>
-      </div>
-
-      <CardPanel title="Cost by team" subTitle="Spend per team in your scope">
-        {(costsByTeam.data?.items ?? []).length ? (
+      <CostCard
+        title="Teams"
+        subTitle="Spend per team in your scope"
+        loading={costsByTeam.isLoading}
+        emptyBreakdown="No team cost yet"
+        emptyDetail="No team spend in range."
+        columns={["Team", "Executions", "Error rate", "Tokens", "Cost"]}
+        rows={(costsByTeam.data?.items ?? []).map((item) => ({
+          key: item.key ?? String(item.name),
+          cells: [
+            item.key ?? item.name ?? "unassigned",
+            item.executions,
+            <span className={item.error_rate ? "text-danger" : ""}>
+              {formatPct(item.error_rate)}
+            </span>,
+            formatTokens(item.total_tokens),
+            formatMoney(item.total_cost),
+          ],
+        }))}
+        breakdown={
           <div style={{ padding: "var(--global-dimension-size-100)" }}>
             <BreakdownBars
               rows={(costsByTeam.data?.items ?? []).map((item) => ({
@@ -303,57 +252,40 @@ export default function Manager() {
               }))}
             />
           </div>
-        ) : costsByTeam.isLoading ? (
-          <div className="stack" style={{ padding: 16 }}>
-            <Skeleton width="80%" />
-            <Skeleton width="60%" />
-          </div>
-        ) : (
-          <EmptyState
-            title="No team cost yet"
-            description="Costs roll up to the team of a project's owner."
-          />
-        )}
-      </CardPanel>
+        }
+      />
 
-      <CardPanel title="Agent efficiency" subTitle="Per-agent cost, tokens and error rate">
-        <TableWrap>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Agent</Th>
-                <Th align="right">Executions</Th>
-                <Th align="right">Error rate</Th>
-                <Th align="right">Cost</Th>
-                <Th align="right">Tokens</Th>
-              </tr>
-            </thead>
-            {agents.data?.items?.length ? (
-              <tbody>
-                {agents.data.items.map((a) => (
-                  <Tr key={a.name}>
-                    <Td className="table__cell--primary">{a.name}</Td>
-                    <Td align="right" className="num">
-                      {a.executions}
-                    </Td>
-                    <Td align="right" className="num">
-                      <span className={a.error_rate ? "text-danger" : ""}>{formatPct(a.error_rate)}</span>
-                    </Td>
-                    <Td align="right" className="num">
-                      {formatMoney(a.total_cost)}
-                    </Td>
-                    <Td align="right" className="num">
-                      {formatTokens(a.total_tokens)}
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            ) : (
-              <TableEmpty colSpan={5}>No agent spans seen yet.</TableEmpty>
-            )}
-          </Table>
-        </TableWrap>
-      </CardPanel>
+      <CostCard
+        title="Agents"
+        subTitle="Per-agent cost, tokens and error rate"
+        loading={agents.isLoading}
+        emptyBreakdown="No agent spans seen yet"
+        emptyDetail="No agents in range."
+        columns={["Agent", "Executions", "Error rate", "Tokens", "Cost"]}
+        rows={(agents.data?.items ?? []).map((a) => ({
+          key: a.name ?? "unknown",
+          cells: [
+            a.name ?? "unknown",
+            a.executions,
+            <span className={a.error_rate ? "text-danger" : ""}>{formatPct(a.error_rate)}</span>,
+            formatTokens(a.total_tokens),
+            formatMoney(a.total_cost),
+          ],
+        }))}
+        breakdown={
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            <BreakdownBars
+              rows={(agents.data?.items ?? []).map((a) => ({
+                key: a.name ?? "unknown",
+                label: a.name ?? "unknown",
+                value: a.total_cost ?? 0,
+                valueLabel: formatMoney(a.total_cost),
+                sublabel: `${a.executions} executions`,
+              }))}
+            />
+          </div>
+        }
+      />
 
       <div className="grid grid-2">
         <CardPanel
@@ -417,7 +349,7 @@ export default function Manager() {
           ) : (
             <EmptyState
               title="No budgets configured"
-              description="Track spend caps per department, team, project, client or workflow."
+              description="Track spend caps per department, team, project or workflow."
               extra={
                 <Button
                   variant="primary"
@@ -487,32 +419,6 @@ export default function Manager() {
           </div>
         </CardPanel>
       </div>
-
-      <CardPanel title="Cost by agent" subTitle="Spend per agent">
-        {(agents.data?.items ?? []).length ? (
-          <div style={{ padding: "var(--global-dimension-size-100)" }}>
-            <BreakdownBars
-              rows={(agents.data?.items ?? []).map((agent) => ({
-                key: agent.name ?? "unknown",
-                label: agent.name ?? "unknown",
-                value: agent.total_cost ?? 0,
-                valueLabel: formatMoney(agent.total_cost),
-                sublabel: `${agent.executions} executions · ${formatTokens(agent.total_tokens)} tokens`,
-              }))}
-            />
-          </div>
-        ) : agents.isLoading ? (
-          <div className="stack" style={{ padding: 16 }}>
-            <Skeleton width="80%" />
-            <Skeleton width="60%" />
-          </div>
-        ) : (
-          <EmptyState
-            title="No agent cost yet"
-            description="Agent spend appears once executions with AGENT spans are priced."
-          />
-        )}
-      </CardPanel>
 
       {budgetDialog.open ? (
         <BudgetDialog

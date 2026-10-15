@@ -8,8 +8,8 @@ import { RefreshButton } from "../components/RefreshButton";
 import { StatusBadge } from "../components/domain";
 import {
   Badge,
-  Button,
   CardPanel,
+  Pagination,
   Select,
   Skeleton,
   QueryError,
@@ -250,41 +250,15 @@ export default function Engineering() {
           </TableWrap>
         )}
         {!isLoading && data && data.total > 0 ? (
-          <div
-            className="row"
-            style={{ justifyContent: "space-between", padding: 12, gap: 12, flexWrap: "wrap" }}
-          >
-            <span className="muted">
-              Showing {offset + 1}–{Math.min(offset + items.length, data.total)} of {data.total}
-            </span>
-            <span className="row" style={{ gap: 8, alignItems: "center" }}>
-              <Select
-                value={String(limit)}
-                aria-label="Rows per page"
-                onChange={(e) =>
-                  updateParams({ limit: Number(e.target.value), page: undefined })
-                }
-              >
-                <option value="25">25 / page</option>
-                <option value="50">50 / page</option>
-                <option value="100">100 / page</option>
-              </Select>
-              <Button
-                variant="quiet"
-                disabled={page <= 1}
-                onClick={() => updateParams({ page: page - 1 })}
-              >
-                Prev
-              </Button>
-              <Button
-                variant="quiet"
-                disabled={offset + items.length >= data.total}
-                onClick={() => updateParams({ page: page + 1 })}
-              >
-                Next
-              </Button>
-            </span>
-          </div>
+          <Pagination
+            page={page}
+            pageSize={limit}
+            total={data.total}
+            onPage={(next) => updateParams({ page: next })}
+            onPageSize={(size) => updateParams({ limit: size, page: undefined })}
+            pageSizeOptions={[25, 50, 100]}
+            label="executions"
+          />
         ) : null}
       </CardPanel>
     </div>

@@ -523,13 +523,35 @@ describe("ExecutionDetail", () => {
 });
 
 describe("Manager", () => {
-  it("renders cost panels, budgets and alerts", async () => {
+  it("renders two-view cost cards, budgets and alerts", async () => {
     renderWithProviders(<Manager />);
-    expect(await screen.findByText("Cost by workflow")).toBeInTheDocument();
-    expect(screen.getByText("Cost by team")).toBeInTheDocument();
+    // Merged two-view cards (refinements v3): breakdown + detail per dimension.
+    expect(await screen.findByText("Workflows")).toBeInTheDocument();
+    expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(screen.getByText("Teams")).toBeInTheDocument();
+    expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Tool calls per day")).toBeInTheDocument();
-    expect(screen.getByText("Cost by agent")).toBeInTheDocument();
     expect(screen.getByText("Team cap")).toBeInTheDocument();
+
+    // The Detail view renders the capped table.
+    fireEvent.click(screen.getAllByRole("tab", { name: /Detail/ })[0]);
+    expect(await screen.findByText("Workflow")).toBeInTheDocument();
+  });
+
+  it("pages the cost detail tables at 10 rows", async () => {
+    h.costs.mockResolvedValue({
+      items: Array.from({ length: 12 }, (_, i) => ({
+        ...aggregate,
+        key: `wf-${i}`,
+        name: `wf-${i}`,
+      })),
+      total: 12,
+    });
+    renderWithProviders(<Manager />);
+    fireEvent.click((await screen.findAllByRole("tab", { name: /Detail/ }))[0]);
+    expect(await screen.findByText(/Showing 1–10 of 12 rows/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText(/Showing 11–12 of 12 rows/)).toBeInTheDocument();
   });
 
   it("opens the budget burn-down chart", async () => {
@@ -556,12 +578,18 @@ describe("Manager", () => {
 });
 
 describe("Executive", () => {
-  it("renders unit economics, forecast and model chart", async () => {
+  it("renders unit economics, forecast and the two-view cost cards", async () => {
     renderWithProviders(<Executive />);
     expect(await screen.findByText("Total AI cost")).toBeInTheDocument();
-    expect(screen.getAllByText("Cost by model").length).toBeGreaterThan(0);
-    expect(screen.getByText("Cost by project")).toBeInTheDocument();
+    expect(screen.getByText("Models")).toBeInTheDocument();
+    expect(screen.getByText("Projects")).toBeInTheDocument();
     expect(screen.getByText("Forecast")).toBeInTheDocument();
+
+    // Both cards switch to the capped detail view (Projects card first).
+    fireEvent.click(screen.getAllByRole("tab", { name: /Detail/ })[0]);
+    expect(await screen.findByText("Project")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("tab", { name: /Detail/ })[1]);
+    expect(await screen.findByText("Provider · model")).toBeInTheDocument();
   });
 });
 

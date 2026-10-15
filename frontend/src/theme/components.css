@@ -271,6 +271,11 @@
   overflow: auto;
 }
 
+/* Long cost/breakdown tables: capped height with a scrolling sticky header. */
+.table-wrap--capped {
+  max-height: 380px;
+}
+
 .table {
   height: fit-content;
   font-size: var(--global-font-size-s);
