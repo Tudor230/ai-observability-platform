@@ -1,7 +1,7 @@
 # 11 — Frontend: searchable entity pickers
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 07
 Area: refinements v3, dropdowns
 Estimate: M
@@ -39,3 +39,21 @@ small fixed enums stay native selects.
 ## Tests
 
 - `npm run test` (+ coverage gate), `npm run lint`, `npm run build`.
+
+## Comments
+
+Done. Audited every remaining native `<Select>`: the only entity picker left
+was `FiltersControl`'s Project (now a `SearchableSelect`, value stays the
+generated `project_id`, label the name). Everything else is a small fixed enum
+and stays native — budget period, role (Accounts/Requests), pricing match kind,
+alert severity/status/metric/channel type, rule scope *type*, refresh cadence,
+rows per page, Engineering status. The rule scope *target* picker in Alerts and
+the BudgetDialog scopes were already `SearchableSelect`. Capping/scrolling was
+already in place (viewport-measured `maxHeight` + `overflow-y: auto`), now
+covered by a test; the BudgetDialog test keeps proving a combobox works inside a
+modal (portal + flip).
+
+Evidence: `npm run test` **513 passed** including the new capped-list assertion
+(`maxHeight` between 1 and 260, `combobox__list` class); `npm run lint` +
+`npm run build` clean; coverage 88.5% stmts / 73.6% branches / 68.1% funcs
+(gates 80/70/65).

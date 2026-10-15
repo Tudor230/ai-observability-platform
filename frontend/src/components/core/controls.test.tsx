@@ -46,6 +46,20 @@ describe("SearchableSelect", () => {
     expect(screen.getByLabelText("Scope")).toHaveValue("Gamma");
   });
 
+  it("caps the option list height and keeps it scrollable", () => {
+    render(
+      <SearchableSelect value="" onChange={() => {}} options={options} aria-label="Scope" />
+    );
+    const input = screen.getByLabelText("Scope");
+    fireEvent.focus(input);
+    const list = document.querySelector(".combobox__list") as HTMLElement;
+    // Height is measured against the viewport and capped (refinements v2/v3);
+    // `.combobox__list` provides overflow-y: auto so the list scrolls.
+    expect(Number.parseInt(list.style.maxHeight, 10)).toBeGreaterThan(0);
+    expect(Number.parseInt(list.style.maxHeight, 10)).toBeLessThanOrEqual(260);
+    expect(list.className).toContain("combobox__list");
+  });
+
   it("respects the disabled state", () => {
     render(
       <SearchableSelect value="" onChange={() => {}} options={options} disabled aria-label="Scope" />

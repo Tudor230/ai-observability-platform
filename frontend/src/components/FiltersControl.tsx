@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDirectoryProjects } from "../api/hooks";
 import type { Filters } from "../api/types";
 import { useFilters } from "../state/FiltersContext";
-import { Button, Field, Select, TextInput } from "./core";
+import { Button, Field, SearchableSelect, Select, TextInput } from "./core";
 import { IconFilter, IconX } from "./core/icons";
 
 export type FilterDimension = "days" | "project" | "workflow";
@@ -80,20 +80,18 @@ export function FiltersControl({ dimensions }: { dimensions: FilterDimension[] }
           ) : null}
           {dimensions.includes("project") ? (
             <Field label="Project">
-              <Select
+              <SearchableSelect
                 value={filters.project_id ?? ""}
                 aria-label="Project"
-                onChange={(e) =>
-                  setFilters({ ...filters, project_id: e.target.value || undefined })
+                placeholder="All projects"
+                onChange={(value) =>
+                  setFilters({ ...filters, project_id: value || undefined })
                 }
-              >
-                <option value="">All projects</option>
-                {(projects.data?.items ?? []).map((project) => (
-                  <option key={project.id} value={project.project_id}>
-                    {project.name}
-                  </option>
-                ))}
-              </Select>
+                options={(projects.data?.items ?? []).map((project) => ({
+                  value: project.project_id,
+                  label: project.name,
+                }))}
+              />
             </Field>
           ) : null}
           {dimensions.includes("workflow") ? (
