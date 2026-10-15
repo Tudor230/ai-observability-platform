@@ -11,10 +11,10 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   workflow step). Carries an OpenInference `openinference.span.kind`
   (`LLM`/`TOOL`/`RETRIEVER`/`AGENT`/`CHAIN`/…).
 - **Workflow root** — the CHAIN span that bounds a business execution; the SDK
-  stamps it with `sdk.client_id`, `sdk.workflow_id` and `session.id`
-  (= `workflow_id`), and optionally `sdk.project_id` — ingest always stores the
-  authenticated project's id there (ADR-0008). The backend turns each workflow
-  root into one **execution**.
+  stamps it with `sdk.workflow_id` and `session.id` (= `workflow_id`), and — in
+  debug mode only — `sdk.project_id`. Ingest always stores the authenticated
+  project's id there (ADR-0008). The backend turns each workflow root into one
+  **execution**.
 - **Execution** — the backend's normalized record of a workflow root (status,
   cost, tokens, call counts, latency, failure info).
 - **Failure kind** — the backend's authoritative classification of a failing
@@ -24,8 +24,9 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   taxonomy.
 - **Cost** — USD computed by the backend cost engine from token counts × pricing
   (exact → prefix → provider-default chain); unpriced models have `NULL` cost.
-- **Attribution dimensions** — client, project, workflow, agent, team; how cost
-  and usage roll up.
+- **Attribution dimensions** — project, workflow, agent, team; how cost and
+  usage roll up. (Client was retired as a dimension — ADR-0011; the `client`
+  RBAC role below is a different concept.)
 - **Analytics metric** — daily aggregates (executions, error rate, tokens, cost,
   avg/p50/p95/p99 latency) per dimension.
 - **Alert / Budget** — budget = configured spend cap per period/dimension;
@@ -37,8 +38,15 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
 - **OTLP ingest** — the backend's `POST /v1/traces` (and `/api/v1/traces`)
   receiver that decodes SDK OTLP protobuf and resolves the project from
   `authorization: Bearer <api_key>` (ADR-0008). The `x-project-name` header and
-  the root's `sdk.project_id` are optional assertions: a conflict is rejected,
+  the root's `sdk.project_id` are debug-only assertions: a conflict is rejected,
   and stored root identity is server-authoritative.
+- **Project name** — the unique human handle for a project; the only project
+  label any dashboard surface shows (ADR-0012).
+- **Generated project id** — `p_<12 hex>`, assigned by the backend at creation
+  and never rendered by the dashboard; it stays the technical token in URLs,
+  query params, ingest routing and analytics dimension keys (ADR-0012).
+- **Client role** — a project-scoped, read-only, cost-free membership role
+  (ADR-0006); unrelated to the retired client *dimension*, and untouched by it.
 
 ## Explicitly avoided synonyms
 
