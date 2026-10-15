@@ -35,7 +35,7 @@ def main():
     from aiobs_backend import seed
 
     seed.seed_pricing()
-    key = seed.seed_demo_project(project_id="proj-e2e", name="E2E Project")
+    key = seed.seed_demo_project(name="E2E Project")
     seed.seed_admin(
         os.environ["AIOBS_ADMIN_EMAIL"], os.environ["AIOBS_ADMIN_PASSWORD"]
     )

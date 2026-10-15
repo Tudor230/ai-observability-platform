@@ -690,6 +690,12 @@ Docker stack.
 | F38 | CI: 80% backend coverage floor (86% measured), `e2e_smoke.py` runs in CI, SDK e2e runs on PRs, job timeouts, Phoenix pinned by digest |
 | F39 | SDK hygiene: unknown `init()` kwargs raise; `endpoint` + `/v1/traces` is normalized; kind-override registration is lock-protected and iterated from a snapshot; atexit flushes the latest provider |
 | F41 | Plans (`sdk/backend/frontend.md`) now carry an implementation-status section; README links the audit and ADRs |
+| F42 | Refinements v3: project `project_id` is generated (`p_<hex>`, ADR-0012) and `name` is unique; execution payloads carry `project_name`; the dashboard never renders the id (chips/pickers/titles use the name) |
+| F43 | Refinements v3: the client attribution dimension is retired end-to-end (ADR-0011) — `clients` table, `executions/budgets.client_id`, the `/clients` route, `dimension=client`, budget client scope and the SDK attribute are gone; dashboard breakdowns are per project; the RBAC `client` role is untouched |
+| F44 | Refinements v3: SDK 0.2.0 removes `client_id`, marks `project_id` as a debug-only override, and ships key-only examples |
+| F45 | Refinements v3: cost cards are two-view (breakdown ⇄ detail) with a 380px capped, sticky-header table paged at 10 rows via the shared `Pagination` component (Engineering keeps server pagination) |
+| F46 | Refinements v3: filtering is per table (namespaced URL state, `useTableFilters`) instead of one page-level filter set; the page keeps only the time window |
+| F47 | Refinements v3: `/costs` execution rows carry error rate, avg duration, last seen and token totals, so detail views need no extra endpoint |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
 ### Partially fixed

@@ -20,7 +20,13 @@ from .models import (
     Team,
     User,
 )
-from .security import generate_api_key, hash_api_key, hash_password, key_hint
+from .security import (
+    generate_api_key,
+    generate_project_id,
+    hash_api_key,
+    hash_password,
+    key_hint,
+)
 
 # (provider, model, model_match, input/1m, output/1m, cache_read, cache_write, reasoning)
 DEFAULT_PRICING: list[tuple[str, str, str, float, float, float | None, float | None, float | None]] = [
@@ -139,31 +145,41 @@ def seed_alert_rules() -> int:
         return len(rules)
 
 
-def seed_demo_project(project_id: str = "proj-1", name: str = "Demo Project") -> str:
-    """Create (or return) a demo department + team + project, minting a key.
+def seed_demo_project(name: str = "Demo Project") -> str:
+    """Create (or reuse) a demo department + team + project, minting a fresh key.
 
-    Returns the plaintext API key (shown once).
+    The project is matched by ``name`` — the unique human handle (ADR-0012) —
+    and a generated external id is assigned on creation. Returns the plaintext
+    API key (shown once).
     """
     with session_scope() as session:
         project = session.execute(
-            select(Project).where(Project.project_id == project_id)
+            select(Project).where(Project.name == name)
         ).scalar_one_or_none()
-        if project is not None:
-            return "demo-key-not-returned-for-existing-project"
-        department = session.execute(
-            select(Department).where(Department.name == "Platform")
-        ).scalar_one_or_none()
-        if department is None:
-            department = Department(name="Platform")
-            session.add(department)
-            session.flush()
-        team = Team(name="Platform Admins", department_id=department.id)
-        session.add(team)
-        session.flush()
         key = generate_api_key()
-        project = Project(team_id=team.id, project_id=project_id, name=name)
-        session.add(project)
-        session.flush()
+        if project is None:
+            department = session.execute(
+                select(Department).where(Department.name == "Platform")
+            ).scalar_one_or_none()
+            if department is None:
+                department = Department(name="Platform")
+                session.add(department)
+                session.flush()
+            team = session.execute(
+                select(Team).where(
+                    Team.name == "Platform Admins",
+                    Team.department_id == department.id,
+                )
+            ).scalar_one_or_none()
+            if team is None:
+                team = Team(name="Platform Admins", department_id=department.id)
+                session.add(team)
+                session.flush()
+            project = Project(
+                team_id=team.id, project_id=generate_project_id(), name=name
+            )
+            session.add(project)
+            session.flush()
         session.add(
             ProjectKey(
                 project_id=project.id,
@@ -223,7 +239,7 @@ def seed_admin(email: str, password: str) -> dict:
     }
 
 
-def seed_all(project_id: str = "proj-1", project_name: str = "Demo Project") -> dict:
+def seed_all(project_name: str = "Demo Project") -> dict:
     pricing = seed_pricing()
-    key = seed_demo_project(project_id, project_name)
+    key = seed_demo_project(project_name)
     return {"pricing_added": pricing, "demo_api_key": key}

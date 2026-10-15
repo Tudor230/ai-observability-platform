@@ -18,7 +18,7 @@ The platform should enable the organization to:
 - Capture LLM, tool, retrieval, and application-level activity.
 - Associate executions with relevant business context.
 - Calculate the cost of agentic executions.
-- Attribute costs to workflows, agents, projects, teams, and clients.
+- Attribute costs to workflows, agents, projects, and teams.
 - Identify abnormal consumption and inefficient executions.
 - Provide technical, managerial, and executive views of agentic usage.
 
@@ -322,7 +322,7 @@ Execution
 
 This allows the platform to answer questions such as:
 
-* How much did a client consume?
+* How much did a project (client engagement) consume?
 * Which workflow is the most expensive?
 * Which agent generates the highest cost?
 * Which team has the highest AI consumption?
@@ -361,7 +361,7 @@ The platform aggregates execution data into operational and financial metrics.
 * Average cost per execution
 * Cost per workflow
 * Cost per agent
-* Cost per client
+* Cost per project
 * Cost per team
 
 
@@ -423,7 +423,7 @@ Focuses on technical execution:
 
 Focuses on operational and financial information:
 
-* Cost per client
+* Cost per project
 * Cost per workflow
 * Consumption trends
 * Budget utilization
@@ -435,7 +435,7 @@ Focuses on operational and financial information:
 Focuses on business-level unit economics:
 
 * Total AI cost
-* Cost per client
+* Cost per project
 * Cost per service
 * Cost per execution
 * Cost trends
