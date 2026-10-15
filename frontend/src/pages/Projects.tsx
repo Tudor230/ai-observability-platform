@@ -112,9 +112,6 @@ function ProjectRow({
         <Link to={`/projects/${project.project_id}`} className="table__cell--primary">
           {project.name}
         </Link>
-        <div className="muted inline-code" style={{ fontSize: 12 }}>
-          {project.project_id}
-        </div>
       </Td>
       <Td>{project.team_name}</Td>
       <Td className="muted">{project.department_name}</Td>

@@ -25,6 +25,7 @@ export interface Execution {
   workflow_id: string | null;
   session_id: string | null;
   project_id: string | null;
+  project_name: string | null;
   client_id: string | null;
   workflow: string | null;
   workflow_version: string | null;

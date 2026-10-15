@@ -160,7 +160,7 @@ export default function Project() {
   return (
     <div className="page">
       <PageHeader
-        title={`${project.project_id} · ${project.name}`}
+        title={project.name}
         subTitle={`${project.team_name} · ${project.department_name}`}
         extra={
           <>
@@ -189,10 +189,6 @@ export default function Project() {
 
       <CardPanel title="Details" subTitle="Attribution context and ingest status">
         <div className="kv-grid">
-          <div className="kv">
-            <span className="kv__key">Project id</span>
-            <span className="kv__value inline-code">{project.project_id}</span>
-          </div>
           <div className="kv">
             <span className="kv__key">Team</span>
             <span className="kv__value">{project.team_name}</span>

@@ -470,7 +470,7 @@ function RuleDialog({
           }))
         : (projects.data?.items ?? []).map((p) => ({
             value: p.id,
-            label: `${p.project_id} · ${p.name}`,
+            label: p.name,
           }));
 
   const submit = async () => {

@@ -91,7 +91,7 @@ export function FiltersControl({ dimensions }: { dimensions: FilterDimension[] }
                 <option value="">All projects</option>
                 {(projects.data?.items ?? []).map((project) => (
                   <option key={project.id} value={project.project_id}>
-                    {project.project_id} · {project.name}
+                    {project.name}
                   </option>
                 ))}
               </Select>
@@ -139,6 +139,10 @@ export function FiltersControl({ dimensions }: { dimensions: FilterDimension[] }
 /** Removable chips for the filters active on this page. */
 export function FilterChips({ dimensions }: { dimensions: FilterDimension[] }) {
   const { filters, setFilters } = useFilters();
+  // Project chips show the human name; the raw id never renders (ADR-0012).
+  const projects = useDirectoryProjects();
+  const projectName = (id: string) =>
+    (projects.data?.items ?? []).find((project) => project.project_id === id)?.name ?? id;
   const chips: { key: string; label: string; clear: () => void }[] = [];
   if (dimensions.includes("days") && filters.days !== DEFAULT_DAYS) {
     chips.push({
@@ -150,7 +154,7 @@ export function FilterChips({ dimensions }: { dimensions: FilterDimension[] }) {
   if (dimensions.includes("project") && filters.project_id) {
     chips.push({
       key: "project",
-      label: `Project: ${filters.project_id}`,
+      label: `Project: ${projectName(filters.project_id)}`,
       clear: () => setFilters({ ...filters, project_id: undefined }),
     });
   }

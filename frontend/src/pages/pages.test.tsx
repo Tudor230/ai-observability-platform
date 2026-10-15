@@ -192,6 +192,7 @@ const execution = {
   workflow_id: "wf-1",
   session_id: "wf-1",
   project_id: "p1",
+  project_name: "Checkout",
   client_id: "client-42",
   workflow: "checkout",
   workflow_version: "v2",
@@ -593,7 +594,9 @@ describe("Projects + Project", () => {
       </Routes>
     );
     renderWithProviders(<Routed />, { route: "/projects/p1" });
-    expect(await screen.findByText("p1 · Checkout")).toBeInTheDocument();
+    expect(await screen.findByText("Checkout")).toBeInTheDocument();
+    // ADR-0012: the generated external id never renders (URL token only).
+    expect(screen.queryByText("p1")).not.toBeInTheDocument();
     expect(screen.getByText("Executions over time")).toBeInTheDocument();
     expect(screen.getByText("Cost over time")).toBeInTheDocument();
     expect(await screen.findByText("prod")).toBeInTheDocument();
@@ -1056,7 +1059,7 @@ describe("BudgetDialog scope pickers", () => {
 
     const project = within(dialog).getByLabelText("Budget project");
     fireEvent.focus(project);
-    fireEvent.mouseDown(await within(optionsList()).findByText("p1 · Checkout"));
+    fireEvent.mouseDown(await within(optionsList()).findByText("Checkout"));
 
     fireEvent.change(within(dialog).getByPlaceholderText("100"), { target: { value: "25" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create budget" }));

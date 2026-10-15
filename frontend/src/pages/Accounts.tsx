@@ -316,7 +316,7 @@ function MembershipDialog({
     if (role === "client") {
       return (projects.data?.items ?? []).map((p) => ({
         value: `project:${p.id}`,
-        label: `Project — ${p.project_id} · ${p.name}`,
+        label: `Project — ${p.name}`,
       }));
     }
     return (teams.data?.items ?? []).map((t) => ({

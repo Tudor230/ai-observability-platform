@@ -247,8 +247,8 @@ export function toTraceRecord(execution: Execution, spans: TraceSpan[]): TraceRe
     durationMs: execution.duration_ms ?? 0,
     agentDescription: execution.client_id
       ? `client ${execution.client_id}`
-      : execution.project_id
-        ? `project ${execution.project_id}`
+      : execution.project_name
+        ? `project ${execution.project_name}`
         : execution.trace_id,
     totalCost: execution.total_cost ?? undefined,
     totalTokens: execution.total_tokens,

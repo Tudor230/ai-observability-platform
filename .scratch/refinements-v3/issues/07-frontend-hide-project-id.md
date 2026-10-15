@@ -1,7 +1,7 @@
 # 07 — Frontend: stop rendering `project_id`
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Area: refinements v3, project identity (ADR-0012)
 Estimate: M
@@ -47,3 +47,20 @@ as technical tokens in URLs and payloads.
 ## Tests
 
 - `npm run test` (vitest + coverage gate), `npm run lint`, `npm run build`.
+
+## Comments
+
+Done. Stopped rendering the external id everywhere: Project page title is the
+name (the "Project id" `kv` row is gone), Projects list drops the id line under
+the name, picker labels in `FiltersControl`, `BudgetDialog`, `Accounts` and
+`Alerts` show the name only, `ExecutionDetail` and `lib/traceSpans.ts` use the
+new `project_name` payload field (added to `Execution` in `api/types.ts`), and
+filter chips resolve the id to its name via the directory. The Requests
+create-project form lost its slug field — payload is `{name, team_id}` and the
+approved-request deep link matches by unique name against the directory
+(ADR-0012). URLs and query params keep the id as the technical token.
+
+Evidence: `npm run test` **509 passed** (fixtures gained `project_name`; the
+Project-page test now asserts the id is *not* rendered);
+`npm run test:coverage` 88.4% stmts / 73.4% branches / 67.7% funcs (gates
+80/70/65); `npm run typecheck` and `npm run build` clean.

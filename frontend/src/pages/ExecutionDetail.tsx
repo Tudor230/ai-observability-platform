@@ -96,7 +96,7 @@ export default function ExecutionDetail() {
           <span className="row row--wrap" style={{ gap: 8 }}>
             <span className="inline-code">{ex.trace_id}</span>
             {ex.client_id ? <span>client {ex.client_id}</span> : null}
-            {ex.project_id ? <span>· project {ex.project_id}</span> : null}
+            {ex.project_name ? <span>· project {ex.project_name}</span> : null}
             {ex.workflow_version ? <span>· v{ex.workflow_version}</span> : null}
           </span>
         }

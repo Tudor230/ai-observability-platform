@@ -67,7 +67,7 @@ export function BudgetDialog({
   }));
   const projectOptions = (projects.data?.items ?? [])
     .filter((p) => !team || p.team_id === team)
-    .map((p) => ({ value: p.project_id, label: `${p.project_id} · ${p.name}` }));
+    .map((p) => ({ value: p.project_id, label: p.name }));
 
   const submit = async () => {
     setBusy(true);
