@@ -134,12 +134,6 @@ def main() -> int:
     parser.add_argument("query", nargs="?", default="Where is my order ORD-1234?")
     parser.add_argument("--order-id", default=None, help="order id used for lookups and validation (defaults to the order id found in the query)")
     parser.add_argument("--workflow-id", default=None, help="pin the workflow_id (defaults to a random one per run)")
-    parser.add_argument("--client-id", default="client-42")
-    parser.add_argument(
-        "--project-id",
-        default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID"),
-        help="optional, deprecated: Phoenix project routing only; the API key identifies the platform project",
-    )
     parser.add_argument("--capture-prompts", action="store_true", default=False)
     parser.add_argument("--no-export", action="store_true", help="run without exporting (local only)")
     args = parser.parse_args()
@@ -155,7 +149,6 @@ def main() -> int:
     init(
         api_key=os.environ.get("AI_OBSERVABILITY_API_KEY"),
         endpoint=None if args.no_export else os.environ.get("AI_OBSERVABILITY_ENDPOINT", "http://localhost:6006"),
-        project_id=args.project_id,
         service_name="checkout-support-demo",
         service_version="1.0.0",
         deployment_environment="demo",
@@ -171,7 +164,6 @@ def main() -> int:
     workflow_id = args.workflow_id or f"ord-{uuid.uuid4().hex[:8]}"
     with workflow(
         name="checkout-support",
-        client_id=args.client_id,
         workflow_id=workflow_id,
         version="v1",
         context={"channel": "web", "ticket_id": "INC-12345"},

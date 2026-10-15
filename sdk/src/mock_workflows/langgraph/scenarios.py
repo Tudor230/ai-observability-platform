@@ -22,7 +22,6 @@ from ..scenario import Scenario, scenario_with_random_workflow_id
 
 WORKFLOW = dict(
     name="approval",
-    client_id="client-42",
     version="v1",
     context={"channel": "web"},
 )
@@ -72,7 +71,7 @@ def _build_linear_graph():
 def run_basic(workflow_id: str) -> None:
     graph = _build_linear_graph()
     with ai_observability.workflow(
-        name="checkout", client_id="client-42", workflow_id=workflow_id
+        name="checkout", workflow_id=workflow_id
     ):
         graph.invoke({"messages": []})
 

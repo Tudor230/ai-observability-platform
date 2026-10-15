@@ -12,7 +12,6 @@ from ai_observability._attributes import (
     METADATA,
     OPENINFERENCE_SPAN_KIND,
     OUTPUT_VALUE,
-    SDK_CLIENT_ID,
     SDK_CAPTURE_PROMPTS,
     SDK_ERROR_MESSAGE,
     SDK_ERROR_TYPE,
@@ -32,7 +31,6 @@ def _finished(tail):
 def test_workflow_context_manager_attributes(tail_exporter):
     with ai_observability.workflow(
         name="checkout",
-        client_id="client-42",
         workflow_id="order-123",
         version="v2",
         context={"channel": "web"},
@@ -45,7 +43,6 @@ def test_workflow_context_manager_attributes(tail_exporter):
     attrs = dict(root.attributes)
     assert root.name == "checkout"
     assert attrs[OPENINFERENCE_SPAN_KIND] == "CHAIN"
-    assert attrs[SDK_CLIENT_ID] == "client-42"
     assert attrs[SDK_PROJECT_ID] == "proj-1"
     assert attrs[SDK_WORKFLOW_ID] == "order-123"
     assert attrs[SESSION_ID] == "order-123"
@@ -56,7 +53,7 @@ def test_workflow_context_manager_attributes(tail_exporter):
 
 
 def test_workflow_decorator_sync(tail_exporter):
-    @ai_observability.workflow(name="decorated", client_id="c1", workflow_id="w1")
+    @ai_observability.workflow(name="decorated", workflow_id="w1")
     def run():
         return 42
 
@@ -69,7 +66,7 @@ def test_workflow_decorator_sync(tail_exporter):
 
 @pytest.mark.asyncio
 async def test_workflow_decorator_async(tail_exporter):
-    @ai_observability.workflow(name="async-decorated", client_id="c1", workflow_id="w2")
+    @ai_observability.workflow(name="async-decorated", workflow_id="w2")
     async def run():
         return "ok"
 
@@ -83,7 +80,6 @@ def test_workflow_decorator_full_parameters(tail_exporter):
     """The @workflow decorator honors the same parameters as with workflow(...)."""
     @ai_observability.workflow(
         name="decorated",
-        client_id="c1",
         workflow_id="w9",
         version="v2",
         context={"channel": "web"},
@@ -97,7 +93,6 @@ def test_workflow_decorator_full_parameters(tail_exporter):
     spans = _finished(tail_exporter)
     assert len(spans) == 1
     attrs = dict(spans[0].attributes)
-    assert attrs[SDK_CLIENT_ID] == "c1"
     assert attrs[SDK_PROJECT_ID] == "proj-1"
     assert attrs[SDK_WORKFLOW_ID] == "w9"
     assert attrs[SESSION_ID] == "w9"

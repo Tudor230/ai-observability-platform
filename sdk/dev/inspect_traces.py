@@ -32,7 +32,6 @@ def list_traces(conn, limit: int) -> list[dict]:
             SELECT t.trace_id,
                    s.name,
                    s.attributes->'sdk'->>'project_id'  AS project_id,
-                   s.attributes->'sdk'->>'client_id'   AS client_id,
                    s.attributes->'sdk'->>'workflow_id' AS workflow_id,
                    s.attributes->'sdk'->'error'->>'kind' AS error_kind,
                    s.status_code,
@@ -147,11 +146,11 @@ def main(argv: list[str] | None = None) -> int:
         print("No workflow-root spans found. Did you run a scenario?")
         print("  uv run aiobs-mock --endpoint http://localhost:6006")
         return 1
-    print(f"{'TRACE ID':<34} {'WORKFLOW':<24} {'PROJECT':<10} {'CLIENT':<10} {'WF ID':<12} {'STATUS':<6} FAILURE")
+    print(f"{'TRACE ID':<34} {'WORKFLOW':<24} {'PROJECT':<10} {'WF ID':<12} {'STATUS':<6} FAILURE")
     for trace in traces:
         print(
             f"{trace['trace_id']:<34} {trace['name'] or '':<24} "
-            f"{trace['project_id'] or '-':<10} {trace['client_id'] or '-':<10} "
+            f"{trace['project_id'] or '-':<10} "
             f"{trace['workflow_id'] or '-':<12} {trace['status_code'] or '-':<6} "
             f"{trace['error_kind'] or ''}"
         )

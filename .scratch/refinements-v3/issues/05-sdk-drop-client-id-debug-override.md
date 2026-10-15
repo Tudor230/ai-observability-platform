@@ -1,7 +1,7 @@
 # 05 — SDK: drop `client_id`, debug-only `project_id`, key-only examples
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Area: refinements v3, SDK (ADR-0011, ADR-0012)
 Estimate: M
@@ -51,3 +51,21 @@ survives only for debugging/testing.
 
 - `uv run pytest -q` and
   `uv run pytest --cov=ai_observability --cov=mock_workflows --cov-fail-under=80`.
+
+## Comments
+
+Done. `client_id` is gone from the `Workflow` boundary, the `workflow()`
+factory, both decorator wrappers, `_build_attributes`, `_attributes`'
+re-export list, `dev/inspect_traces.py` (SQL projection + column), all six mock
+scenario families and their assertions, the unit/e2e tests, and both READMEs
+(the PyPI long-description too). `project_id` stays in `init()`/env but is now
+framed as a **debug/testing override that should not be used in production**
+(warning text + docstrings updated); tests and `aiobs-mock` keep it for Phoenix
+inspection. `examples/*.py` (all six, including `init_only_agent.py`) dropped
+`--client-id`/`--project-id` and pass the API key + endpoint only — verified by
+an AST/source check. Version bumped to `0.2.0`.
+
+Evidence: **161 passed, 1 skipped** (e2e needs `AI_OBSERVABILITY_E2E=1`);
+coverage **87.29%** (gate 80%); `uv lock --check` clean; `aiobs-mock` offline
+**28/28 scenarios**; signature check confirms `client_id` is absent from
+`workflow()` while `init()` still accepts the debug override and warns.

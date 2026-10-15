@@ -15,7 +15,7 @@ records exceptions as span errors.
 
 Env vars (12-factor, explicit init() args override):
     AI_OBSERVABILITY_API_KEY, AI_OBSERVABILITY_ENDPOINT,
-    AI_OBSERVABILITY_PROJECT_ID (deprecated; Phoenix routing only),
+    AI_OBSERVABILITY_PROJECT_ID (debug override; Phoenix routing only),
     OTEL_SERVICE_NAME, OTEL_SERVICE_VERSION, OTEL_DEPLOYMENT_ENVIRONMENT
 """
 
@@ -34,7 +34,7 @@ from ._state import get_state
 from ._tracing import build_provider, register_atexit_flush
 from ._workflow import workflow, Workflow
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "init",
@@ -59,10 +59,11 @@ def _warn_project_id_deprecated(project_id: Optional[str]) -> None:
         return
     _PROJECT_ID_DEPRECATION_WARNED = True
     warnings.warn(
-        "project_id / AI_OBSERVABILITY_PROJECT_ID is deprecated: the API key "
-        "identifies the project. project_id is now only used for Phoenix project "
-        "routing (x-project-name header + openinference.project.name resource "
-        "attribute) and will be removed in a future major version.",
+        "project_id / AI_OBSERVABILITY_PROJECT_ID is a debug/testing override "
+        "and should not be used in production: the API key identifies the "
+        "project (ADR-0008). Setting it only affects Phoenix routing "
+        "(x-project-name header + openinference.project.name resource "
+        "attribute).",
         DeprecationWarning,
         stacklevel=3,
     )
@@ -83,8 +84,10 @@ def init(
 
     Args:
         api_key / endpoint: platform credential + collector URL.
-        project_id: optional, deprecated — only for Phoenix project routing
-            (the API key identifies the platform project; ADR-0008).
+        project_id: debug/testing override only — should not be used in
+            production. The API key identifies the platform project
+            (ADR-0008); setting this affects Phoenix routing only
+            (x-project-name header + openinference.project.name).
         capture_prompts: opt-in payload capture (per-workflow override allowed).
     """
     config = resolve_config(

@@ -20,7 +20,6 @@ from .fakes import MODEL, chat_completion, patched_groq, rate_limit_response
 
 WORKFLOW = dict(
     name="rca",
-    client_id="client-42",
     version="v1",
     context={"channel": "problem-management"},
 )
@@ -59,7 +58,6 @@ def assert_chat(spans, workflow_id: str) -> list[str]:
     if root is None:
         return checks.failures
     checks.project_attr_matches_config(root)
-    checks.attr_eq(root, "sdk.client_id", "client-42")
     checks.attr_eq(root, "sdk.workflow_id", workflow_id)
     checks.status_ok(root)
 

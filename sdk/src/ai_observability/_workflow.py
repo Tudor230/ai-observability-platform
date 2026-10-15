@@ -24,7 +24,6 @@ from ._attributes import (
     METADATA,
     OPENINFERENCE_SPAN_KIND,
     SDK_CAPTURE_PROMPTS,
-    SDK_CLIENT_ID,
     SDK_PROJECT_ID,
     SDK_WORKFLOW_ID,
     SDK_WORKFLOW_VERSION,
@@ -47,7 +46,6 @@ class Workflow:
         self,
         *,
         name: str,
-        client_id: Optional[str] = None,
         workflow_id: Optional[str] = None,
         version: Optional[str] = None,
         context: Optional[dict] = None,
@@ -55,7 +53,6 @@ class Workflow:
         capture_prompts: Optional[bool] = None,
     ) -> None:
         self._name = name
-        self._client_id = client_id
         self._workflow_id = workflow_id
         self._version = version
         self._context = context
@@ -130,7 +127,6 @@ class Workflow:
             async def async_wrapper(*args, **kwargs):
                 with Workflow(
                     name=self._name,
-                    client_id=self._client_id,
                     workflow_id=self._workflow_id,
                     version=self._version,
                     context=self._context,
@@ -145,7 +141,6 @@ class Workflow:
         def sync_wrapper(*args, **kwargs):
             with Workflow(
                 name=self._name,
-                client_id=self._client_id,
                 workflow_id=self._workflow_id,
                 version=self._version,
                 context=self._context,
@@ -164,8 +159,6 @@ class Workflow:
         }
         if config is not None and config.project_id:
             attributes[SDK_PROJECT_ID] = config.project_id
-        if self._client_id:
-            attributes[SDK_CLIENT_ID] = self._client_id
         if self._workflow_id:
             attributes[SDK_WORKFLOW_ID] = self._workflow_id
             attributes[SESSION_ID] = self._workflow_id
@@ -185,7 +178,6 @@ class Workflow:
 def workflow(
     *,
     name: str,
-    client_id: Optional[str] = None,
     workflow_id: Optional[str] = None,
     version: Optional[str] = None,
     context: Optional[dict] = None,
@@ -196,17 +188,16 @@ def workflow(
 
     Use as a context manager or as a decorator (sync and async):
 
-        with workflow(name="checkout", client_id="client-42",
-                      workflow_id="order-123", context={"channel": "web"}):
+        with workflow(name="checkout", workflow_id="order-123",
+                      context={"channel": "web"}):
             run_agent()
 
-        @workflow(name="checkout", client_id="client-42")
+        @workflow(name="checkout")
         async def run_checkout(order_id):
             ...
     """
     return Workflow(
         name=name,
-        client_id=client_id,
         workflow_id=workflow_id,
         version=version,
         context=context,

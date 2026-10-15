@@ -29,7 +29,6 @@ from aiobs_contracts import (  # noqa: F401
     OUTPUT_MIME_TYPE,
     OUTPUT_VALUE,
     SDK_CAPTURE_PROMPTS,
-    SDK_CLIENT_ID,
     SDK_ERROR_KIND,
     SDK_ERROR_MESSAGE,
     SDK_ERROR_TYPE,
@@ -54,7 +53,6 @@ from aiobs_contracts import (  # noqa: F401
 )
 
 __all__ = [
-    "SDK_CLIENT_ID",
     "SDK_PROJECT_ID",
     "SDK_WORKFLOW_ID",
     "SDK_WORKFLOW_VERSION",

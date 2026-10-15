@@ -32,14 +32,12 @@ from ai_observability import init, workflow, span
 init(
     api_key="...",             # env: AI_OBSERVABILITY_API_KEY — the ingest identity
     endpoint="http://localhost:6006",   # env: AI_OBSERVABILITY_ENDPOINT
-    project_id="proj-1",       # env: AI_OBSERVABILITY_PROJECT_ID — optional, DEPRECATED (Phoenix routing only)
     capture_prompts=False,     # opt-in payload capture
 )
 
 # Context manager (sync) / @workflow decorator (sync + async)
 with workflow(
     name="checkout",
-    client_id="client-42",
     workflow_id="order-123",
     version="v2",
     context={"channel": "web"},
@@ -55,11 +53,12 @@ ai_observability.flush()
 ```
 
 Explicit args override env vars. The **API key is the ingest identity**
-(ADR-0008) — the platform resolves the project from it. `project_id` is
-optional and **deprecated**: set it only for Phoenix routing/dev, where it is
-sent as `x-project-name` and as the `openinference.project.name` resource
-attribute (so Phoenix routes correctly on any version); the SDK warns when it
-is used.
+(ADR-0008) — the platform resolves the project from it and that is all a
+production integration needs. `project_id` / `AI_OBSERVABILITY_PROJECT_ID` is a
+**debug/testing override and should not be used in production**: it only routes
+traces inside a local Phoenix instance (`x-project-name` header +
+`openinference.project.name` resource attribute, so Phoenix groups correctly on
+any version), and the SDK warns when it is set.
 
 ## Trace storage: Phoenix + PostgreSQL
 
@@ -80,7 +79,7 @@ uv run python dev/inspect_traces.py --sql          # sample SQL
 ```
 
 The workflow root CHAIN span carries the business context as nested jsonb in
-`spans.attributes`: `sdk.client_id`, `sdk.project_id`, `sdk.workflow_id`,
+`spans.attributes`: `sdk.project_id` (debug runs only), `sdk.workflow_id`,
 `session.id`, `metadata` — plus `sdk.error.*` / `sdk.retry.*` when applicable.
 
 ## Mock workflows (regression suite, plans/sdk.md §9)
@@ -89,18 +88,18 @@ Deterministic scenarios through the real SDK + instrumentors with framework
 fake models (fixed responses, fixed token counts, scripted failures):
 
 ```bash
-uv run pytest                          # 160 tests, offline (in-memory export)
+uv run pytest                          # 161 tests, offline (in-memory export)
 uv run aiobs-mock                      # pass/fail CLI report (28 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
 Point the suite straight at the platform backend's OTLP ingest (key-only is all
-it needs) or at Phoenix with project routing via the deprecated `--project-id`:
+it needs) or at Phoenix with project routing via the debug-only `--project-id`:
 
 ```bash
 uv run aiobs-mock --endpoint http://localhost:8000 --api-key <project-api-key>
-# Phoenix routing: --project-id sets the openinference.project.name resource
-# attribute (deprecated; also still sends the x-project-name header):
+# Debug override for Phoenix dev routing: --project-id sets the
+# openinference.project.name resource attribute (and the x-project-name header):
 uv run aiobs-mock --endpoint http://localhost:6006 --project-id proj-1
 ```
 

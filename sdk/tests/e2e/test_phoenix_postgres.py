@@ -52,7 +52,6 @@ def test_mock_trace_lands_in_postgres():
                     SELECT s.name,
                            s.attributes->'sdk'->>'workflow_id' AS workflow_id,
                            s.attributes->'llm'->'token_count'->>'prompt' AS prompt_tokens,
-                           s.attributes->'sdk'->>'client_id' AS client_id,
                            s.attributes->'session'->>'id' AS session_id
                     FROM spans s
                     WHERE s.name = %s
@@ -73,7 +72,6 @@ def test_mock_trace_lands_in_postgres():
 
         assert len(rows) == 1, rows
         row = rows[0]
-        assert row["client_id"] == "client-42"
         assert row["session_id"] == workflow_id
         assert row["prompt_tokens"] is None  # business context rides the root span
 

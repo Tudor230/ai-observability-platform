@@ -16,7 +16,7 @@ except for SDK usage: `checkout_agent.py` wraps the run in `workflow()` +
 with the same parameters:
 
 ```python
-with workflow(name="checkout-support", client_id="client-42",
+with workflow(name="checkout-support",
               workflow_id="ord-abc123", version="v1",
               context={"channel": "web"}):
     ...
@@ -73,7 +73,7 @@ uv run python dev/inspect_traces.py --trace <id>    # full span list
 ```
 
 or open the Phoenix UI at http://localhost:6006 (traces land in the default
-project unless you pass the deprecated `--project-id <name>` for routing).
+project unless you pass the debug-only `--project-id <name>` for routing).
 
 To intentionally see failure capture, pass an unreachable endpoint or invalid
 key — the workflow root will be `ERROR` with `sdk.error.*` attributes.
@@ -98,7 +98,7 @@ AGENT checkout_agent        (root — a RunnableLambda run)
 Because there is no workflow boundary, each agent run is its own trace in
 Phoenix and there are no `sdk.*` business attributes on a root. Adding
 `with workflow(name=..., workflow_id=..., ...)` layers a CHAIN root over these
-spans and enables `sdk.client_id` / `sdk.workflow_id` / `session.id` / error
+spans and enables `sdk.workflow_id` / `session.id` / error
 propagation — see `checkout_agent.py`.
 
 Same provider config as `checkout_agent.py`:
@@ -282,7 +282,7 @@ uv run python examples/ollama_chat.py --mock --stream --capture-prompts
 ```
 
 `--api-key` (key-only ingest, ADR-0008) is all the platform needs; `--project-id`
-remains available for Phoenix routing. `--endpoint` defaults to the platform
+remains available as a debug-only override for Phoenix routing. `--endpoint` defaults to the platform
 backend on `http://localhost:8000` (dashboard executions/costs); point it at
 `http://localhost:6006` for Phoenix. Local models are priced at **$0.00** by the
 backend's seeded `ollama` provider-default row.

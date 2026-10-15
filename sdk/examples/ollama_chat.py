@@ -29,10 +29,8 @@ Usage:
     uv run python examples/ollama_chat.py --capture-prompts \
         --endpoint http://localhost:8000 --api-key <project-api-key>
 
-    # Phoenix routing via the deprecated --project-id (x-project-name +
-    # openinference.project.name resource attribute):
-    uv run python examples/ollama_chat.py --mock --endpoint http://localhost:6006 \
-        --project-id ollama-demo --capture-prompts
+    # Phoenix project routing is a debug-only override (--project-id); the
+    # demos use the project API key alone, which is the ingest identity.
 """
 
 from __future__ import annotations
@@ -178,7 +176,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Ollama raw-client demo.")
     parser.add_argument("--model", default=os.environ.get("OLLAMA_MODEL", "granite4.2:3b"))
     parser.add_argument("--workflow-id", default=None, help="pin the workflow_id (defaults to a random one per run)")
-    parser.add_argument("--client-id", default="client-42")
     parser.add_argument(
         "--endpoint",
         default=os.environ.get("AI_OBSERVABILITY_ENDPOINT", "http://localhost:8000"),
@@ -188,11 +185,6 @@ def main() -> int:
         "--api-key",
         default=os.environ.get("AI_OBSERVABILITY_API_KEY"),
         help="project API key (the ingest identity; key-only is enough)",
-    )
-    parser.add_argument(
-        "--project-id",
-        default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID"),
-        help="optional, deprecated: Phoenix project routing only",
     )
     parser.add_argument("--mock", action="store_true", help="script the HTTP boundary (offline, no Ollama server)")
     parser.add_argument("--stream", action="store_true", help="use stream=True (chunks are reconstructed into one span)")
@@ -211,7 +203,6 @@ def main() -> int:
     init(
         api_key=args.api_key,
         endpoint=None if args.no_export else args.endpoint,
-        project_id=args.project_id,
         service_name="ollama-onboarding-demo",
         service_version="1.0.0",
         deployment_environment="demo",
@@ -221,7 +212,6 @@ def main() -> int:
     workflow_id = args.workflow_id or f"onb-{uuid.uuid4().hex[:8]}"
     with workflow(
         name="ollama-onboarding",
-        client_id=args.client_id,
         workflow_id=workflow_id,
         version="v1",
         context={"source": "ollama-demo", "mock": args.mock},

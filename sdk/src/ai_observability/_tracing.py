@@ -74,8 +74,8 @@ class _FanOutExporter(SpanExporter):
 
 def build_headers(config: Config) -> dict[str, str]:
     """Custom OTLP headers: the platform's ingest authenticates by the API key.
-    ``x-project-name`` comes from the deprecated ``project_id`` and only feeds
-    Phoenix's project routing (>=15.5.0)."""
+    ``x-project-name`` comes from the debug-only ``project_id`` override and
+    only feeds Phoenix's project routing (>=15.5.0)."""
     headers: dict[str, str] = {}
     if config.api_key:
         headers["authorization"] = f"Bearer {config.api_key}"
