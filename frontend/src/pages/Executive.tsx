@@ -6,6 +6,8 @@ import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { BreakdownBars } from "../components/charts/BreakdownBars";
 import { CostCard } from "../components/CostCard";
+import { TableFilterChips, TableFilters } from "../components/TableFilters";
+import { useTableFilters } from "../state/useTableFilters";
 import {
   CardPanel,
   EmptyState,
@@ -36,8 +38,11 @@ function buildChartData(items: DayMetric[], forecast: { day: string; cost: numbe
 export default function Executive() {
   const { filters } = useFilters();
   const overview = useOverview(filters);
-  const byModel = useCosts("model", filters);
-  const byProject = useCosts("project", filters);
+  // Each card filters independently (namespaced URL state, refinements v3).
+  const projectCard = useTableFilters("projects");
+  const modelCard = useTableFilters("models");
+  const byModel = useCosts("model", { ...filters, ...modelCard.filters });
+  const byProject = useCosts("project", { ...filters, ...projectCard.filters });
   const projectNames = useProjectNameMap();
   const trends = useMetrics("total", filters);
 
@@ -66,12 +71,12 @@ export default function Executive() {
         subTitle="Unit economics of agentic AI — total spend, cost per execution and forecast."
         extra={
           <>
-            <FiltersControl dimensions={["days", "project"]} />
+            <FiltersControl dimensions={["days"]} />
             <RefreshButton />
           </>
         }
       />
-      <FilterChips dimensions={["days", "project"]} />
+      <FilterChips dimensions={["days"]} />
 
       {anyError ? <QueryError what="executive data" error={loadError} /> : null}
 
@@ -136,6 +141,8 @@ export default function Executive() {
 
       <div className="grid grid-2">
         <CostCard
+          filters={<TableFilters card="projects" title="Projects" />}
+          filterChips={<TableFilterChips card="projects" />}
           title="Projects"
           subTitle="Cost, reliability and volume per project"
           loading={byProject.isLoading}
@@ -170,6 +177,8 @@ export default function Executive() {
         />
 
         <CostCard
+          filters={<TableFilters card="models" title="Models" />}
+          filterChips={<TableFilterChips card="models" />}
           title="Models"
           subTitle="Provider · model spend"
           loading={byModel.isLoading}

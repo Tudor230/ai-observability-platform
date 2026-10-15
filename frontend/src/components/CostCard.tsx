@@ -35,6 +35,8 @@ export function CostCard({
   loading = false,
   pageSize = 10,
   drilldown,
+  filters,
+  filterChips,
 }: {
   title: string;
   subTitle?: string;
@@ -48,6 +50,10 @@ export function CostCard({
   pageSize?: number;
   /** Optional per-row link target (e.g. Engineering drill-down). */
   drilldown?: (row: CostDetailRow) => string | undefined;
+  /** This card's own filter control (rendered in the header). */
+  filters?: ReactNode;
+  /** This card's active-filter chips (rendered above the tab panel). */
+  filterChips?: ReactNode;
 }) {
   const [view, setView] = useState<"breakdown" | "detail">("breakdown");
   const [page, setPage] = useState(1);
@@ -114,7 +120,8 @@ export function CostCard({
   );
 
   return (
-    <CardPanel title={title} subTitle={subTitle}>
+    <CardPanel title={title} subTitle={subTitle} extra={filters}>
+      {filterChips}
       <Tabs
         tabs={[
           { id: "breakdown", label: "Breakdown" },

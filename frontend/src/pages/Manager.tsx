@@ -22,6 +22,8 @@ import { BudgetDialog } from "../components/BudgetDialog";
 import { TrendChart } from "../components/charts/TrendChart";
 import { BreakdownBars } from "../components/charts/BreakdownBars";
 import { CostCard } from "../components/CostCard";
+import { TableFilterChips, TableFilters } from "../components/TableFilters";
+import { useTableFilters } from "../state/useTableFilters";
 import { SeverityBadge } from "../components/domain";
 import {
   Button,
@@ -41,11 +43,16 @@ export default function Manager() {
   const { hasRole } = useAuth();
   const queryClient = useQueryClient();
   const overview = useOverview(filters);
-  const costsByWorkflow = useCosts("workflow", filters);
-  const costsByProject = useCosts("project", filters);
-  const costsByTeam = useCosts("team", filters);
+  // Every card owns its own filters (namespaced URL state, refinements v3).
+  const workflowCard = useTableFilters("workflows");
+  const projectCard = useTableFilters("projects");
+  const teamCard = useTableFilters("teams");
+  const agentCard = useTableFilters("agents");
+  const costsByWorkflow = useCosts("workflow", { ...filters, ...workflowCard.filters });
+  const costsByProject = useCosts("project", { ...filters, ...projectCard.filters });
+  const costsByTeam = useCosts("team", { ...filters, ...teamCard.filters });
   const projectNames = useProjectNameMap();
-  const agents = useAgents(filters);
+  const agents = useAgents({ ...filters, ...agentCard.filters });
   const alerts = useAlerts();
   const trends = useMetrics("total", filters);
   const budgets = useBudgetStatus();
@@ -115,12 +122,12 @@ export default function Manager() {
         subTitle="Spend by workflow and project, budget health and agent efficiency."
         extra={
           <>
-            <FiltersControl dimensions={["days", "project", "workflow"]} />
+            <FiltersControl dimensions={["days"]} />
             <RefreshButton />
           </>
         }
       />
-      <FilterChips dimensions={["days", "project", "workflow"]} />
+      <FilterChips dimensions={["days"]} />
 
       {anyError ? <QueryError what="manager data" error={loadError} /> : null}
 
@@ -149,6 +156,8 @@ export default function Manager() {
 
       <div className="grid grid-2">
         <CostCard
+          filters={<TableFilters card="workflows" title="Workflows" />}
+          filterChips={<TableFilterChips card="workflows" />}
           title="Workflows"
           subTitle="Cost, reliability and volume per workflow"
           loading={costsByWorkflow.isLoading}
@@ -185,6 +194,8 @@ export default function Manager() {
         />
 
         <CostCard
+          filters={<TableFilters card="projects" title="Projects" />}
+          filterChips={<TableFilterChips card="projects" />}
           title="Projects"
           subTitle="Cost, reliability and volume per project"
           loading={costsByProject.isLoading}
@@ -222,6 +233,8 @@ export default function Manager() {
       </div>
 
       <CostCard
+        filters={<TableFilters card="teams" title="Teams" />}
+        filterChips={<TableFilterChips card="teams" />}
         title="Teams"
         subTitle="Spend per team in your scope"
         loading={costsByTeam.isLoading}
@@ -256,6 +269,8 @@ export default function Manager() {
       />
 
       <CostCard
+        filters={<TableFilters card="agents" title="Agents" />}
+        filterChips={<TableFilterChips card="agents" />}
         title="Agents"
         subTitle="Per-agent cost, tokens and error rate"
         loading={agents.isLoading}

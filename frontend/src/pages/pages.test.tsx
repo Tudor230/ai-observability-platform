@@ -538,6 +538,44 @@ describe("Manager", () => {
     expect(await screen.findByText("Workflow")).toBeInTheDocument();
   });
 
+  it("filters each table independently through namespaced URL params", async () => {
+    renderWithProviders(<Manager />, { route: "/manager?workflows_workflow=checkout" });
+
+    // Only the Workflows card query carries that card's filter.
+    await waitFor(() =>
+      expect(h.costs).toHaveBeenCalledWith("workflow", expect.objectContaining({ workflow: "checkout" }))
+    );
+    const projectCalls = h.costs.mock.calls.filter(([dimension]) => dimension === "project");
+    expect(projectCalls.length).toBeGreaterThan(0);
+    expect(projectCalls[0][1].workflow).toBeUndefined();
+
+    // The card's chip reflects the filter and clearing it drops the param.
+    expect(await screen.findByText("Workflow: checkout")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Remove Workflow: checkout"));
+    await waitFor(() => {
+      const last = h.costs.mock.calls[h.costs.mock.calls.length - 1];
+      expect(last[1].workflow).toBeUndefined();
+    });
+  });
+
+  it("keeps the card filter dialogue scoped to its own card", async () => {
+    renderWithProviders(<Manager />);
+    fireEvent.click((await screen.findAllByRole("button", { name: /^Filters/ }))[1]);
+    const panel = await screen.findByRole("dialog", { name: "Workflows filters" });
+    const optionsList = () => document.querySelector(".combobox__list") as HTMLElement;
+    fireEvent.focus(within(panel).getByLabelText("Project"));
+    fireEvent.mouseDown(await within(optionsList()).findByText("Checkout"));
+    await waitFor(() =>
+      expect(h.costs).toHaveBeenCalledWith(
+        "workflow",
+        expect.objectContaining({ project_id: "p1" })
+      )
+    );
+    // Other cards keep their own (empty) scope.
+    const projectCalls = h.costs.mock.calls.filter(([dimension]) => dimension === "project");
+    expect(projectCalls[projectCalls.length - 1][1].project_id).toBeUndefined();
+  });
+
   it("pages the cost detail tables at 10 rows", async () => {
     h.costs.mockResolvedValue({
       items: Array.from({ length: 12 }, (_, i) => ({
@@ -755,38 +793,23 @@ describe("Login", () => {
 });
 
 describe("Filters control", () => {
-  it("writes filters, shows chips and clears them", async () => {
+  it("writes the page time range, shows chips and clears them", async () => {
     renderWithProviders(<Manager />);
-    fireEvent.click(await screen.findByRole("button", { name: /^Filters/ }));
+    fireEvent.click((await screen.findAllByRole("button", { name: /^Filters/ }))[0]);
     const panel = screen.getByRole("dialog", { name: "Filters" });
 
     fireEvent.change(within(panel).getByLabelText("Time range"), {
       target: { value: "7" },
     });
-    fireEvent.change(within(panel).getByLabelText("Project"), {
-      target: { value: "p1" },
-    });
-    fireEvent.change(within(panel).getByLabelText("Workflow"), {
-      target: { value: "checkout" },
-    });
     await waitFor(() =>
       expect(h.overview).toHaveBeenLastCalledWith(
-        expect.objectContaining({ days: 7, project_id: "p1", workflow: "checkout" })
+        expect.objectContaining({ days: 7 })
       )
     );
 
-    // Close the panel: chips summarize the active filters (project by name).
-    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    // Close the panel: the chip summarizes the page-level window.
+    fireEvent.click(screen.getAllByRole("button", { name: /^Filters/ })[0]);
     expect(await screen.findByText("Last 7 days")).toBeInTheDocument();
-    expect(screen.getByText("Project: Checkout")).toBeInTheDocument();
-    expect(screen.getByText("Workflow: checkout")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Remove Workflow: checkout"));
-    await waitFor(() => {
-      const calls = h.overview.mock.calls;
-      const last = calls[calls.length - 1]?.[0] as { workflow?: string };
-      expect(last.workflow).toBeUndefined();
-    });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     await waitFor(() => {

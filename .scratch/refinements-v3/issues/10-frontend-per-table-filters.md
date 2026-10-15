@@ -1,7 +1,7 @@
 # 10 — Frontend: per-table filters with namespaced URL state
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 09
 Area: refinements v3, filtering
 Estimate: L
@@ -47,3 +47,24 @@ stay shareable.
 ## Tests
 
 - `npm run test` (+ coverage gate), `npm run lint`, `npm run build`.
+
+## Comments
+
+Done. New `state/useTableFilters.ts` (namespaced URL state:
+`<card>_project_id` / `<card>_workflow`, per-card `setFilter`/`clear`/
+`activeCount`) and `components/TableFilters.tsx` (compact header control with a
+searchable project picker + workflow input, plus `TableFilterChips` for the card
+body). `CostCard` gained `filters`/`filterChips` slots. Every cost card now
+queries with its own scope: Manager's Workflows/Projects/Teams/Agents and
+Executive's Projects/Models each call `useCosts(..., {...pageDays,
+...cardFilters})`, and their page headers were slimmed to the shared `days`
+window only. Engineering (single list) and the other single-table pages
+(Overview, Client, Projects, Project) keep their page-level `project`/`workflow`
+params, which also keeps Manager's `?workflow=`/`?project_id=` drill-down links
+working as before.
+
+Evidence: `npm run test` **512 passed**, including two new tests: two cards on
+one page filter independently (only the targeted card's query carries the
+param, other cards keep an empty scope) and a card's chip clears only its own
+filter through the URL. `npm run lint` + `npm run build` clean; coverage 88.5%
+stmts / 73.6% branches / 68.1% funcs (gates 80/70/65).
