@@ -35,6 +35,16 @@ def get_costs(
     workflow: str | None = Query(default=None),
     access: AccessScope = Depends(require_access("manager", "exec")),
 ) -> dict:
+    """Cost/usage rollup per dimension.
+
+    ``dimension=model`` reads historical ``cost_records`` rows (cost + tokens
+    only); every other dimension aggregates executions and returns the rich row
+    shape the dashboard's detail views use: ``key``, ``total_cost``, ``tokens``
+    (alias kept for existing charts), ``total_tokens``, ``executions``,
+    ``failed_executions``, ``error_rate``, ``llm_calls``, ``avg_duration_ms``,
+    ``last_seen``. Client-only callers cannot reach this route at all
+    (`manager`/`exec` gate), so no cost stripping is needed here.
+    """
     if dimension not in DIMENSIONS:
         raise HTTPException(
             status_code=422, detail=f"dimension must be one of {sorted(DIMENSIONS)}"
@@ -83,13 +93,32 @@ def get_costs(
     for row in rows:
         key = row.key or fallback_key
         bucket = agg.setdefault(
-            key, {"key": key, "total_cost": Decimal("0"), "tokens": 0, "executions": 0, "llm_calls": 0}
+            key,
+            {
+                "key": key,
+                "total_cost": Decimal("0"),
+                "tokens": 0,
+                "total_tokens": 0,
+                "executions": 0,
+                "failed_executions": 0,
+                "llm_calls": 0,
+                "avg_duration_ms": 0.0,
+                "last_seen": None,
+            },
         )
         bucket["total_cost"] += row.total_cost or Decimal("0")
         bucket["tokens"] += row.total_tokens
+        bucket["total_tokens"] += row.total_tokens
         bucket["executions"] += row.executions
+        bucket["failed_executions"] += row.failed
         bucket["llm_calls"] += row.llm_calls
+        bucket["avg_duration_ms"] = round(float(row.avg_duration_ms or 0), 2)
+        last = row.last_seen.isoformat() if row.last_seen else None
+        if last and (bucket["last_seen"] is None or last > bucket["last_seen"]):
+            bucket["last_seen"] = last
     items = sorted(agg.values(), key=lambda i: i["total_cost"], reverse=True)
     for i in items:
         i["total_cost"] = money(i["total_cost"])
+        n = i["executions"]
+        i["error_rate"] = round(i["failed_executions"] / n, 4) if n else 0.0
     return {"items": items, "total": len(items)}

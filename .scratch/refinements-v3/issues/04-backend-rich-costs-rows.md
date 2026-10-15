@@ -1,7 +1,7 @@
 # 04 — Backend: rich `/costs` rows for cost detail views
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03
 Area: refinements v3, table UX (detail views)
 Estimate: S
@@ -36,3 +36,16 @@ duration, last seen) moves onto `/costs` rows.
 ## Tests
 
 - `uv run pytest -q`, `ruff`, `mypy`.
+
+## Comments
+
+Done. Execution-based `/costs` rows now carry `failed_executions`,
+`error_rate`, `avg_duration_ms`, `last_seen` and `total_tokens` alongside the
+existing `tokens` (kept for the breakdown consumers), with the row shape
+documented in the route docstring; the `dimension=model` historical branch is
+unchanged. No cost stripping is needed here: the route is `manager`/`exec`
+gated, so client-only callers get 403 rather than redacted rows.
+
+Evidence: new `test_costs_rows_carry_detail_fields` (project/workflow/team rows:
+executions, failures, error rate, token aliases, avg duration, last seen);
+**147 passed**; `ruff` and `mypy` clean.

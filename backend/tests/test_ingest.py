@@ -503,6 +503,21 @@ def test_costs_items_expose_total_cost(client, project):
             assert "cost" not in item, (dimension, item)
 
 
+def test_costs_rows_carry_detail_fields(client, project):
+    """Ticket 04: execution-based cost rows power the detail views."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    for dimension in ("project", "workflow", "team"):
+        items = client.get(f"/api/v1/costs?dimension={dimension}").json()["items"]
+        assert items, dimension
+        item = items[0]
+        assert item["executions"] == 1, (dimension, item)
+        assert item["failed_executions"] == 0, (dimension, item)
+        assert item["error_rate"] == 0.0, (dimension, item)
+        assert item["total_tokens"] == item["tokens"] == 1500, (dimension, item)
+        assert item["avg_duration_ms"] > 0, (dimension, item)
+        assert item["last_seen"], (dimension, item)
+
+
 def test_costs_invalid_dimension_is_422(client, project):
     assert client.get("/api/v1/costs?dimension=bogus").status_code == 422
 
