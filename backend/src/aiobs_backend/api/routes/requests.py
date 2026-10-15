@@ -19,6 +19,7 @@ from ...models import (
     Team,
     User,
 )
+from ...security import generate_project_id
 from ..deps import AccessScope, get_db, require_access
 from ..memberships import (
     add_membership,
@@ -64,7 +65,6 @@ class CreateTeamPayload(BaseModel):
 
 
 class CreateProjectPayload(BaseModel):
-    project_id: str = Field(min_length=2, max_length=120)
     name: str = Field(min_length=1, max_length=120)
     team_id: str = Field(min_length=1, max_length=32)
 
@@ -107,6 +107,12 @@ def _validate_payload(session: Session, req_type: str, payload: dict) -> dict:
     elif req_type == "create_project":
         if session.get(Team, data["team_id"]) is None:
             raise HTTPException(status_code=404, detail="unknown team")
+        # The name is the unique handle (ADR-0012): fail fast on a duplicate
+        # instead of queueing a request that can never be approved.
+        if session.execute(
+            select(Project.id).where(Project.name == data["name"].strip())
+        ).first():
+            raise HTTPException(status_code=409, detail="project name already exists")
     elif req_type == "membership":
         data["scope_id"] = normalize_role_scope(
             data["role"], data["scope_type"], data["scope_id"]
@@ -344,17 +350,19 @@ def _materialize(session: Session, req: AccessRequest) -> None:
             team = session.get(Team, payload["team_id"])
             if team is None:
                 raise HTTPException(status_code=409, detail="team no longer exists")
-            exists = session.execute(
-                select(Project.id).where(Project.project_id == payload["project_id"])
-            ).first()
-            if exists:
-                raise HTTPException(status_code=409, detail="project_id already exists")
+            name = payload["name"].strip()
+            if session.execute(
+                select(Project.id).where(Project.name == name)
+            ).first():
+                raise HTTPException(
+                    status_code=409, detail="project name already exists"
+                )
             # Keys are added post-approval by a member (plans/roles.md §5.3).
             session.add(
                 Project(
                     team_id=team.id,
-                    project_id=payload["project_id"],
-                    name=payload["name"],
+                    project_id=generate_project_id(),
+                    name=name,
                 )
             )
         elif req.type == "membership":

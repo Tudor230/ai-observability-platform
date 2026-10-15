@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Alert, AlertRule, Budget, Client, Execution, Project, Team
 
-EXTERNAL = (Execution, Project.project_id, Client.external_key)
+EXTERNAL = (Execution, Project.project_id, Client.external_key, Project.name)
 
 # Whitelisted sort keys for `GET /executions` (audit item 4).
 EXECUTION_SORTS = {
@@ -154,7 +154,7 @@ def exec_rows(
     sort: str | None = None,
     order: str | None = None,
 ) -> Select:
-    """Select (Execution, project_ext, client_ext) with the given filters applied."""
+    """Select (Execution, project_ext, client_ext, project_name) with filters applied."""
     stmt = select(*EXTERNAL).join(Project, Project.id == Execution.project_id).outerjoin(
         Client, Client.id == Execution.client_id
     )
@@ -190,9 +190,11 @@ def exec_rows(
     return stmt.order_by(order_fn(sort_col), order_fn(Execution.id))
 
 
-def fetch_exec_rows(session: Session, **filters) -> list[tuple[Execution, str | None, str | None]]:
+def fetch_exec_rows(
+    session: Session, **filters
+) -> list[tuple[Execution, str | None, str | None, str | None]]:
     rows = session.execute(exec_rows(session, **filters)).all()
-    return [(row[0], row[1], row[2]) for row in rows]
+    return [(row[0], row[1], row[2], row[3]) for row in rows]
 
 
 def exec_aggregates(

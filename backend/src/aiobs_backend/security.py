@@ -15,6 +15,11 @@ def generate_api_key() -> str:
     return "aiobs_" + secrets.token_urlsafe(32)
 
 
+def generate_project_id() -> str:
+    """Opaque external project identifier (ADR-0012); never rendered by the UI."""
+    return "p_" + secrets.token_hex(6)
+
+
 def generate_password() -> str:
     return secrets.token_urlsafe(12)
 

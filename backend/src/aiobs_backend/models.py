@@ -74,7 +74,8 @@ class Project(Base):
         ForeignKey("teams.id"), nullable=False, index=True
     )
     project_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(120))
+    # The unique human handle (ADR-0012): every dashboard surface shows this.
+    name: Mapped[str] = mapped_column(String(120), unique=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     revoked_at: Mapped[datetime | None] = mapped_column(

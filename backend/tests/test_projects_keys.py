@@ -34,34 +34,50 @@ def _ingest(client, project: str, key: str, trace_id: int) -> int:
 
 def test_disable_and_enable_project(client, project):
     created = client.post(
-        "/api/v1/projects", json={"project_id": "proj-x", "name": "X"}, headers=ADMIN
+        "/api/v1/projects", json={"name": "X"}, headers=ADMIN
     )
     assert created.status_code == 200, created.text
     key = created.json()["api_key"]
+    project_id = created.json()["project_id"]
+    assert project_id.startswith("p_") and len(project_id) == 14  # ADR-0012 shape
 
-    assert _ingest(client, "proj-x", key, 901) == 200
+    assert _ingest(client, project_id, key, 901) == 200
 
-    disabled = client.post("/api/v1/projects/proj-x/disable", headers=ADMIN)
+    disabled = client.post(f"/api/v1/projects/{project_id}/disable", headers=ADMIN)
     assert disabled.status_code == 200
     assert disabled.json()["enabled"] is False
     assert disabled.json()["revoked_at"]
 
-    assert _ingest(client, "proj-x", key, 902) == 403
+    assert _ingest(client, project_id, key, 902) == 403
 
-    enabled = client.post("/api/v1/projects/proj-x/enable", headers=ADMIN)
+    enabled = client.post(f"/api/v1/projects/{project_id}/enable", headers=ADMIN)
     assert enabled.status_code == 200
     assert enabled.json()["enabled"] is True
     assert enabled.json()["revoked_at"] is None
 
-    assert _ingest(client, "proj-x", key, 903) == 200
+    assert _ingest(client, project_id, key, 903) == 200
+
+
+def test_project_name_is_unique_and_required(client, project):
+    body = {"name": "Unique Name"}
+    first = client.post("/api/v1/projects", json=body, headers=ADMIN)
+    assert first.status_code == 200, first.text
+
+    duplicate = client.post("/api/v1/projects", json=body, headers=ADMIN)
+    assert duplicate.status_code == 409
+    assert "already exists" in duplicate.json()["detail"]
+
+    # No id, no slug: the payload is name-only (plus optional team/department).
+    assert client.post("/api/v1/projects", json={}, headers=ADMIN).status_code == 422
 
 
 def test_add_rotate_and_revoke_keys(client, project):
     created = client.post(
-        "/api/v1/projects", json={"project_id": "proj-y", "name": "Y"}, headers=ADMIN
+        "/api/v1/projects", json={"name": "Y"}, headers=ADMIN
     ).json()
+    project_id = created["project_id"]
 
-    keys = client.get("/api/v1/projects/proj-y/keys", headers=ADMIN).json()
+    keys = client.get(f"/api/v1/projects/{project_id}/keys", headers=ADMIN).json()
     assert keys["total"] == 1
     first = keys["items"][0]
     assert first["active"] is True
@@ -69,36 +85,41 @@ def test_add_rotate_and_revoke_keys(client, project):
     assert created["api_key"] not in str(keys)  # only the redacted form is returned
 
     added = client.post(
-        "/api/v1/projects/proj-y/keys", json={"label": "ci"}, headers=ADMIN
+        f"/api/v1/projects/{project_id}/keys", json={"label": "ci"}, headers=ADMIN
     ).json()
     assert added["label"] == "ci"
-    assert client.get("/api/v1/projects/proj-y/keys", headers=ADMIN).json()["total"] == 2
+    assert (
+        client.get(f"/api/v1/projects/{project_id}/keys", headers=ADMIN).json()["total"]
+        == 2
+    )
 
     # Every active key authenticates against the same project.
-    assert _ingest(client, "proj-y", created["api_key"], 910) == 200
-    assert _ingest(client, "proj-y", added["api_key"], 911) == 200
+    assert _ingest(client, project_id, created["api_key"], 910) == 200
+    assert _ingest(client, project_id, added["api_key"], 911) == 200
 
     rotated = client.post(
-        f"/api/v1/projects/proj-y/keys/{added['id']}/rotate", headers=ADMIN
+        f"/api/v1/projects/{project_id}/keys/{added['id']}/rotate", headers=ADMIN
     ).json()
     assert rotated["label"] == "ci"
-    assert _ingest(client, "proj-y", added["api_key"], 912) == 401
-    assert _ingest(client, "proj-y", rotated["api_key"], 913) == 200
+    assert _ingest(client, project_id, added["api_key"], 912) == 401
+    assert _ingest(client, project_id, rotated["api_key"], 913) == 200
 
     revoked = client.delete(
-        f"/api/v1/projects/proj-y/keys/{first['id']}", headers=ADMIN
+        f"/api/v1/projects/{project_id}/keys/{first['id']}", headers=ADMIN
     )
     assert revoked.status_code == 200
     assert revoked.json()["active"] is False
-    assert _ingest(client, "proj-y", created["api_key"], 914) == 401
+    assert _ingest(client, project_id, created["api_key"], 914) == 401
 
-    listed = client.get("/api/v1/projects/proj-y/keys", headers=ADMIN).json()["items"]
+    listed = client.get(
+        f"/api/v1/projects/{project_id}/keys", headers=ADMIN
+    ).json()["items"]
     first_after = next(item for item in listed if item["id"] == first["id"])
     assert first_after["active"] is False
 
     # A revoked key cannot be rotated.
     again = client.post(
-        f"/api/v1/projects/proj-y/keys/{first['id']}/rotate", headers=ADMIN
+        f"/api/v1/projects/{project_id}/keys/{first['id']}/rotate", headers=ADMIN
     )
     assert again.status_code == 409
 

@@ -19,6 +19,7 @@ def execution_dict(
     project_ext: str | None = None,
     client_ext: str | None = None,
     *,
+    project_name: str | None = None,
     include_cost: bool = True,
 ) -> dict:
     data = {
@@ -27,6 +28,7 @@ def execution_dict(
         "workflow_id": ex.workflow_id,
         "session_id": ex.session_id,
         "project_id": project_ext,
+        "project_name": project_name,
         "client_id": client_ext,
         "workflow": ex.workflow_name,
         "workflow_version": ex.workflow_version,

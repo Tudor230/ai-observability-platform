@@ -74,8 +74,14 @@ def list_executions(
     ).scalar_one()
     rows = session.execute(base.limit(limit).offset(offset)).all()
     items = [
-        execution_dict(ex, project_ext, client_ext, include_cost=access.cost_visible)
-        for ex, project_ext, client_ext in rows
+        execution_dict(
+            ex,
+            project_ext,
+            client_ext,
+            project_name=project_name,
+            include_cost=access.cost_visible,
+        )
+        for ex, project_ext, client_ext, project_name in rows
     ]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
@@ -144,16 +150,23 @@ def get_execution(
     access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
     row = _scoped_execution(session, execution_id, access)
-    project_ext = session.execute(
-        select(Project.project_id).where(Project.id == row.project_id)
-    ).scalar_one_or_none()
+    project_ext, project_name = (
+        session.execute(
+            select(Project.project_id, Project.name).where(Project.id == row.project_id)
+        ).one_or_none()
+        or (None, None)
+    )
     client_ext = None
     if row.client_id:
         client_ext = session.execute(
             select(Client.external_key).where(Client.id == row.client_id)
         ).scalar_one_or_none()
     return execution_dict(
-        row, project_ext, client_ext, include_cost=access.cost_visible
+        row,
+        project_ext,
+        client_ext,
+        project_name=project_name,
+        include_cost=access.cost_visible,
     )
 
 
