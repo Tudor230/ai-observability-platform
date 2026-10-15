@@ -5,7 +5,7 @@ import { useFilters } from "../state/FiltersContext";
 import { Button, Field, Select, TextInput } from "./core";
 import { IconFilter, IconX } from "./core/icons";
 
-export type FilterDimension = "days" | "project" | "client" | "workflow";
+export type FilterDimension = "days" | "project" | "workflow";
 
 const DAY_OPTIONS = [1, 7, 14, 30, 90];
 
@@ -23,7 +23,6 @@ function activeCount(filters: Filters, dimensions: FilterDimension[]): number {
   let count = 0;
   if (dimensions.includes("days") && filters.days !== DEFAULT_DAYS) count += 1;
   if (dimensions.includes("project") && filters.project_id) count += 1;
-  if (dimensions.includes("client") && filters.client_id) count += 1;
   if (dimensions.includes("workflow") && filters.workflow) count += 1;
   return count;
 }
@@ -97,18 +96,6 @@ export function FiltersControl({ dimensions }: { dimensions: FilterDimension[] }
               </Select>
             </Field>
           ) : null}
-          {dimensions.includes("client") ? (
-            <Field label="Client">
-              <TextInput
-                value={filters.client_id ?? ""}
-                placeholder="client id"
-                aria-label="Client"
-                onChange={(e) =>
-                  setFilters({ ...filters, client_id: e.target.value || undefined })
-                }
-              />
-            </Field>
-          ) : null}
           {dimensions.includes("workflow") ? (
             <Field label="Workflow">
               <TextInput
@@ -156,13 +143,6 @@ export function FilterChips({ dimensions }: { dimensions: FilterDimension[] }) {
       key: "project",
       label: `Project: ${projectName(filters.project_id)}`,
       clear: () => setFilters({ ...filters, project_id: undefined }),
-    });
-  }
-  if (dimensions.includes("client") && filters.client_id) {
-    chips.push({
-      key: "client",
-      label: `Client: ${filters.client_id}`,
-      clear: () => setFilters({ ...filters, client_id: undefined }),
     });
   }
   if (dimensions.includes("workflow") && filters.workflow) {

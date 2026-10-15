@@ -15,7 +15,6 @@ function parseFilters(params: URLSearchParams): Filters {
   return {
     days: Number.isFinite(days) && days > 0 ? days : DEFAULT_DAYS,
     project_id: params.get("project_id") || undefined,
-    client_id: params.get("client_id") || undefined,
     workflow: params.get("workflow") || undefined,
   };
 }
@@ -27,7 +26,7 @@ const FiltersContext = createContext<{
 
 /**
  * Global filters are URL-backed (ticket 02) so views are shareable and the
- * Manager drill-down links (?workflow=/?client_id=) feed the same state.
+ * Manager drill-down links (?workflow=/?project_id=) feed the same state.
  * Other query params (search/sort/page on Engineering) are preserved.
  */
 export function FiltersProvider({ children }: { children: ReactNode }) {
@@ -39,7 +38,7 @@ export function FiltersProvider({ children }: { children: ReactNode }) {
       const search = new URLSearchParams(params);
       if (next.days && next.days !== DEFAULT_DAYS) search.set("days", String(next.days));
       else search.delete("days");
-      for (const key of ["project_id", "client_id", "workflow"] as const) {
+      for (const key of ["project_id", "workflow"] as const) {
         const value = next[key];
         if (value) search.set(key, value);
         else search.delete(key);

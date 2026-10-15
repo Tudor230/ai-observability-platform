@@ -17,7 +17,7 @@ describe("qs / filterQuery", () => {
   });
 
   it("includes days and attribution filters", () => {
-    expect(filterQuery({ days: 7, project_id: "p1", client_id: undefined, workflow: "checkout" })).toBe(
+    expect(filterQuery({ days: 7, project_id: "p1", workflow: "checkout" })).toBe(
       "?days=7&project_id=p1&workflow=checkout"
     );
   });

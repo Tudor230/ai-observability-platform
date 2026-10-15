@@ -96,7 +96,7 @@ export function qs(params: Record<string, string | number | undefined>): string 
 }
 
 export function filterQuery(f: Filters): string {
-  return qs({ days: f.days, project_id: f.project_id, client_id: f.client_id, workflow: f.workflow });
+  return qs({ days: f.days, project_id: f.project_id, workflow: f.workflow });
 }
 
 interface List<T> {
@@ -123,7 +123,6 @@ export const api = {
   spans: (id: string) => get<List<Span>>(`/executions/${id}/spans`),
   failures: (id: string) => get<FailureTree>(`/executions/${id}/failures`),
   workflows: (f: Filters) => get<List<AggregateRow>>(`/workflows${filterQuery(f)}`),
-  clients: (f: Filters) => get<List<AggregateRow>>(`/clients${filterQuery(f)}`),
   agents: (f: Filters) => get<List<AggregateRow>>(`/agents${filterQuery(f)}`),
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
   metrics: (dimension: string, f: Filters, key?: string) =>

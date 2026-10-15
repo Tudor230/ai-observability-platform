@@ -96,7 +96,6 @@ export interface FailureTree {
 export interface AggregateRow {
   key?: string;
   name?: string;
-  client_id?: string;
   provider?: string;
   model?: string;
   executions: number;
@@ -144,7 +143,6 @@ export interface BudgetStatus {
   period_end: string;
   workflow_name: string | null;
   project: string | null;
-  client: string | null;
   department: string | null;
   team: string | null;
   scope: string;
@@ -156,7 +154,6 @@ export interface BudgetInput {
   period: string;
   period_type: string;
   project?: string | null;
-  client?: string | null;
   workflow_name?: string | null;
   department?: string | null;
   team?: string | null;
@@ -292,7 +289,6 @@ export interface AlertDelivery {
 export interface Filters {
   days: number;
   project_id?: string;
-  client_id?: string;
   workflow?: string;
 }
 

@@ -48,7 +48,6 @@ export function BudgetDialog({
   const [amount, setAmount] = useState(budget ? String(budget.amount) : "");
   const [periodType, setPeriodType] = useState(budget?.period_type ?? "month");
   const [period, setPeriod] = useState(budget?.period?.slice(0, 10) ?? today());
-  const [client, setClient] = useState(budget?.client ?? "");
   const [workflow, setWorkflow] = useState(budget?.workflow_name ?? "");
   const [globalScope, setGlobalScope] = useState(
     canCreateGlobal && (budget === null || budget.scope === "global")
@@ -85,7 +84,6 @@ export function BudgetDialog({
         department: globalScope ? null : department || null,
         team: globalScope ? null : team || null,
         project: globalScope ? null : project || null,
-        client: client.trim() || null,
         workflow_name: workflow.trim() || null,
       };
       if (budget) await api.budgets.update(budget.id, payload);
@@ -214,13 +212,6 @@ export function BudgetDialog({
         ) : null}
 
         <div className="row" style={{ gap: 12, alignItems: "flex-end" }}>
-          <Field label="Client filter (optional)">
-            <TextInput
-              value={client}
-              onChange={(e) => setClient(e.target.value)}
-              placeholder="client id"
-            />
-          </Field>
           <Field label="Workflow filter (optional)">
             <TextInput
               value={workflow}

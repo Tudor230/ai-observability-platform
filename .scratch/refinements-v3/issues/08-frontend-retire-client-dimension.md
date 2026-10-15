@@ -1,7 +1,7 @@
 # 08 — Frontend: retire the client dimension
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03, 04
 Area: refinements v3, client dimension (ADR-0011)
 Estimate: M
@@ -44,3 +44,22 @@ filters by project instead.
 ## Tests
 
 - `npm run test`, `npm run lint`, `npm run build`.
+
+## Comments
+
+Done. The FE no longer knows the client dimension: `FilterDimension`/`Filters`/
+`AggregateRow`/`BudgetInput`/`BudgetStatus` lost their client fields,
+`FiltersContext` stopped parsing/writing `client_id`, `filterQuery` dropped it,
+`api.clients` + `useClients` are gone, and `BudgetDialog` lost its "Client
+filter". Manager's "Cost by client" card is now "Cost by project" (drill-down
+`/engineering?project_id=…`) and the "Clients" table became a "Projects" table
+built from the rich `/costs?dimension=project` rows (executions, error rate,
+tokens, cost) with names resolved through the new `useProjectNameMap()` hook;
+Executive's "Cost per client (service)" became a "Projects" detail table (cost,
+executions, error rate, last seen). Engineering's Client column shows the
+project name; `ExecutionDetail` and `traceSpans` dropped client fragments. The
+client *role* behaviour (cost hiding, nav, blocked Requests) is untouched.
+
+Evidence: `npm run test` **509 passed** (fixtures/mocks/client-role test
+updated); `npm run lint` + `npm run build` clean; coverage 88.5% stmts / 73.2%
+branches / 68.4% funcs (gates 80/70/65); `npm run typecheck` clean.

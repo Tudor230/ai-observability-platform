@@ -13,7 +13,6 @@ const h = vi.hoisted(() => ({
   spans: vi.fn(),
   failures: vi.fn(),
   workflows: vi.fn(),
-  clients: vi.fn(),
   agents: vi.fn(),
   costs: vi.fn(),
   metrics: vi.fn(),
@@ -78,7 +77,6 @@ vi.mock("../api/client", () => ({
     spans: h.spans,
     failures: h.failures,
     workflows: h.workflows,
-    clients: h.clients,
     agents: h.agents,
     costs: h.costs,
     metrics: h.metrics,
@@ -193,7 +191,6 @@ const execution = {
   session_id: "wf-1",
   project_id: "p1",
   project_name: "Checkout",
-  client_id: "client-42",
   workflow: "checkout",
   workflow_version: "v2",
   status: "ok",
@@ -257,7 +254,6 @@ const budget = {
   period_end: "2026-11-01T00:00:00Z",
   workflow_name: null,
   project: null,
-  client: null,
   department: null,
   team: "A",
   scope: "team",
@@ -342,7 +338,6 @@ function resetMocks() {
   h.spans.mockResolvedValue({ items: [], total: 0 });
   h.failures.mockResolvedValue({ execution_id: "e1", error_count: 0, nodes: [] });
   h.workflows.mockResolvedValue({ items: [aggregate], total: 1 });
-  h.clients.mockResolvedValue({ items: [aggregate], total: 1 });
   h.agents.mockResolvedValue({ items: [aggregate], total: 1 });
   h.costs.mockResolvedValue({ items: [aggregate], total: 1 });
   h.metrics.mockResolvedValue({ items: [dayMetric], total: 1 });
@@ -467,7 +462,7 @@ describe("Engineering", () => {
   it("renders the execution list", async () => {
     renderWithProviders(<Engineering />);
     expect(await screen.findByRole("link", { name: /checkout/ })).toBeInTheDocument();
-    expect(screen.getByText("client-42")).toBeInTheDocument();
+    expect(screen.getByText("Checkout")).toBeInTheDocument();
   });
 
   it("sorts server-side when a header is clicked", async () => {
@@ -740,29 +735,29 @@ describe("Filters control", () => {
     fireEvent.change(within(panel).getByLabelText("Time range"), {
       target: { value: "7" },
     });
-    fireEvent.change(within(panel).getByLabelText("Client"), {
-      target: { value: "client-42" },
+    fireEvent.change(within(panel).getByLabelText("Project"), {
+      target: { value: "p1" },
     });
     fireEvent.change(within(panel).getByLabelText("Workflow"), {
       target: { value: "checkout" },
     });
     await waitFor(() =>
       expect(h.overview).toHaveBeenLastCalledWith(
-        expect.objectContaining({ days: 7, client_id: "client-42", workflow: "checkout" })
+        expect.objectContaining({ days: 7, project_id: "p1", workflow: "checkout" })
       )
     );
 
-    // Close the panel: chips summarize the active filters.
+    // Close the panel: chips summarize the active filters (project by name).
     fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
     expect(await screen.findByText("Last 7 days")).toBeInTheDocument();
-    expect(screen.getByText("Client: client-42")).toBeInTheDocument();
+    expect(screen.getByText("Project: Checkout")).toBeInTheDocument();
     expect(screen.getByText("Workflow: checkout")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Remove Client: client-42"));
+    fireEvent.click(screen.getByLabelText("Remove Workflow: checkout"));
     await waitFor(() => {
       const calls = h.overview.mock.calls;
-      const last = calls[calls.length - 1]?.[0] as { client_id?: string };
-      expect(last.client_id).toBeUndefined();
+      const last = calls[calls.length - 1]?.[0] as { workflow?: string };
+      expect(last.workflow).toBeUndefined();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));

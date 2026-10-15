@@ -1,4 +1,4 @@
-import { useCosts, useMetrics, useOverview } from "../api/hooks";
+import { useCosts, useMetrics, useOverview, useProjectNameMap } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
@@ -18,7 +18,7 @@ import {
   Th,
   Tr,
 } from "../components/core";
-import { formatMoney, formatTokens } from "../lib/format";
+import { formatMoney, formatPct, formatTokens } from "../lib/format";
 import { buildForecast, forecastAsOf } from "../lib/forecast";
 import type { DayMetric } from "../api/types";
 
@@ -41,9 +41,9 @@ function buildChartData(items: DayMetric[], forecast: { day: string; cost: numbe
 export default function Executive() {
   const { filters } = useFilters();
   const overview = useOverview(filters);
-  const byClient = useCosts("client", filters);
   const byModel = useCosts("model", filters);
   const byProject = useCosts("project", filters);
+  const projectNames = useProjectNameMap();
   const trends = useMetrics("total", filters);
 
   const data = overview.data;
@@ -61,9 +61,8 @@ export default function Executive() {
   const tokens = data?.total_tokens ?? 0;
   const costPer1kTokens = tokens ? (totalCost / tokens) * 1000 : null;
 
-  const anyError =
-    overview.isError || byClient.isError || byModel.isError || byProject.isError;
-  const loadError = overview.error ?? byClient.error ?? byModel.error;
+  const anyError = overview.isError || byModel.isError || byProject.isError;
+  const loadError = overview.error ?? byModel.error ?? byProject.error;
 
   return (
     <div className="page">
@@ -193,36 +192,44 @@ export default function Executive() {
       </CardPanel>
 
       <div className="grid grid-2">
-        <CardPanel title="Cost per client (service)" subTitle="Spend and volume by client">
+        <CardPanel title="Projects" subTitle="Spend and volume per project">
           <TableWrap>
             <Table>
               <thead>
                 <tr>
-                  <Th>Client</Th>
+                  <Th>Project</Th>
                   <Th align="right">Cost</Th>
                   <Th align="right">Executions</Th>
-                  <Th align="right">LLM calls</Th>
+                  <Th align="right">Error rate</Th>
+                  <Th align="right">Last seen</Th>
                 </tr>
               </thead>
-              {byClient.data?.items?.length ? (
+              {byProject.data?.items?.length ? (
                 <tbody>
-                  {byClient.data.items.map((c) => (
-                    <Tr key={c.key}>
-                      <Td className="table__cell--primary">{c.key}</Td>
-                      <Td align="right" className="num">
-                        {formatMoney(c.total_cost)}
+                  {byProject.data.items.map((p) => (
+                    <Tr key={p.key}>
+                      <Td className="table__cell--primary">
+                        {projectNames.get(p.key ?? "") ?? p.key ?? "—"}
                       </Td>
                       <Td align="right" className="num">
-                        {c.executions}
+                        {formatMoney(p.total_cost)}
                       </Td>
                       <Td align="right" className="num">
-                        {c.llm_calls ?? 0}
+                        {p.executions}
+                      </Td>
+                      <Td align="right" className="num">
+                        <span className={p.error_rate ? "text-danger" : ""}>
+                          {formatPct(p.error_rate)}
+                        </span>
+                      </Td>
+                      <Td align="right" className="muted">
+                        {p.last_seen ? new Date(p.last_seen).toLocaleDateString() : "—"}
                       </Td>
                     </Tr>
                   ))}
                 </tbody>
               ) : (
-                <TableEmpty colSpan={4}>No client spend in range.</TableEmpty>
+                <TableEmpty colSpan={5}>No project spend in range.</TableEmpty>
               )}
             </Table>
           </TableWrap>

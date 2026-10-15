@@ -6,10 +6,10 @@ import {
   useAlerts,
   useBudgetSeries,
   useBudgetStatus,
-  useClients,
   useCosts,
   useMetrics,
   useOverview,
+  useProjectNameMap,
   useWorkflows,
 } from "../api/hooks";
 import { api } from "../api/client";
@@ -48,10 +48,10 @@ export default function Manager() {
   const queryClient = useQueryClient();
   const overview = useOverview(filters);
   const costsByWorkflow = useCosts("workflow", filters);
-  const costsByClient = useCosts("client", filters);
+  const costsByProject = useCosts("project", filters);
   const costsByTeam = useCosts("team", filters);
   const workflows = useWorkflows(filters);
-  const clients = useClients(filters);
+  const projectNames = useProjectNameMap();
   const agents = useAgents(filters);
   const alerts = useAlerts();
   const trends = useMetrics("total", filters);
@@ -100,11 +100,11 @@ export default function Manager() {
   };
 
   const loadError =
-    overview.error ?? costsByWorkflow.error ?? costsByClient.error ?? workflows.error;
+    overview.error ?? costsByWorkflow.error ?? costsByProject.error ?? workflows.error;
   const anyError =
     overview.isError ||
     costsByWorkflow.isError ||
-    costsByClient.isError ||
+    costsByProject.isError ||
     workflows.isError ||
     alerts.isError ||
     budgets.isError;
@@ -120,15 +120,15 @@ export default function Manager() {
     <div className="page">
       <PageHeader
         title="Manager"
-        subTitle="Spend by workflow and client, budget health and agent efficiency."
+        subTitle="Spend by workflow and project, budget health and agent efficiency."
         extra={
           <>
-            <FiltersControl dimensions={["days", "project", "client", "workflow"]} />
+            <FiltersControl dimensions={["days", "project", "workflow"]} />
             <RefreshButton />
           </>
         }
       />
-      <FilterChips dimensions={["days", "project", "client", "workflow"]} />
+      <FilterChips dimensions={["days", "project", "workflow"]} />
 
       {anyError ? <QueryError what="manager data" error={loadError} /> : null}
 
@@ -186,26 +186,26 @@ export default function Manager() {
           )}
         </CardPanel>
 
-        <CardPanel title="Cost by client" subTitle="USD in range">
-          {(costsByClient.data?.items ?? []).length ? (
+        <CardPanel title="Cost by project" subTitle="USD in range">
+          {(costsByProject.data?.items ?? []).length ? (
             <BreakdownBars
-              rows={(costsByClient.data?.items ?? []).map((item) => ({
+              rows={(costsByProject.data?.items ?? []).map((item) => ({
                 key: item.key ?? String(item.name),
-                label: item.key ?? item.name ?? "—",
+                label: projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "—",
                 value: item.total_cost ?? 0,
                 valueLabel: formatMoney(item.total_cost),
                 sublabel: `${item.executions} executions · ${formatTokens(item.total_tokens)} tokens`,
-                href: `/engineering?client_id=${encodeURIComponent(item.key ?? item.name ?? "")}`,
+                href: `/engineering?project_id=${encodeURIComponent(item.key ?? "")}`,
               }))}
             />
-          ) : costsByClient.isLoading ? (
+          ) : costsByProject.isLoading ? (
             <div className="stack" style={{ padding: 16 }}>
               <Skeleton width="80%" />
               <Skeleton width="60%" />
               <Skeleton width="70%" />
             </div>
           ) : (
-            <EmptyState title="No client cost yet" description="Costs appear once executions are priced." />
+            <EmptyState title="No project cost yet" description="Costs appear once executions are priced." />
           )}
         </CardPanel>
       </div>
@@ -246,36 +246,44 @@ export default function Manager() {
           </TableWrap>
         </CardPanel>
 
-        <CardPanel title="Clients" subTitle="Consumption and cost per client">
+        <CardPanel title="Projects" subTitle="Consumption and cost per project">
           <TableWrap>
             <Table>
               <thead>
                 <tr>
-                  <Th>Client</Th>
+                  <Th>Project</Th>
                   <Th align="right">Executions</Th>
+                  <Th align="right">Error rate</Th>
                   <Th align="right">Tokens</Th>
                   <Th align="right">Cost</Th>
                 </tr>
               </thead>
-              {clients.data?.items?.length ? (
+              {costsByProject.data?.items?.length ? (
                 <tbody>
-                  {clients.data.items.map((c) => (
-                    <Tr key={c.client_id}>
-                      <Td className="table__cell--primary">{c.client_id}</Td>
-                      <Td align="right" className="num">
-                        {c.executions}
+                  {costsByProject.data.items.map((p) => (
+                    <Tr key={p.key ?? String(p.name)}>
+                      <Td className="table__cell--primary">
+                        {projectNames.get(p.key ?? "") ?? p.key ?? "—"}
                       </Td>
                       <Td align="right" className="num">
-                        {formatTokens(c.total_tokens)}
+                        {p.executions}
                       </Td>
                       <Td align="right" className="num">
-                        {formatMoney(c.total_cost)}
+                        <span className={p.error_rate ? "text-danger" : ""}>
+                          {formatPct(p.error_rate)}
+                        </span>
+                      </Td>
+                      <Td align="right" className="num">
+                        {formatTokens(p.total_tokens)}
+                      </Td>
+                      <Td align="right" className="num">
+                        {formatMoney(p.total_cost)}
                       </Td>
                     </Tr>
                   ))}
                 </tbody>
               ) : (
-                <TableEmpty colSpan={4}>No clients in range.</TableEmpty>
+                <TableEmpty colSpan={5}>No project spend in range.</TableEmpty>
               )}
             </Table>
           </TableWrap>

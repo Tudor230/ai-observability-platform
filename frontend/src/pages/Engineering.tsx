@@ -100,7 +100,7 @@ export default function Engineering() {
         subTitle="Trace explorer — every agent execution with status, latency and cost."
         extra={
           <>
-            <FiltersControl dimensions={["days", "project", "client", "workflow"]} />
+            <FiltersControl dimensions={["days", "project", "workflow"]} />
             <TextInput
               variant="search"
               value={searchDraft}
@@ -123,7 +123,7 @@ export default function Engineering() {
           </>
         }
       />
-      <FilterChips dimensions={["days", "project", "client", "workflow"]} />
+      <FilterChips dimensions={["days", "project", "workflow"]} />
 
       {isError ? <QueryError what="executions" error={error} /> : null}
 
@@ -148,7 +148,7 @@ export default function Engineering() {
               <thead>
                 <tr>
                   <Th>Workflow</Th>
-                  <Th>Client</Th>
+                  <Th>Project</Th>
                   <SortableTh
                     sortKey="status"
                     active={sort === "status"}
@@ -214,7 +214,7 @@ export default function Engineering() {
                           </span>
                         ) : null}
                       </Td>
-                      <Td>{e.client_id ?? "—"}</Td>
+                      <Td>{e.project_name ?? "—"}</Td>
                       <Td>
                         <StatusBadge status={e.status} />
                       </Td>

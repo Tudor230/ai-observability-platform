@@ -34,7 +34,7 @@ const execution: Partial<Execution> = {
   id: "ex-1",
   trace_id: "trace-1",
   workflow: "checkout",
-  client_id: "client-42",
+  project_name: "Checkout",
   duration_ms: 4200,
   total_cost: 0.0051,
   total_tokens: 2400,
@@ -196,7 +196,7 @@ describe("toTraceRecord", () => {
     expect(record.id).toBe("ex-1");
     expect(record.name).toBe("checkout");
     expect(record.spansCount).toBe(3);
-    expect(record.agentDescription).toBe("client client-42");
+    expect(record.agentDescription).toBe("project Checkout");
     expect(record.durationMs).toBe(4200);
     expect(record.totalCost).toBe(0.0051);
   });

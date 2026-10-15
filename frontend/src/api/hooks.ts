@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRefetchInterval } from "../state/RefreshContext";
 import { api, type ExecutionQuery } from "./client";
@@ -54,15 +55,6 @@ export function useWorkflows(f: Filters) {
   return useQuery({
     queryKey: ["workflows", f],
     queryFn: () => api.workflows(f),
-    refetchInterval,
-  });
-}
-
-export function useClients(f: Filters) {
-  const refetchInterval = useRefetchInterval();
-  return useQuery({
-    queryKey: ["clients", f],
-    queryFn: () => api.clients(f),
     refetchInterval,
   });
 }
@@ -190,6 +182,22 @@ export function useDirectoryProjects() {
     queryKey: ["directory", "projects"],
     queryFn: () => api.directory.projects(),
   });
+}
+
+/**
+ * Dimension rows (costs/usage) are keyed by the external `project_id`; the
+ * dashboard renders the human name instead (ADR-0012). Keys missing from the
+ * caller's visible directory fall back to the raw value.
+ */
+export function useProjectNameMap(): Map<string, string> {
+  const projects = useDirectoryProjects();
+  return useMemo(
+    () =>
+      new Map(
+        (projects.data?.items ?? []).map((project) => [project.project_id, project.name])
+      ),
+    [projects.data]
+  );
 }
 
 export function useDepartments() {
