@@ -90,8 +90,6 @@ def budget_spend_between(
     )
     if budget.project_id:
         q = q.where(Execution.project_id == budget.project_id)
-    if budget.client_id:
-        q = q.where(Execution.client_id == budget.client_id)
     if budget.workflow_name:
         q = q.where(Execution.workflow_name == budget.workflow_name)
     if budget.team_id or budget.department_id:

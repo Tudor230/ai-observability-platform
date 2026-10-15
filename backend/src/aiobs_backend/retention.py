@@ -2,7 +2,7 @@
 
 Retention is opt-in (``AIOBS_RETENTION_DAYS=0`` keeps data forever). When set,
 executions, their spans and cost records, daily metrics and alerts older than
-the window are deleted; dimension rows (clients/workflows/agents) are kept as
+the window are deleted; dimension rows (workflows/agents) are kept as
 attribution history.
 """
 from __future__ import annotations

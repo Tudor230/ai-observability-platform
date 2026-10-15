@@ -8,18 +8,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...models import Client, CostRecord, Execution, Project, Team
+from ...models import CostRecord, Execution, Project, Team
 from ..deps import AccessScope, get_db, require_access
 from ..queries import default_range, exec_aggregates, parse_dt
 from ..serialize import money
 
 router = APIRouter(tags=["costs"])
 
-DIMENSIONS = {"project", "client", "workflow", "model", "team"}
+DIMENSIONS = {"project", "workflow", "model", "team"}
 
 _GROUP_COLUMNS = {
     "project": Project.project_id,
-    "client": Client.external_key,
     "workflow": Execution.workflow_name,
     "team": Team.name,
 }
@@ -33,7 +32,6 @@ def get_costs(
     end: str | None = Query(default=None),
     days: int = Query(default=90, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
     access: AccessScope = Depends(require_access("manager", "exec")),
 ) -> dict:
@@ -51,16 +49,12 @@ def get_costs(
             .join(Execution, Execution.id == CostRecord.execution_id)
             .where(Execution.started_at >= start_dt, Execution.started_at < end_dt)
         )
-        if project_ids is not None or client_id or workflow:
+        if project_ids is not None or workflow:
             stmt = stmt.join(Project, Project.id == Execution.project_id)
             if project_ids is not None:
                 stmt = stmt.where(Project.project_id.in_(project_ids))
             if workflow:
                 stmt = stmt.where(Execution.workflow_name == workflow)
-            if client_id:
-                stmt = stmt.join(Client, Client.id == Execution.client_id).where(
-                    Client.external_key == client_id
-                )
         rows = session.execute(stmt).all()
         agg: dict[str, dict] = {}
         for record, _ in rows:
@@ -82,12 +76,9 @@ def get_costs(
         start=start_dt,
         end=end_dt,
         project_ids=project_ids,
-        client_id=client_id,
         workflow=workflow,
     )
-    fallback_key = {"client": "unattributed", "team": "unassigned"}.get(
-        dimension, "unknown"
-    )
+    fallback_key = {"team": "unassigned"}.get(dimension, "unknown")
     agg = {}
     for row in rows:
         key = row.key or fallback_key

@@ -1,8 +1,8 @@
 """Analytics rollup (plans/backend.md §9): recompute daily metrics per dimension.
 
-Dimension keys are **external** identifiers: project `project_id`, client
-`external_key`, workflow name, team name — matching what the API and dashboard
-use. Writes are upserts against the `uq_daily_dim` constraint so concurrent
+Dimension keys are **external** identifiers: project `project_id`, workflow
+name, team name — matching what the API and dashboard use. Writes are upserts
+against the `uq_daily_dim` constraint so concurrent
 rollups cannot create duplicate metric rows (F26).
 """
 from __future__ import annotations
@@ -16,10 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from .models import Client, DailyMetric, Execution, Project, Team
+from .models import DailyMetric, Execution, Project, Team
 from .stats import percentile
 
-DIMENSIONS = ("total", "project", "client", "workflow", "team")
+DIMENSIONS = ("total", "project", "workflow", "team")
 
 _UPSERT_COLUMNS = (
     "executions",
@@ -45,14 +45,13 @@ def _day_key(dt: datetime) -> str:
 def rollup_metrics(session: Session, days: list[str] | None = None) -> dict[str, int]:
     """Recompute DailyMetric rows from executions for the given days (default: all)."""
     q = (
-        select(Execution, Project.project_id, Client.external_key, Team.name)
+        select(Execution, Project.project_id, Team.name)
         .join(Project, Project.id == Execution.project_id)
         .join(Team, Team.id == Project.team_id)
-        .outerjoin(Client, Client.id == Execution.client_id)
     )
     grouped: dict[tuple[str, str, str | None], list[Execution]] = {}
     seen_days: set[str] = set()
-    for ex, project_ext, client_ext, team_name in session.execute(q):
+    for ex, project_ext, team_name in session.execute(q):
         if ex.started_at is None:
             continue
         day = _day_key(ex.started_at)
@@ -63,7 +62,6 @@ def rollup_metrics(session: Session, days: list[str] | None = None) -> dict[str,
             "total": (day, "total", None),
             "project": (day, "project", project_ext),
             "team": (day, "team", team_name),
-            "client": (day, "client", client_ext),
             "workflow": (day, "workflow", ex.workflow_name),
         }
         for key in buckets.values():

@@ -173,7 +173,7 @@ def main() -> int:
         root = build_span(
             name="checkout", oi_kind="CHAIN", span_id=1, trace_id=7001,
             start=now, end=now + timedelta(seconds=1),
-            attrs={"sdk.client_id": "client-kpi"},
+            attrs={"sdk.workflow_id": "order-kpi"},
         )
         llm = build_span(
             name="llm", oi_kind="LLM", span_id=2, trace_id=7001, parent_span_id=1,
@@ -196,7 +196,8 @@ def main() -> int:
         cost_error_pct = abs(trace["total_cost"] - expected_cost) / expected_cost * 100
         assert cost_error_pct < 1.0, f"KPI 2 cost error {cost_error_pct:.4f}%"
         detail = _api(f"/executions/{trace['execution_id']}")
-        assert detail["client_id"] == "client-kpi", detail
+        assert detail["project_id"] == PROJECT_ID, detail
+        assert detail["project_name"] == "KPI Gate", detail
         assert detail["workflow"] == "checkout", detail
         print(f"KPI 2: cost error {cost_error_pct:.4f}% (expected {expected_cost})")
 

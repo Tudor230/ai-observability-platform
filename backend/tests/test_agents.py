@@ -26,7 +26,7 @@ def test_agents_are_scoped_per_project(client, session_factory, project):
         root = build_span(
             name="wf", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
             start=now, end=now + timedelta(seconds=1),
-            attrs={"sdk.project_id": project_id, "sdk.client_id": "client-42"},
+            attrs={"sdk.project_id": project_id},
         )
         agent = build_span(
             name="assistant", oi_kind="AGENT", span_id=2, trace_id=trace_id,
@@ -52,7 +52,7 @@ def test_agent_cost_is_counted_once_per_execution(client, project):
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=1300,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=1300, parent_span_id=1,

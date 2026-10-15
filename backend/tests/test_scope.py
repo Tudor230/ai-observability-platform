@@ -27,7 +27,7 @@ def _trace(trace_id: int, project_id: str):
         trace_id=trace_id,
         start=now,
         end=now + timedelta(seconds=2),
-        attrs={"sdk.project_id": project_id, "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": project_id},
     )
     llm = build_span(
         name="llm_call",

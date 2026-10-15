@@ -22,7 +22,7 @@ def test_metadata_is_redacted_before_persistence(client, session_factory, projec
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=1500,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42",
+        attrs={"sdk.project_id": "proj-1",
                "metadata": metadata},
     )
     resp = client.post("/api/v1/traces", content=build_request([root]), headers=_headers())

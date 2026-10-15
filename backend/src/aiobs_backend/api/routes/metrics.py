@@ -12,7 +12,7 @@ from ..deps import AccessScope, get_db, require_access
 
 router = APIRouter(tags=["metrics"])
 
-DIMENSIONS = {"total", "project", "client", "workflow", "team"}
+DIMENSIONS = {"total", "project", "workflow", "team"}
 _SUMMED_FIELDS = (
     "executions",
     "failed_executions",
@@ -123,7 +123,7 @@ def get_metrics(
         items = _scoped_totals(session, scope_ids, start, end)
         return {"items": items, "total": len(items)}
 
-    if dimension in {"client", "workflow", "team"} and scope_ids is not None:
+    if dimension in {"workflow", "team"} and scope_ids is not None:
         raise HTTPException(
             status_code=403,
             detail=f"dimension {dimension!r} is not available at this scope",

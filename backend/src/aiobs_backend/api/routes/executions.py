@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Client, Execution, Project, Span
+from ...models import Execution, Project, Span
 from ..deps import AccessScope, get_db, require_access
 from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
@@ -43,7 +43,6 @@ def list_executions(
     end: str | None = Query(default=None),
     days: int | None = Query(default=None, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
     status: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
@@ -62,7 +61,6 @@ def list_executions(
         start=start_dt,
         end=parse_dt(end, end_of_day=True),
         project_ids=access.resolve_project_filter(project_id),
-        client_id=client_id,
         workflow=workflow,
         status=status,
         q=q,
@@ -77,11 +75,10 @@ def list_executions(
         execution_dict(
             ex,
             project_ext,
-            client_ext,
             project_name=project_name,
             include_cost=access.cost_visible,
         )
-        for ex, project_ext, client_ext, project_name in rows
+        for ex, project_ext, project_name in rows
     ]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
@@ -93,7 +90,6 @@ def failures_series(
     end: str | None = Query(default=None),
     days: int = Query(default=30, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
     access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
@@ -126,10 +122,6 @@ def failures_series(
     )
     if scoped is not None:
         stmt = stmt.where(Project.project_id.in_(scoped))
-    if client_id:
-        stmt = stmt.join(Client, Client.id == Execution.client_id).where(
-            Client.external_key == client_id
-        )
     if workflow:
         stmt = stmt.where(Execution.workflow_name == workflow)
     rows = session.execute(stmt).all()
@@ -156,15 +148,9 @@ def get_execution(
         ).one_or_none()
         or (None, None)
     )
-    client_ext = None
-    if row.client_id:
-        client_ext = session.execute(
-            select(Client.external_key).where(Client.id == row.client_id)
-        ).scalar_one_or_none()
     return execution_dict(
         row,
         project_ext,
-        client_ext,
         project_name=project_name,
         include_cost=access.cost_visible,
     )

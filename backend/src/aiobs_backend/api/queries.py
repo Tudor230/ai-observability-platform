@@ -7,9 +7,9 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import Select, and_, asc, desc, false, func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import Alert, AlertRule, Budget, Client, Execution, Project, Team
+from ..models import Alert, AlertRule, Budget, Execution, Project, Team
 
-EXTERNAL = (Execution, Project.project_id, Client.external_key, Project.name)
+EXTERNAL = (Execution, Project.project_id, Project.name)
 
 # Whitelisted sort keys for `GET /executions` (audit item 4).
 EXECUTION_SORTS = {
@@ -147,17 +147,14 @@ def exec_rows(
     end: datetime | None = None,
     project_id: str | None = None,
     project_ids: Collection[str] | None = None,
-    client_id: str | None = None,
     workflow: str | None = None,
     status: str | None = None,
     q: str | None = None,
     sort: str | None = None,
     order: str | None = None,
 ) -> Select:
-    """Select (Execution, project_ext, client_ext, project_name) with filters applied."""
-    stmt = select(*EXTERNAL).join(Project, Project.id == Execution.project_id).outerjoin(
-        Client, Client.id == Execution.client_id
-    )
+    """Select (Execution, project_ext, project_name) with filters applied."""
+    stmt = select(*EXTERNAL).join(Project, Project.id == Execution.project_id)
     if start:
         stmt = stmt.where(Execution.started_at >= start)
     if end:
@@ -167,8 +164,6 @@ def exec_rows(
     scope_clause = _project_scope_clause(project_ids)
     if scope_clause is not None:
         stmt = stmt.where(scope_clause)
-    if client_id:
-        stmt = stmt.where(Client.external_key == client_id)
     if workflow:
         stmt = stmt.where(Execution.workflow_name == workflow)
     if status:
@@ -192,9 +187,9 @@ def exec_rows(
 
 def fetch_exec_rows(
     session: Session, **filters
-) -> list[tuple[Execution, str | None, str | None, str | None]]:
+) -> list[tuple[Execution, str | None, str | None]]:
     rows = session.execute(exec_rows(session, **filters)).all()
-    return [(row[0], row[1], row[2], row[3]) for row in rows]
+    return [(row[0], row[1], row[2]) for row in rows]
 
 
 def exec_aggregates(
@@ -205,7 +200,6 @@ def exec_aggregates(
     end: datetime | None = None,
     project_id: str | None = None,
     project_ids: Collection[str] | None = None,
-    client_id: str | None = None,
     workflow: str | None = None,
 ):
     """Aggregate executions in SQL per dimension (F11).
@@ -226,7 +220,6 @@ def exec_aggregates(
         )
         .join(Project, Project.id == Execution.project_id)
         .join(Team, Team.id == Project.team_id)
-        .outerjoin(Client, Client.id == Execution.client_id)
         .group_by(group_col)
     )
     if start:
@@ -238,8 +231,6 @@ def exec_aggregates(
     scope_clause = _project_scope_clause(project_ids)
     if scope_clause is not None:
         stmt = stmt.where(scope_clause)
-    if client_id:
-        stmt = stmt.where(Client.external_key == client_id)
     if workflow:
         stmt = stmt.where(Execution.workflow_name == workflow)
     return list(session.execute(stmt))

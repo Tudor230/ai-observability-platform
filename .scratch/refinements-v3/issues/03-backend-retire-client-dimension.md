@@ -1,7 +1,7 @@
 # 03 — Backend: retire the client attribution dimension
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Area: refinements v3, client dimension (ADR-0011)
 Estimate: L
@@ -65,3 +65,24 @@ ADR-0006 precedent.
 
 - `uv run pytest -q` (full suite green), `ruff`, `mypy`.
 - Migration round-trip on a fresh database and against the dev database.
+
+## Comments
+
+Done. Removed `Client`/`clients`, `executions.client_id`, `budgets.client_id`,
+the `daily_metrics` client rows (migration `c3d91b7f5a24`, destructive, with a
+schema-only downgrade), the `/clients` router, `dimension=client` in
+`/costs`+`/metrics`+analytics, the budget `client` scope/labels, the alerts
+client spend filter, `_upsert_client`, and the client queries in
+executions/workflows/overview. `EXTERNAL` is now
+`(Execution, Project.project_id, Project.name)` and `execution_dict` no longer
+carries `client_id`. Scripts (`e2e_smoke.py`, `kpi_gate.py`) assert project
+attribution instead (`detail["project_id"] == PROJECT_ID`,
+`project_name == "KPI Gate"`). `tests/test_upsert_race.py` (the F27 helper test)
+retargeted from the deleted client upsert to `_upsert_row`/`ProjectKey`, and a
+new `test_client_dimension_is_gone` proves a legacy `sdk.client_id` root still
+ingests while `/costs|/metrics?dimension=client` return 422 and `/clients`
+404s.
+
+Evidence: **146 passed**; `ruff` clean; `mypy` clean (41 files); migration
+round-trip on a scratch DB (`upgrade head` → `alembic check` "No new upgrade
+operations detected" → `downgrade -1` → `upgrade head`).

@@ -183,16 +183,6 @@ class AccessRequest(Base):
     )
 
 
-class Client(Base):
-    __tablename__ = "clients"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    external_key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
-    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-
-
 class Workflow(Base):
     __tablename__ = "workflows"
 
@@ -231,9 +221,6 @@ class Execution(Base):
     session_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     project_id: Mapped[str] = mapped_column(
         ForeignKey("projects.id"), nullable=False, index=True
-    )
-    client_id: Mapped[str | None] = mapped_column(
-        ForeignKey("clients.id"), nullable=True, index=True
     )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     workflow_ref: Mapped[str | None] = mapped_column(
@@ -348,7 +335,7 @@ class DailyMetric(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     day: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD
-    dimension: Mapped[str] = mapped_column(String(40), index=True)  # total|project|client|workflow|team
+    dimension: Mapped[str] = mapped_column(String(40), index=True)  # total|project|workflow|team
     dimension_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     executions: Mapped[int] = mapped_column(Integer, default=0)
     failed_executions: Mapped[int] = mapped_column(Integer, default=0)
@@ -383,9 +370,6 @@ class Budget(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     project_id: Mapped[str | None] = mapped_column(
         ForeignKey("projects.id"), nullable=True, index=True
-    )
-    client_id: Mapped[str | None] = mapped_column(
-        ForeignKey("clients.id"), nullable=True, index=True
     )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     # Manager-owned budgets are scoped to an org unit (audit item 5); global

@@ -41,7 +41,7 @@ def _trace(
         end=start + timedelta(milliseconds=duration_ms),
         status=2 if error else 0,
         status_message=error or "",
-        attrs={"sdk.project_id": project, "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": project},
     )
     llm = build_span(
         name="llm_call",

@@ -56,7 +56,6 @@ def main():
         end=now + timedelta(seconds=2),
         attrs={
             "sdk.project_id": "proj-e2e",
-            "sdk.client_id": "client-99",
             "sdk.workflow_id": "order-e2e",
             "session.id": "order-e2e",
             "metadata": '{"channel": "web"}',
@@ -106,7 +105,6 @@ def main():
         "overview": client.get("/api/v1/overview"),
         "executions": client.get("/api/v1/executions"),
         "workflows": client.get("/api/v1/workflows"),
-        "clients": client.get("/api/v1/clients"),
         "costs-project": client.get("/api/v1/costs?dimension=project"),
         "costs-model": client.get("/api/v1/costs?dimension=model"),
         "metrics": client.get("/api/v1/metrics?dimension=total"),

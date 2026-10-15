@@ -2,8 +2,8 @@
 
 Authorization model (audit item 5): admin key/admin session and `exec` manage
 any budget; managers manage budgets whose department/team/project scope they
-cover. Manager-created budgets must carry one of those scopes — client and
-workflow are additional filters. Global (unscoped) budgets stay exec/admin-only.
+cover. Manager-created budgets must carry one of those scopes — workflow is an
+additional filter. Global (unscoped) budgets stay exec/admin-only.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...alerts import budget_spend, budget_spend_between, budget_window
-from ...models import Budget, Client, Department, Project, Team
+from ...models import Budget, Department, Project, Team
 from ..deps import AccessScope, get_db, require_access
 from ..memberships import approved_memberships, covers_scope
 from ..queries import budget_scope_clause
@@ -30,7 +30,6 @@ class BudgetIn(BaseModel):
     period: date  # period anchor (day); the current window is derived from it
     period_type: str = Field(default="month", pattern="^(day|week|month)$")
     project: str | None = None  # external project_id
-    client: str | None = None  # external client key
     workflow_name: str | None = None
     department: str | None = None  # internal department id
     team: str | None = None  # internal team id
@@ -42,7 +41,6 @@ class BudgetPatch(BaseModel):
     period: date | None = None
     period_type: str | None = Field(default=None, pattern="^(day|week|month)$")
     project: str | None = None
-    client: str | None = None
     workflow_name: str | None = None
     department: str | None = None
     team: str | None = None
@@ -51,7 +49,6 @@ class BudgetPatch(BaseModel):
 def _resolve_scope_fields(
     session: Session,
     project: str | None,
-    client: str | None,
     department: str | None,
     team: str | None,
 ) -> dict[str, str | None]:
@@ -63,13 +60,6 @@ def _resolve_scope_fields(
         ).scalar_one_or_none()
         if project_db is None:
             raise HTTPException(status_code=400, detail=f"unknown project {project}")
-    client_id = None
-    if client:
-        client_id = session.execute(
-            select(Client.id).where(Client.external_key == client)
-        ).scalar_one_or_none()
-        if client_id is None:
-            raise HTTPException(status_code=400, detail=f"unknown client {client}")
     department_id = None
     if department:
         department_id = session.execute(
@@ -86,7 +76,6 @@ def _resolve_scope_fields(
             raise HTTPException(status_code=400, detail="unknown team")
     return {
         "project_id": project_db,
-        "client_id": client_id,
         "department_id": department_id,
         "team_id": team_id,
     }
@@ -162,14 +151,11 @@ def _name_maps(session: Session):
     projects = {
         pid: ext for pid, ext in session.execute(select(Project.id, Project.project_id))
     }
-    clients = {
-        cid: ext for cid, ext in session.execute(select(Client.id, Client.external_key))
-    }
     departments = {
         d.id: d.name for d in session.execute(select(Department)).scalars()
     }
     teams = {t.id: t.name for t in session.execute(select(Team)).scalars()}
-    return projects, clients, departments, teams
+    return projects, departments, teams
 
 
 def _scope_label(budget: Budget) -> str:
@@ -179,15 +165,13 @@ def _scope_label(budget: Budget) -> str:
         return "team"
     if budget.project_id:
         return "project"
-    if budget.client_id:
-        return "client"
     if budget.workflow_name:
         return "workflow"
     return "global"
 
 
 def _budget_item(session: Session, budget: Budget, maps=None) -> dict:
-    projects, clients, departments, teams = maps or _name_maps(session)
+    projects, departments, teams = maps or _name_maps(session)
     return {
         "id": budget.id,
         "name": budget.name,
@@ -196,7 +180,6 @@ def _budget_item(session: Session, budget: Budget, maps=None) -> dict:
         "period_type": budget.period_type or "month",
         # External/internal labels, consistent with every other resource (F32).
         "project": projects.get(budget.project_id),
-        "client": clients.get(budget.client_id),
         "workflow_name": budget.workflow_name,
         "department": departments.get(budget.department_id),
         "team": teams.get(budget.team_id),
@@ -231,7 +214,7 @@ def create_budget(
     access: AccessScope = Depends(require_access("manager", "exec")),
 ) -> dict:
     ids = _resolve_scope_fields(
-        session, body.project, body.client, body.department, body.team
+        session, body.project, body.department, body.team
     )
     _assert_can_write(
         session,
@@ -315,11 +298,10 @@ def update_budget(
         raise HTTPException(status_code=403, detail="you do not manage this scope")
 
     fields = body.model_dump(exclude_unset=True)
-    provided = {key for key in fields if key in {"project", "client", "department", "team"}}
+    provided = {key for key in fields if key in {"project", "department", "team"}}
     resolved = _resolve_scope_fields(
         session,
         fields.get("project"),
-        fields.get("client"),
         fields.get("department"),
         fields.get("team"),
     )
@@ -327,7 +309,6 @@ def update_budget(
     # may commit on HTTPException otherwise).
     target = {
         "project_id": resolved["project_id"] if "project" in provided else budget.project_id,
-        "client_id": resolved["client_id"] if "client" in provided else budget.client_id,
         "department_id": resolved["department_id"] if "department" in provided else budget.department_id,
         "team_id": resolved["team_id"] if "team" in provided else budget.team_id,
     }
@@ -357,7 +338,6 @@ def update_budget(
     if "workflow_name" in fields:
         budget.workflow_name = fields["workflow_name"]
     budget.project_id = target["project_id"]
-    budget.client_id = target["client_id"]
     budget.department_id = target["department_id"]
     budget.team_id = target["team_id"]
     session.flush()

@@ -24,7 +24,6 @@ from ..classify import classify_span, is_failed
 from ..cost import PricingResolver, compute_llm_cost
 from ..models import (
     Agent,
-    Client,
     CostRecord,
     Execution,
     Pricing,
@@ -286,14 +285,11 @@ def _apply_root_identity(
 ) -> None:
     """Copy workflow identity/metadata from a validated root onto an execution."""
     root_a = root.raw.attributes
-    client_key = attrs.as_str(root_a, attrs.SDK_CLIENT_ID)
-    client = _upsert_client(session, client_key) if client_key else None
     wf_name = root.raw.name or root.oi_kind
     wf_version = attrs.as_str(root_a, attrs.SDK_WORKFLOW_VERSION)
     workflow = _upsert_workflow(session, project, wf_name, wf_version)
     execution.workflow_id = attrs.as_str(root_a, attrs.SDK_WORKFLOW_ID)
     execution.session_id = attrs.as_str(root_a, attrs.SESSION_ID)
-    execution.client_id = client.id if client else None
     execution.workflow_name = wf_name
     execution.workflow_ref = workflow.id
     execution.workflow_version = wf_version
@@ -496,7 +492,7 @@ def _attribute_failure(
 def _upsert_row(session: Session, model, lookup, values: dict):
     """Insert-or-select with retry, safe under concurrent exporters (F27).
 
-    Two exporters sending the same client/workflow/agent concurrently would
+    Two exporters sending the same workflow/agent concurrently would
     otherwise race between the SELECT and the INSERT; the losing insert is
     retried as a lookup once the winning transaction commits.
     """
@@ -512,18 +508,6 @@ def _upsert_row(session: Session, model, lookup, values: dict):
     except IntegrityError:
         row = session.execute(select(model).where(lookup)).scalar_one()
         return row, False
-
-
-def _upsert_client(session: Session, client_key: str) -> Client:
-    row, created = _upsert_row(
-        session,
-        Client,
-        Client.external_key == client_key,
-        {"external_key": client_key, "name": client_key},
-    )
-    if not created:
-        row.last_seen = _now()
-    return row
 
 
 def _upsert_workflow(
