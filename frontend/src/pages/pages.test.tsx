@@ -589,24 +589,23 @@ describe("Manager", () => {
 
     // The Workflows card (first) shows 10 of 12 bars on page 1 plus the pager.
     const card = (await screen.findByText("Workflows")).closest(".card") as HTMLElement;
-    expect(card.querySelectorAll(".breakdown__row")).toHaveLength(10);
-    expect(within(card).getByText(/Showing 1–10 of 12 rows/)).toBeInTheDocument();
+    expect(card.querySelectorAll(".breakdown__row")).toHaveLength(6);
+    expect(within(card).getByText(/Showing 1–6 of 12 rows/)).toBeInTheDocument();
 
-    // The bars live in the capped scroll area; the pager is a footer outside it,
-    // so it stays at the bottom of the table while the list scrolls.
-    const scroller = card.querySelector(".card-scroll") as HTMLElement;
-    expect(scroller.querySelectorAll(".breakdown__row")).toHaveLength(10);
-    expect(scroller.textContent).not.toContain("Showing");
+    // The bars live in the fixed-height body; the pager is a footer outside it.
+    const body = card.querySelector(".card-scroll") as HTMLElement;
+    expect(body.querySelectorAll(".breakdown__row")).toHaveLength(6);
+    expect(body.textContent).not.toContain("Showing");
     const footer = card.querySelector(".card__pager") as HTMLElement;
     expect(footer).not.toBeNull();
-    expect(footer.previousElementSibling).toBe(scroller);
-    expect(footer.textContent).toContain("Showing 1–10 of 12 rows");
+    expect(footer.previousElementSibling).toBe(body);
+    expect(footer.textContent).toContain("Showing 1–6 of 12 rows");
 
     fireEvent.click(within(card).getByRole("button", { name: "Next" }));
     await waitFor(() =>
-      expect(within(card).getByText(/Showing 11–12 of 12 rows/)).toBeInTheDocument()
+      expect(within(card).getByText(/Showing 7–12 of 12 rows/)).toBeInTheDocument()
     );
-    expect(card.querySelectorAll(".breakdown__row")).toHaveLength(2);
+    expect(card.querySelectorAll(".breakdown__row")).toHaveLength(6);
   });
 
   it("pages the cost detail tables at 10 rows", async () => {
@@ -621,11 +620,12 @@ describe("Manager", () => {
     renderWithProviders(<Manager />);
     const card = (await screen.findByText("Workflows")).closest(".card") as HTMLElement;
     fireEvent.click(within(card).getByRole("tab", { name: /Detail/ }));
-    expect(await within(card).findByText(/Showing 1–10 of 12 rows/)).toBeInTheDocument();
+    expect(await within(card).findByText(/Showing 1–6 of 12 rows/)).toBeInTheDocument();
+    // The fixed-height detail table renders only the current page's rows.
+    expect(card.querySelectorAll("tbody tr")).toHaveLength(6);
     fireEvent.click(within(card).getByRole("button", { name: "Next" }));
-    expect(await within(card).findByText(/Showing 11–12 of 12 rows/)).toBeInTheDocument();
-    // The capped detail table renders only the current page's rows.
-    expect(card.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(await within(card).findByText(/Showing 7–12 of 12 rows/)).toBeInTheDocument();
+    expect(card.querySelectorAll("tbody tr")).toHaveLength(6);
   });
 
   it("opens the budget burn-down chart", async () => {

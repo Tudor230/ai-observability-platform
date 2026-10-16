@@ -271,19 +271,34 @@
   overflow: auto;
 }
 
-/* Cost-card scroll areas: both views fix the body to the same height, so the
-   card never resizes when switching Breakdown ⇄ Detail. */
+/* Cost-card bodies: both views fix the body to the same height so switching
+   Breakdown ⇄ Detail never resizes the card, and neither one scrolls — a page
+   of rows fits by construction and the remainder is paginated. */
 .table-wrap--capped,
 .card-scroll {
   height: var(--card-scroll-height);
+  overflow: hidden;
 }
 
-.table-wrap--capped {
-  overflow: auto; /* sticky header while the rows scroll */
+/* Uniform row rhythm inside cost cards (bars are taller than table rows, so
+   the bars get a compact spacing and the detail rows match their height). */
+.card-scroll .breakdown {
+  padding: var(--global-dimension-size-100);
+  gap: var(--global-dimension-size-100);
 }
 
-.card-scroll {
-  overflow-y: auto;
+.card-scroll .breakdown__row {
+  gap: var(--global-dimension-size-25);
+}
+
+.card-scroll .breakdown__sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-wrap--capped .table tbody tr {
+  height: 50px;
 }
 
 /* Pager footer: always the last row of the card, outside the scroll area, so

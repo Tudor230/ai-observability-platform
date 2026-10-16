@@ -60,8 +60,18 @@ Detail never resizes the card. Loading and empty states render the same content
 in both tabs, so the card is size-stable there too, and the empty/loading paths
 were already outside the scroll area.
 
-Evidence: `npm run test` **514 passed** — the breakdown test asserts the bars
-sit inside `.card-scroll`, the footer is its immediate next sibling, and the
-"Showing …" text is excluded from the scroll area; `npm run lint` +
-`npm run build` clean; coverage 88.5% stmts / 74.1% branches / 68.4% funcs
-(gates 80/70/65).
+**Amendment 3 (new commit):** no inner scrolling at all. The shared body is a
+fixed 360px (`--card-scroll-height`) and a whole page fits inside it: pages are
+6 rows, the breakdown rhythm is compacted (`.card-scroll .breakdown` padding/gap
+8px, row gap 2px, sublabels truncate to one line) so six bars ≈ 338px, and the
+detail rows are matched to the bars' height (`.table-wrap--capped .table tbody
+tr { height: 50px }`) so six rows + header ≈ 337px. `CostCard`'s default
+`pageSize` is now 6 and the primary detail cell truncates, keeping every row
+single-line so the arithmetic always holds. Overflow is `hidden` on both
+bodies — the remainder is paginated, never scrolled.
+
+Evidence: `npm run test` **514 passed** — the paging tests assert 6 rows per
+page in both views (12-row fixture: `Showing 1–6 of 12 rows` → Next →
+`Showing 7–12 of 12 rows`), the bars sit inside `.card-scroll`, and the pager
+footer is its immediate next sibling; `npm run lint` + `npm run build` clean;
+coverage 88.5% stmts / 74.1% branches / 68.4% funcs (gates 80/70/65).

@@ -86,9 +86,10 @@
   --global-dimension-font-size-1100: 45px;
   --global-dimension-font-size-1200: 50px;
   --global-dimension-font-size-1300: 60px;
-  /* Cost-card views share this fixed body height (Breakdown ⇄ Detail) so
-     switching never resizes the card; content scrolls inside. */
-  --card-scroll-height: 380px;
+  /* Cost-card views (Breakdown ⇄ Detail) share this fixed body height so
+     switching never resizes the card. A whole page of rows fits inside it —
+     no inner scrolling; the remainder goes to the next page. */
+  --card-scroll-height: 360px;
 }
 
 /* ------------------------------------------------------------------ *

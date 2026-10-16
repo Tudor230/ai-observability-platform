@@ -33,11 +33,10 @@ export interface BreakdownBarInput {
 
 /**
  * Two-view cost card (refinements v3): a breakdown (bars) and a detail table
- * over the same rows, switched with `Tabs`. **Both** views render one page of
- * rows and share the same *fixed* body height (`--card-scroll-height`, sticky
- * header, scroll inside), so switching tabs never resizes the card, and both
- * paginate client-side at `pageSize` (10 by default) — the breakdown is a
- * readable top-N list rather than an unbounded wall of bars.
+ * over the same rows, switched with `Tabs`. **Both** views share the same
+ * *fixed* body height (`--card-scroll-height`) and render one page of rows that
+ * fits inside it — nothing scrolls; the remainder is paginated. Switching tabs
+ * therefore never resizes the card, and both views show the same slice.
  */
 export function CostCard({
   title,
@@ -48,7 +47,7 @@ export function CostCard({
   emptyBreakdown,
   emptyDetail,
   loading = false,
-  pageSize = 10,
+  pageSize = 6,
   filters,
   filterChips,
 }: {
@@ -107,7 +106,9 @@ export function CostCard({
                   <Td
                     key={index}
                     align={index === 0 ? "left" : "right"}
-                    className={index === 0 ? "table__cell--primary" : "num"}
+                    className={
+                      index === 0 ? "table__cell--primary truncate" : "num"
+                    }
                   >
                     {index === 0 && row.href ? <Link to={row.href}>{cell}</Link> : cell}
                   </Td>
