@@ -696,6 +696,11 @@ Docker stack.
 | F45 | Refinements v3: cost cards are two-view (breakdown ⇄ detail) with a 380px capped, sticky-header table paged at 10 rows via the shared `Pagination` component (Engineering keeps server pagination) |
 | F46 | Refinements v3: filtering is per table (namespaced URL state, `useTableFilters`) instead of one page-level filter set; the page keeps only the time window |
 | F47 | Refinements v3: `/costs` execution rows carry error rate, avg duration, last seen and token totals, so detail views need no extra endpoint |
+| F48 | Phoenix insights: `GET /models` merges billing `cost_records` (cost, input/output tokens) with LLM spans (calls, failures, avg/p95 latency) per provider·model; `GET /tools` aggregates TOOL spans per tool name. Both are scope-aware, accept `start/end/days/project_id/workflow`, and strip cost for client callers |
+| F49 | Phoenix insights: the dashboard's time-series panels (cost, cost per execution, traffic, tokens, latency quantiles, error rate, LLM & tool calls, failures by kind) live once in `components/charts/insights.tsx` + `lib/insightSeries.ts` and are composed by Overview, Manager and Executive |
+| F50 | Phoenix insights: Manager gains reliability, usage and model/tool insight sections (entity panels with namespaced filters); Executive gains grid-3 traffic, usage-economics and model-economics sections |
+| F51 | Phoenix insights: Executive reports **cost per 1M tokens** (matching the per-1M pricing convention) and drops the success-only cost card; Manager's stat row grows to eight operational cards incl. p95 latency, cost per execution, tokens and worst-case budget utilization; unit costs use a 4-decimal formatter |
+| F52 | Phoenix insights: cost-card detail tables use `table-layout: fixed` with a fixed 34% label column — long project/workflow names ellipsise and reveal the full text via the cell's `title`, so the numeric columns can never be pushed out of the card |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
 ### Partially fixed

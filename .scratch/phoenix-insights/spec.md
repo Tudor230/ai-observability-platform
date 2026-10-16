@@ -1,6 +1,6 @@
 # Phoenix insights — model/tool insights, richer stats, chart parity
 
-Status: in progress (2026-10-16)
+Status: delivered (2026-10-16)
 Source: follow-up on refinements v3 — dashboard parity with the Arize Phoenix
 project dashboards (more stat cards, more graphs, model/tool insights) plus the
 cost-card table overflow review.

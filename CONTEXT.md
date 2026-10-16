@@ -47,6 +47,13 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   query params, ingest routing and analytics dimension keys (ADR-0012).
 - **Client role** — a project-scoped, read-only, cost-free membership role
   (ADR-0006); unrelated to the retired client *dimension*, and untouched by it.
+- **Unit cost** — a cost per unit (per 1M tokens, per execution); rendered with
+  four decimals because totals-style rounding would flatten it to cents.
+- **Model insights** — per provider·model economics from `GET /models`: calls,
+  failures, tokens, cost (billing `cost_records`) and avg/p95 latency (LLM
+  spans).
+- **Tool insights** — per-tool reliability from `GET /tools`: calls, failures,
+  error rate and avg/p95 duration of TOOL spans.
 
 ## Explicitly avoided synonyms
 
