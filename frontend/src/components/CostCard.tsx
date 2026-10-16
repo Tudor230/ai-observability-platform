@@ -163,6 +163,7 @@ export function CostCard({
                     className={
                       index === 0 ? "table__cell--primary truncate" : "num"
                     }
+                    title={index === 0 ? row.bar?.label ?? row.key : undefined}
                   >
                     {index === 0 && row.href ? <Link to={row.href}>{cell}</Link> : cell}
                   </Td>

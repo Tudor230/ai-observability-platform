@@ -27,6 +27,7 @@ import { SeverityBadge } from "../components/domain";
 import {
   Button,
   CardPanel,
+  Delta,
   Dialog,
   EmptyState,
   Metric,
@@ -35,7 +36,13 @@ import {
   Skeleton,
   useToast,
 } from "../components/core";
-import { formatMoney, formatPct, formatTokens } from "../lib/format";
+import {
+  formatMoney,
+  formatMs,
+  formatPct,
+  formatTokens,
+  formatUnitCost,
+} from "../lib/format";
 
 export default function Manager() {
   const { filters } = useFilters();
@@ -75,6 +82,18 @@ export default function Manager() {
         cap: burn.amount,
       }))
     : [];
+
+  const overviewData = overview.data;
+  const metricItems = trends.data?.items ?? [];
+  const worstBudget = (budgets.data?.items ?? [])
+    .slice()
+    .sort((a, b) => b.utilization - a.utilization)[0];
+  const budgetCount = budgets.data?.items?.length ?? 0;
+  const costPerExecution = overviewData?.executions
+    ? (overviewData.total_cost ?? 0) / overviewData.executions
+    : null;
+  const inputTokens = metricItems.reduce((sum, m) => sum + (m.input_tokens ?? 0), 0);
+  const outputTokens = metricItems.reduce((sum, m) => sum + (m.output_tokens ?? 0), 0);
 
   const refreshBudgets = () => {
     void queryClient.invalidateQueries({ queryKey: ["budgets"] });
@@ -132,23 +151,54 @@ export default function Manager() {
 
       {overview.isLoading ? (
         <div className="grid grid-4">
-          {Array.from({ length: 4 }, (_, i) => (
+          {Array.from({ length: 8 }, (_, i) => (
             <Skeleton key={i} shape="chart" />
           ))}
         </div>
       ) : (
         <div className="grid grid-4">
-          <Metric label="Total cost" value={formatMoney(overview.data?.total_cost)} />
-          <Metric label="Executions" value={overview.data?.executions ?? 0} />
+          <Metric
+            label="Total cost"
+            value={formatMoney(overviewData?.total_cost)}
+            sub={<Delta pct={overviewData?.deltas?.total_cost_pct} polarity="up-is-bad" />}
+          />
+          <Metric
+            label="Executions"
+            value={overviewData?.executions ?? 0}
+            sub={
+              <>
+                {overviewData?.failed_executions ?? 0} failed{" "}
+                <Delta pct={overviewData?.deltas?.executions_pct} polarity="down-is-bad" />
+              </>
+            }
+          />
           <Metric
             label="Error rate"
-            value={formatPct(overview.data?.error_rate)}
-            tone={overview.data?.error_rate ? "danger" : "default"}
+            value={formatPct(overviewData?.error_rate)}
+            tone={overviewData?.error_rate ? "danger" : "default"}
+            sub={<Delta pct={overviewData?.deltas?.error_rate_pct} polarity="up-is-bad" />}
           />
           <Metric
             label="Open alerts"
             value={alerts.data?.total ?? 0}
             tone={alerts.data?.total ? "warning" : "default"}
+          />
+          <Metric
+            label="p95 latency"
+            value={formatMs(overviewData?.p95_duration_ms)}
+            sub={`p50 ${formatMs(overviewData?.p50_duration_ms)}`}
+          />
+          <Metric label="Cost per execution" value={formatUnitCost(costPerExecution)} />
+          <Metric
+            label="Tokens"
+            value={formatTokens(overviewData?.total_tokens)}
+            sub={`${formatTokens(inputTokens)} in / ${formatTokens(outputTokens)} out`}
+          />
+          <Metric
+            label="Budget utilization"
+            value={worstBudget ? formatPct(worstBudget.utilization) : "—"}
+            sub={budgetCount ? `${budgetCount} budget${budgetCount === 1 ? "" : "s"}` : "no budgets"}
+            tone={worstBudget && worstBudget.utilization >= 0.8 ? "warning" : "default"}
           />
         </div>
       )}

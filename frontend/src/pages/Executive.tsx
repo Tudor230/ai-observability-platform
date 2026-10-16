@@ -9,12 +9,13 @@ import { TableFilterChips, TableFilters } from "../components/TableFilters";
 import { useTableFilters } from "../state/useTableFilters";
 import {
   CardPanel,
+  Delta,
   EmptyState,
   Metric,
   QueryError,
   Skeleton,
 } from "../components/core";
-import { formatMoney, formatPct, formatTokens } from "../lib/format";
+import { formatMoney, formatMs, formatPct, formatTokens, formatUnitCost } from "../lib/format";
 import { buildForecast, forecastAsOf } from "../lib/forecast";
 import type { DayMetric } from "../api/types";
 
@@ -53,12 +54,13 @@ export default function Executive() {
 
   const executions = data?.executions ?? 0;
   const failed = data?.failed_executions ?? 0;
-  const successful = Math.max(0, executions - failed);
   const totalCost = data?.total_cost ?? 0;
   const costPerExecution = executions ? totalCost / executions : null;
-  const costPerSuccess = successful ? totalCost / successful : null;
   const tokens = data?.total_tokens ?? 0;
-  const costPer1kTokens = tokens ? (totalCost / tokens) * 1000 : null;
+  const costPer1mTokens = tokens ? (totalCost / tokens) * 1_000_000 : null;
+  const inputTokens = items.reduce((sum, m) => sum + (m.input_tokens ?? 0), 0);
+  const outputTokens = items.reduce((sum, m) => sum + (m.output_tokens ?? 0), 0);
+  const deltas = data?.deltas;
 
   const anyError = overview.isError || byModel.isError || byProject.isError;
   const loadError = overview.error ?? byModel.error ?? byProject.error;
@@ -80,25 +82,38 @@ export default function Executive() {
       {anyError ? <QueryError what="executive data" error={loadError} /> : null}
 
       {overview.isLoading ? (
-        <div className="grid grid-4">
+        <div className="grid grid-3">
           {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} shape="chart" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-4">
-          <Metric label="Total AI cost" value={formatMoney(totalCost)} />
-          <Metric label="Cost per execution" value={formatMoney(costPerExecution)} />
-          <Metric label="Cost per successful execution" value={formatMoney(costPerSuccess)} />
+        <div className="grid grid-3">
           <Metric
-            label="Cost per 1k tokens"
-            value={costPer1kTokens === null ? "—" : formatMoney(costPer1kTokens)}
+            label="Total AI cost"
+            value={formatMoney(totalCost)}
+            sub={<Delta pct={deltas?.total_cost_pct} polarity="up-is-bad" />}
           />
-          <Metric label="Total tokens" value={formatTokens(tokens)} />
+          <Metric label="Cost per 1M tokens" value={formatUnitCost(costPer1mTokens)} />
+          <Metric label="Cost per execution" value={formatUnitCost(costPerExecution)} />
           <Metric
-            label="Successful executions"
-            value={successful}
-            sub={`${failed} failed`}
+            label="Executions"
+            value={executions}
+            sub={
+              <>
+                {failed} failed <Delta pct={deltas?.executions_pct} polarity="down-is-bad" />
+              </>
+            }
+          />
+          <Metric
+            label="Total tokens"
+            value={formatTokens(tokens)}
+            sub={`${formatTokens(inputTokens)} in / ${formatTokens(outputTokens)} out`}
+          />
+          <Metric
+            label="p95 latency"
+            value={formatMs(data?.p95_duration_ms)}
+            sub={`p50 ${formatMs(data?.p50_duration_ms)}`}
           />
         </div>
       )}

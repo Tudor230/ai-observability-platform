@@ -523,6 +523,37 @@ describe("ExecutionDetail", () => {
 });
 
 describe("Manager", () => {
+  it("renders the eight-card operational stat row", async () => {
+    renderWithProviders(<Manager />);
+    await screen.findByText("Total cost");
+    for (const label of [
+      "Total cost",
+      "Executions",
+      "Error rate",
+      "Open alerts",
+      "p95 latency",
+      "Cost per execution",
+      "Tokens",
+      "Budget utilization",
+    ]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
+    // Every label sits in a metric card, not only in table headers.
+    const metrics = Array.from(document.querySelectorAll(".metric__label")).map(
+      (el) => el.textContent
+    );
+    expect(metrics).toEqual([
+      "Total cost",
+      "Executions",
+      "Error rate",
+      "Open alerts",
+      "p95 latency",
+      "Cost per execution",
+      "Tokens",
+      "Budget utilization",
+    ]);
+  });
+
   it("renders two-view cost cards, budgets and alerts", async () => {
     renderWithProviders(<Manager />);
     // Merged two-view cards (refinements v3): breakdown + detail per dimension.
@@ -623,6 +654,10 @@ describe("Manager", () => {
     expect(await within(card).findByText(/Showing 1–6 of 12 rows/)).toBeInTheDocument();
     // The fixed-height detail table renders only the current page's rows.
     expect(card.querySelectorAll("tbody tr")).toHaveLength(6);
+    // The label column trims, so the full text is on the cell's title.
+    const firstCell = card.querySelector("tbody td.table__cell--primary") as HTMLElement;
+    expect(firstCell.className).toContain("truncate");
+    expect(firstCell.getAttribute("title")).toBe("wf-0");
     fireEvent.click(within(card).getByRole("button", { name: "Next" }));
     expect(await within(card).findByText(/Showing 7–12 of 12 rows/)).toBeInTheDocument();
     expect(card.querySelectorAll("tbody tr")).toHaveLength(6);
@@ -732,6 +767,12 @@ describe("Executive", () => {
   it("renders unit economics, forecast and the two-view cost cards", async () => {
     renderWithProviders(<Executive />);
     expect(await screen.findByText("Total AI cost")).toBeInTheDocument();
+    // Unit economics are per-1M, and the success-only card is gone.
+    expect(screen.getByText("Cost per 1M tokens")).toBeInTheDocument();
+    expect(screen.getByText("Cost per execution")).toBeInTheDocument();
+    expect(screen.queryByText("Cost per 1k tokens")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cost per successful execution")).not.toBeInTheDocument();
+    expect(screen.getByText("p95 latency")).toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Projects")).toBeInTheDocument();
     expect(screen.getByText("Forecast")).toBeInTheDocument();

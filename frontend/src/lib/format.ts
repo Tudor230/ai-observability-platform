@@ -13,6 +13,19 @@ export function formatMoney(value: number | null | undefined): string {
   })}`;
 }
 
+/**
+ * Unit costs (per 1M tokens, per execution) are far smaller than the totals
+ * `formatMoney` was built for — it rounds to cents above $0.01 and would render
+ * $0.0294 as "$0.03". Unit costs keep four decimals instead.
+ */
+export function formatUnitCost(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const v = Number(value);
+  if (!Number.isFinite(v)) return "—";
+  const abs = Math.abs(v);
+  return `$${v.toFixed(abs > 0 && abs < 0.0001 ? 6 : 4)}`;
+}
+
 export function formatTokens(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;

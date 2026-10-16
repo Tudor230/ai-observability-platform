@@ -301,6 +301,20 @@
   height: 50px;
 }
 
+/* Fixed columns: a long project/workflow name used to widen the auto-layout
+   table, and the capped body then clipped the right-hand Cost column. The label
+   column now takes a fixed share and trims (the full text is on the cell's
+   `title`); fixed layout spreads the remainder across the numeric columns, so
+   the table always fits the card at any width. */
+.table-wrap--capped .table {
+  table-layout: fixed;
+}
+
+.table-wrap--capped .table th:first-child,
+.table-wrap--capped .table td:first-child {
+  width: 34%;
+}
+
 /* Pager footer: always the last row of the card, outside the scroll area, so
    it stays put while the table/breakdown scrolls. */
 .card__pager {
