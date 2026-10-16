@@ -1,7 +1,7 @@
 # 03 — Backend: `GET /models` and `GET /tools` insight endpoints
 
 Type: task
-Status: in progress
+Status: resolved
 Area: phoenix insights, read API
 Estimate: M
 
@@ -43,3 +43,20 @@ exposes: per-model economics (`Model Insights`) and per-tool reliability
 ## Tests
 
 - `uv run pytest`, `uv run ruff check .`, `uv run mypy src`.
+
+## Result
+
+- `GET /models` merges billing `cost_records` (cost + input/output tokens) with
+  LLM spans (calls, failures, latency) on the `provider:model` key; every row
+  now carries tokens and cost, which `/costs?dimension=model` alone could not.
+- `GET /tools` groups TOOL spans by `spans.tool_name` (span-name fallback).
+- Both are scope-aware (`resolve_project_filter`), support
+  `start/end/days/project_id/workflow`, gate on
+  `require_access("engineer", "manager", "client")`, and strip `total_cost` for
+  client callers.
+- Evidence: 156 backend tests pass (+9: aggregation, project scoping via
+  team-scoped user keys, client cost stripping, empty window), `ruff check`
+  clean, `mypy src` clean, coverage 88.99%.
+
+Note: the Bearer project key is an *ingest* credential — read-scope tests use
+`x-api-key` user keys with team-scoped memberships.
