@@ -271,9 +271,25 @@
   overflow: auto;
 }
 
-/* Long cost/breakdown tables: capped height with a scrolling sticky header. */
+/* Cost-card scroll areas: both views fix the body to the same height, so the
+   card never resizes when switching Breakdown ⇄ Detail. */
+.table-wrap--capped,
+.card-scroll {
+  height: var(--card-scroll-height);
+}
+
 .table-wrap--capped {
-  max-height: 380px;
+  overflow: auto; /* sticky header while the rows scroll */
+}
+
+.card-scroll {
+  overflow-y: auto;
+}
+
+/* Pager footer: always the last row of the card, outside the scroll area, so
+   it stays put while the table/breakdown scrolls. */
+.card__pager {
+  border-top: 1px solid var(--global-card-border-color);
 }
 
 .table {

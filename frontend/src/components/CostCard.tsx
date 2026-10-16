@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { BreakdownBars, type BreakdownRow } from "./charts/BreakdownBars";
 import {
   CardPanel,
   EmptyState,
@@ -11,18 +12,32 @@ import {
   Td,
   Th,
   Tr,
-} from "../components/core";
+} from "./core";
 
 export interface CostDetailRow {
   key: string;
+  /** Detail columns; the first is the primary (left) cell. */
   cells: ReactNode[];
+  /** Detail-view link target; the breakdown bars link to the same place. */
+  href?: string;
+  /** Breakdown-bar inputs for this row (label falls back to the key). */
+  bar?: BreakdownBarInput;
+}
+
+export interface BreakdownBarInput {
+  label: string;
+  value: number;
+  valueLabel: string;
+  sublabel?: string;
 }
 
 /**
  * Two-view cost card (refinements v3): a breakdown (bars) and a detail table
- * over the same query result, switched with `Tabs`. The detail table is
- * height-capped (sticky header + scroll) and paginates client-side at
- * `pageSize` rows (10 by default).
+ * over the same rows, switched with `Tabs`. **Both** views render one page of
+ * rows and share the same *fixed* body height (`--card-scroll-height`, sticky
+ * header, scroll inside), so switching tabs never resizes the card, and both
+ * paginate client-side at `pageSize` (10 by default) — the breakdown is a
+ * readable top-N list rather than an unbounded wall of bars.
  */
 export function CostCard({
   title,
@@ -34,13 +49,13 @@ export function CostCard({
   emptyDetail,
   loading = false,
   pageSize = 10,
-  drilldown,
   filters,
   filterChips,
 }: {
   title: string;
   subTitle?: string;
-  breakdown: ReactNode;
+  /** Renders the current page of bars (receives only the visible rows). */
+  breakdown: (visible: CostDetailRow[]) => ReactNode;
   /** Detail header labels; the first column is the primary (left) one. */
   columns: string[];
   rows: CostDetailRow[];
@@ -48,8 +63,6 @@ export function CostCard({
   emptyDetail: string;
   loading?: boolean;
   pageSize?: number;
-  /** Optional per-row link target (e.g. Engineering drill-down). */
-  drilldown?: (row: CostDetailRow) => string | undefined;
   /** This card's own filter control (rendered in the header). */
   filters?: ReactNode;
   /** This card's active-filter chips (rendered above the tab panel). */
@@ -60,7 +73,19 @@ export function CostCard({
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
-  const pageRows = rows.slice((current - 1) * pageSize, current * pageSize);
+  const visible = rows.slice((current - 1) * pageSize, current * pageSize);
+
+  const pager = (
+    <div className="card__pager">
+      <Pagination
+        page={current}
+        pageSize={pageSize}
+        total={rows.length}
+        onPage={setPage}
+        label="rows"
+      />
+    </div>
+  );
 
   const detail = rows.length ? (
     <>
@@ -76,32 +101,23 @@ export function CostCard({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((row) => {
-              const href = drilldown?.(row);
-              return (
-                <Tr key={row.key}>
-                  {row.cells.map((cell, index) => (
-                    <Td
-                      key={index}
-                      align={index === 0 ? "left" : "right"}
-                      className={index === 0 ? "table__cell--primary" : "num"}
-                    >
-                      {index === 0 && href ? <Link to={href}>{cell}</Link> : cell}
-                    </Td>
-                  ))}
-                </Tr>
-              );
-            })}
+            {visible.map((row) => (
+              <Tr key={row.key}>
+                {row.cells.map((cell, index) => (
+                  <Td
+                    key={index}
+                    align={index === 0 ? "left" : "right"}
+                    className={index === 0 ? "table__cell--primary" : "num"}
+                  >
+                    {index === 0 && row.href ? <Link to={row.href}>{cell}</Link> : cell}
+                  </Td>
+                ))}
+              </Tr>
+            ))}
           </tbody>
         </Table>
       </TableWrap>
-      <Pagination
-        page={current}
-        pageSize={pageSize}
-        total={rows.length}
-        onPage={setPage}
-        label="rows"
-      />
+      {pager}
     </>
   ) : (
     <EmptyState title={emptyDetail} />
@@ -114,7 +130,12 @@ export function CostCard({
       <Skeleton width="70%" />
     </div>
   ) : rows.length ? (
-    breakdown
+    <>
+      {/* Same cap/scroll as the detail table; the pager stays outside, pinned
+          to the bottom of the card in both views. */}
+      <div className="card-scroll">{breakdown(visible)}</div>
+      {pager}
+    </>
   ) : (
     <EmptyState title={emptyBreakdown} />
   );
@@ -133,5 +154,28 @@ export function CostCard({
         {view === "breakdown" ? body : detail}
       </Tabs>
     </CardPanel>
+  );
+}
+
+/** Shared breakdown renderer: maps the visible rows onto `BreakdownBars`. */
+export function CostCardBars({
+  rows,
+  ariaLabel,
+}: {
+  rows: CostDetailRow[];
+  ariaLabel?: string;
+}) {
+  const bars: BreakdownRow[] = rows.map((row) => ({
+    key: row.key,
+    label: row.bar?.label ?? row.key,
+    value: row.bar?.value ?? 0,
+    valueLabel: row.bar?.valueLabel ?? "",
+    sublabel: row.bar?.sublabel,
+    href: row.href,
+  }));
+  return (
+    <div style={{ padding: "var(--global-dimension-size-100)" }}>
+      <BreakdownBars rows={bars} ariaLabel={ariaLabel} />
+    </div>
   );
 }

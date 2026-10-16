@@ -576,6 +576,39 @@ describe("Manager", () => {
     expect(projectCalls[projectCalls.length - 1][1].project_id).toBeUndefined();
   });
 
+  it("limits and pages the breakdown view too", async () => {
+    h.costs.mockResolvedValue({
+      items: Array.from({ length: 12 }, (_, i) => ({
+        ...aggregate,
+        key: `wf-${i}`,
+        name: `wf-${i}`,
+      })),
+      total: 12,
+    });
+    renderWithProviders(<Manager />);
+
+    // The Workflows card (first) shows 10 of 12 bars on page 1 plus the pager.
+    const card = (await screen.findByText("Workflows")).closest(".card") as HTMLElement;
+    expect(card.querySelectorAll(".breakdown__row")).toHaveLength(10);
+    expect(within(card).getByText(/Showing 1–10 of 12 rows/)).toBeInTheDocument();
+
+    // The bars live in the capped scroll area; the pager is a footer outside it,
+    // so it stays at the bottom of the table while the list scrolls.
+    const scroller = card.querySelector(".card-scroll") as HTMLElement;
+    expect(scroller.querySelectorAll(".breakdown__row")).toHaveLength(10);
+    expect(scroller.textContent).not.toContain("Showing");
+    const footer = card.querySelector(".card__pager") as HTMLElement;
+    expect(footer).not.toBeNull();
+    expect(footer.previousElementSibling).toBe(scroller);
+    expect(footer.textContent).toContain("Showing 1–10 of 12 rows");
+
+    fireEvent.click(within(card).getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(within(card).getByText(/Showing 11–12 of 12 rows/)).toBeInTheDocument()
+    );
+    expect(card.querySelectorAll(".breakdown__row")).toHaveLength(2);
+  });
+
   it("pages the cost detail tables at 10 rows", async () => {
     h.costs.mockResolvedValue({
       items: Array.from({ length: 12 }, (_, i) => ({
@@ -586,10 +619,13 @@ describe("Manager", () => {
       total: 12,
     });
     renderWithProviders(<Manager />);
-    fireEvent.click((await screen.findAllByRole("tab", { name: /Detail/ }))[0]);
-    expect(await screen.findByText(/Showing 1–10 of 12 rows/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(await screen.findByText(/Showing 11–12 of 12 rows/)).toBeInTheDocument();
+    const card = (await screen.findByText("Workflows")).closest(".card") as HTMLElement;
+    fireEvent.click(within(card).getByRole("tab", { name: /Detail/ }));
+    expect(await within(card).findByText(/Showing 1–10 of 12 rows/)).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("button", { name: "Next" }));
+    expect(await within(card).findByText(/Showing 11–12 of 12 rows/)).toBeInTheDocument();
+    // The capped detail table renders only the current page's rows.
+    expect(card.querySelectorAll("tbody tr")).toHaveLength(2);
   });
 
   it("opens the budget burn-down chart", async () => {

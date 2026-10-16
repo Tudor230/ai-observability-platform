@@ -20,8 +20,7 @@ import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { BudgetDialog } from "../components/BudgetDialog";
 import { TrendChart } from "../components/charts/TrendChart";
-import { BreakdownBars } from "../components/charts/BreakdownBars";
-import { CostCard } from "../components/CostCard";
+import { CostCard, CostCardBars } from "../components/CostCard";
 import { TableFilterChips, TableFilters } from "../components/TableFilters";
 import { useTableFilters } from "../state/useTableFilters";
 import { SeverityBadge } from "../components/domain";
@@ -164,33 +163,29 @@ export default function Manager() {
           emptyBreakdown="No workflow cost yet"
           emptyDetail="No workflows in range."
           columns={["Workflow", "Executions", "Error rate", "Tokens", "Cost"]}
-          rows={(costsByWorkflow.data?.items ?? []).map((item) => ({
-            key: item.key ?? String(item.name),
-            cells: [
-              item.key ?? item.name ?? "—",
-              item.executions,
-              <span className={item.error_rate ? "text-danger" : ""}>
-                {formatPct(item.error_rate)}
-              </span>,
-              formatTokens(item.total_tokens),
-              formatMoney(item.total_cost),
-            ],
-          }))}
-          drilldown={(row) => `/engineering?workflow=${encodeURIComponent(row.key)}`}
-          breakdown={
-            <div style={{ padding: "var(--global-dimension-size-100)" }}>
-              <BreakdownBars
-                rows={(costsByWorkflow.data?.items ?? []).map((item) => ({
-                  key: item.key ?? String(item.name),
-                  label: item.key ?? item.name ?? "—",
-                  value: item.total_cost ?? 0,
-                  valueLabel: formatMoney(item.total_cost),
-                  sublabel: `${item.executions} executions`,
-                  href: `/engineering?workflow=${encodeURIComponent(item.key ?? item.name ?? "")}`,
-                }))}
-              />
-            </div>
-          }
+          rows={(costsByWorkflow.data?.items ?? []).map((item) => {
+            const key = item.key ?? String(item.name);
+            return {
+              key,
+              href: `/engineering?workflow=${encodeURIComponent(key)}`,
+              bar: {
+                label: item.key ?? item.name ?? "—",
+                value: item.total_cost ?? 0,
+                valueLabel: formatMoney(item.total_cost),
+                sublabel: `${item.executions} executions`,
+              },
+              cells: [
+                item.key ?? item.name ?? "—",
+                item.executions,
+                <span className={item.error_rate ? "text-danger" : ""}>
+                  {formatPct(item.error_rate)}
+                </span>,
+                formatTokens(item.total_tokens),
+                formatMoney(item.total_cost),
+              ],
+            };
+          })}
+          breakdown={(visible) => <CostCardBars rows={visible} />}
         />
 
         <CostCard
@@ -202,33 +197,30 @@ export default function Manager() {
           emptyBreakdown="No project cost yet"
           emptyDetail="No project spend in range."
           columns={["Project", "Executions", "Error rate", "Tokens", "Cost"]}
-          rows={(costsByProject.data?.items ?? []).map((item) => ({
-            key: item.key ?? String(item.name),
-            cells: [
-              projectNames.get(item.key ?? "") ?? item.key ?? "—",
-              item.executions,
-              <span className={item.error_rate ? "text-danger" : ""}>
-                {formatPct(item.error_rate)}
-              </span>,
-              formatTokens(item.total_tokens),
-              formatMoney(item.total_cost),
-            ],
-          }))}
-          drilldown={(row) => `/engineering?project_id=${encodeURIComponent(row.key)}`}
-          breakdown={
-            <div style={{ padding: "var(--global-dimension-size-100)" }}>
-              <BreakdownBars
-                rows={(costsByProject.data?.items ?? []).map((item) => ({
-                  key: item.key ?? String(item.name),
-                  label: projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "—",
-                  value: item.total_cost ?? 0,
-                  valueLabel: formatMoney(item.total_cost),
-                  sublabel: `${item.executions} executions · ${formatTokens(item.total_tokens)} tokens`,
-                  href: `/engineering?project_id=${encodeURIComponent(item.key ?? "")}`,
-                }))}
-              />
-            </div>
-          }
+          rows={(costsByProject.data?.items ?? []).map((item) => {
+            const key = item.key ?? String(item.name);
+            const label = projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "—";
+            return {
+              key,
+              href: `/engineering?project_id=${encodeURIComponent(key)}`,
+              bar: {
+                label,
+                value: item.total_cost ?? 0,
+                valueLabel: formatMoney(item.total_cost),
+                sublabel: `${item.executions} executions · ${formatTokens(item.total_tokens)} tokens`,
+              },
+              cells: [
+                label,
+                item.executions,
+                <span className={item.error_rate ? "text-danger" : ""}>
+                  {formatPct(item.error_rate)}
+                </span>,
+                formatTokens(item.total_tokens),
+                formatMoney(item.total_cost),
+              ],
+            };
+          })}
+          breakdown={(visible) => <CostCardBars rows={visible} />}
         />
       </div>
 
@@ -241,31 +233,29 @@ export default function Manager() {
         emptyBreakdown="No team cost yet"
         emptyDetail="No team spend in range."
         columns={["Team", "Executions", "Error rate", "Tokens", "Cost"]}
-        rows={(costsByTeam.data?.items ?? []).map((item) => ({
-          key: item.key ?? String(item.name),
-          cells: [
-            item.key ?? item.name ?? "unassigned",
-            item.executions,
-            <span className={item.error_rate ? "text-danger" : ""}>
-              {formatPct(item.error_rate)}
-            </span>,
-            formatTokens(item.total_tokens),
-            formatMoney(item.total_cost),
-          ],
-        }))}
-        breakdown={
-          <div style={{ padding: "var(--global-dimension-size-100)" }}>
-            <BreakdownBars
-              rows={(costsByTeam.data?.items ?? []).map((item) => ({
-                key: item.key ?? String(item.name),
-                label: item.key ?? item.name ?? "unassigned",
-                value: item.total_cost ?? 0,
-                valueLabel: formatMoney(item.total_cost),
-                sublabel: `${item.executions} executions`,
-              }))}
-            />
-          </div>
-        }
+        rows={(costsByTeam.data?.items ?? []).map((item) => {
+          const key = item.key ?? String(item.name);
+          const label = item.key ?? item.name ?? "unassigned";
+          return {
+            key,
+            bar: {
+              label,
+              value: item.total_cost ?? 0,
+              valueLabel: formatMoney(item.total_cost),
+              sublabel: `${item.executions} executions`,
+            },
+            cells: [
+              label,
+              item.executions,
+              <span className={item.error_rate ? "text-danger" : ""}>
+                {formatPct(item.error_rate)}
+              </span>,
+              formatTokens(item.total_tokens),
+              formatMoney(item.total_cost),
+            ],
+          };
+        })}
+        breakdown={(visible) => <CostCardBars rows={visible} />}
       />
 
       <CostCard
@@ -277,29 +267,26 @@ export default function Manager() {
         emptyBreakdown="No agent spans seen yet"
         emptyDetail="No agents in range."
         columns={["Agent", "Executions", "Error rate", "Tokens", "Cost"]}
-        rows={(agents.data?.items ?? []).map((a) => ({
-          key: a.name ?? "unknown",
-          cells: [
-            a.name ?? "unknown",
-            a.executions,
-            <span className={a.error_rate ? "text-danger" : ""}>{formatPct(a.error_rate)}</span>,
-            formatTokens(a.total_tokens),
-            formatMoney(a.total_cost),
-          ],
-        }))}
-        breakdown={
-          <div style={{ padding: "var(--global-dimension-size-100)" }}>
-            <BreakdownBars
-              rows={(agents.data?.items ?? []).map((a) => ({
-                key: a.name ?? "unknown",
-                label: a.name ?? "unknown",
-                value: a.total_cost ?? 0,
-                valueLabel: formatMoney(a.total_cost),
-                sublabel: `${a.executions} executions`,
-              }))}
-            />
-          </div>
-        }
+        rows={(agents.data?.items ?? []).map((a) => {
+          const label = a.name ?? "unknown";
+          return {
+            key: label,
+            bar: {
+              label,
+              value: a.total_cost ?? 0,
+              valueLabel: formatMoney(a.total_cost),
+              sublabel: `${a.executions} executions`,
+            },
+            cells: [
+              label,
+              a.executions,
+              <span className={a.error_rate ? "text-danger" : ""}>{formatPct(a.error_rate)}</span>,
+              formatTokens(a.total_tokens),
+              formatMoney(a.total_cost),
+            ],
+          };
+        })}
+        breakdown={(visible) => <CostCardBars rows={visible} />}
       />
 
       <div className="grid grid-2">
@@ -309,7 +296,6 @@ export default function Manager() {
           extra={
             <Button
               variant="primary"
-             
               onClick={() => setBudgetDialog({ open: true, budget: null })}
             >
               New budget

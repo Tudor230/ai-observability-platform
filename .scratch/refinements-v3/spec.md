@@ -51,6 +51,7 @@ Convention: phase-ordered commits, one per ticket, on `feat/refinements`.
 | 10 | 3 | Frontend: per-table filters with namespaced URL state |
 | 11 | 3 | Frontend: searchable entity pickers |
 | 12 | 4 | Docs sweep (plans, docs/03–06, READMEs) + full verification gate |
+| 13 | 3 | Frontend: limit + paginate the breakdown view too (amendment to 09) |
 
 ## Design notes
 

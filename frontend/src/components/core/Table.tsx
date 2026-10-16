@@ -6,7 +6,7 @@ export function TableWrap({
   capped = false,
 }: {
   children: ReactNode;
-  /** Caps the height (sticky header + scroll) for long breakdown tables. */
+  /** Fixes the height (sticky header + scroll) for cost-card tables. */
   capped?: boolean;
 }) {
   return (

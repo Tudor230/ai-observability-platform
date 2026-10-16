@@ -4,8 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
-import { BreakdownBars } from "../components/charts/BreakdownBars";
-import { CostCard } from "../components/CostCard";
+import { CostCard, CostCardBars } from "../components/CostCard";
 import { TableFilterChips, TableFilters } from "../components/TableFilters";
 import { useTableFilters } from "../state/useTableFilters";
 import {
@@ -149,31 +148,29 @@ export default function Executive() {
           emptyBreakdown="No project spend in range"
           emptyDetail="No project spend in range."
           columns={["Project", "Executions", "Error rate", "Tokens", "Cost"]}
-          rows={(byProject.data?.items ?? []).map((item) => ({
-            key: item.key ?? String(item.name),
-            cells: [
-              projectNames.get(item.key ?? "") ?? item.key ?? "—",
-              item.executions,
-              <span className={item.error_rate ? "text-danger" : ""}>
-                {formatPct(item.error_rate)}
-              </span>,
-              formatTokens(item.total_tokens),
-              formatMoney(item.total_cost),
-            ],
-          }))}
-          breakdown={
-            <div style={{ padding: "var(--global-dimension-size-100)" }}>
-              <BreakdownBars
-                rows={(byProject.data?.items ?? []).map((item) => ({
-                  key: item.key ?? String(item.name),
-                  label: projectNames.get(item.key ?? "") ?? item.key ?? item.name ?? "unknown",
-                  value: item.total_cost ?? 0,
-                  valueLabel: formatMoney(item.total_cost),
-                  sublabel: `${item.executions} executions`,
-                }))}
-              />
-            </div>
-          }
+          rows={(byProject.data?.items ?? []).map((item) => {
+            const key = item.key ?? String(item.name);
+            const label = projectNames.get(item.key ?? "") ?? item.key ?? "—";
+            return {
+              key,
+              bar: {
+                label,
+                value: item.total_cost ?? 0,
+                valueLabel: formatMoney(item.total_cost),
+                sublabel: `${item.executions} executions`,
+              },
+              cells: [
+                label,
+                item.executions,
+                <span className={item.error_rate ? "text-danger" : ""}>
+                  {formatPct(item.error_rate)}
+                </span>,
+                formatTokens(item.total_tokens),
+                formatMoney(item.total_cost),
+              ],
+            };
+          })}
+          breakdown={(visible) => <CostCardBars rows={visible} />}
         />
 
         <CostCard
@@ -185,28 +182,26 @@ export default function Executive() {
           emptyBreakdown="No model usage in range"
           emptyDetail="No model usage in range."
           columns={["Provider · model", "Cost", "Input tokens", "Output tokens"]}
-          rows={(byModel.data?.items ?? []).map((m) => ({
-            key: m.key ?? `${m.provider}-${m.model}`,
-            cells: [
-              [m.provider, m.model].filter(Boolean).join(" · ") || "unknown",
-              formatMoney(m.total_cost),
-              formatTokens(m.input_tokens),
-              formatTokens(m.output_tokens),
-            ],
-          }))}
-          breakdown={
-            <div style={{ padding: "var(--global-dimension-size-100)" }}>
-              <BreakdownBars
-                rows={(byModel.data?.items ?? []).map((m) => ({
-                  key: m.key ?? `${m.provider}-${m.model}`,
-                  label: [m.provider, m.model].filter(Boolean).join(" · ") || "unknown",
-                  value: m.total_cost ?? 0,
-                  valueLabel: formatMoney(m.total_cost),
-                  sublabel: `${m.executions} executions`,
-                }))}
-              />
-            </div>
-          }
+          rows={(byModel.data?.items ?? []).map((m) => {
+            const key = m.key ?? `${m.provider}-${m.model}`;
+            const label = [m.provider, m.model].filter(Boolean).join(" · ") || "unknown";
+            return {
+              key,
+              bar: {
+                label,
+                value: m.total_cost ?? 0,
+                valueLabel: formatMoney(m.total_cost),
+                sublabel: `${m.executions} executions`,
+              },
+              cells: [
+                label,
+                formatMoney(m.total_cost),
+                formatTokens(m.input_tokens),
+                formatTokens(m.output_tokens),
+              ],
+            };
+          })}
+          breakdown={(visible) => <CostCardBars rows={visible} />}
         />
       </div>
 
