@@ -1,7 +1,7 @@
 # 04 — Frontend: shared insight charts + Overview refactor
 
 Type: task
-Status: in progress
+Status: resolved
 Blocked by: 03
 Area: phoenix insights, charts
 Estimate: M
@@ -40,3 +40,19 @@ Manager and Executive — chart JSX must not be copy-pasted between pages.
 ## Tests
 
 - `npm run test` (+ coverage gate), `npm run lint`, `npm run build`.
+
+## Result
+
+- `lib/insightSeries.ts`: `dayMetricsToSeries` (plus derived `ok`/`failed` and
+  `cost_per_execution`), `failureRows` (day × kind pivot), `modelRows`,
+  `toolRows` and `topBy`. Rows are `type` aliases so they stay assignable to
+  `TrendChart`'s `Record<string, unknown>[]`.
+- `components/charts/insights.tsx`: twelve panels — cost, cost/execution,
+  traffic, tokens, latency, error rate, LLM & tool calls, failures by kind,
+  top models by cost, top models by tokens, latency by model, tool calls and
+  errors, slowest tools — each a fixed-height `CardPanel` with skeleton and
+  empty states, and an optional `filters` slot in the header.
+- Overview now composes those panels; its local `series` projection and
+  failure pivot are gone.
+- Evidence: 525 frontend tests (37 files) incl. 9 new `insightSeries` mapper
+  tests; lint + build clean; coverage 89.5/74.7/70.7.

@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   agents: vi.fn(),
   costs: vi.fn(),
   metrics: vi.fn(),
+  models: vi.fn(),
+  tools: vi.fn(),
   alertsList: vi.fn(),
   alertsUpdate: vi.fn(),
   alertsRemove: vi.fn(),
@@ -80,6 +82,8 @@ vi.mock("../api/client", () => ({
     agents: h.agents,
     costs: h.costs,
     metrics: h.metrics,
+    models: h.models,
+    tools: h.tools,
     alerts: { list: h.alertsList, update: h.alertsUpdate, remove: h.alertsRemove },
     alertRules: {
       list: h.rulesList,
@@ -227,6 +231,34 @@ const aggregate = {
   last_seen: "2026-10-01T10:00:00Z",
 };
 
+const modelInsight = {
+  key: "openai:gpt-4o-mini",
+  provider: "openai",
+  model: "gpt-4o-mini",
+  calls: 4,
+  executions: 3,
+  failed_calls: 1,
+  error_rate: 0.25,
+  total_cost: 0.002,
+  input_tokens: 600,
+  output_tokens: 400,
+  total_tokens: 1000,
+  avg_duration_ms: 120,
+  p95_duration_ms: 300,
+  last_seen: "2026-10-01T10:00:00Z",
+};
+
+const toolInsight = {
+  name: "search",
+  calls: 5,
+  executions: 2,
+  failed_calls: 1,
+  error_rate: 0.2,
+  avg_duration_ms: 40,
+  p95_duration_ms: 90,
+  last_seen: "2026-10-01T10:00:00Z",
+};
+
 const alert = {
   id: "a1",
   rule_id: "rule:1",
@@ -341,6 +373,8 @@ function resetMocks() {
   h.agents.mockResolvedValue({ items: [aggregate], total: 1 });
   h.costs.mockResolvedValue({ items: [aggregate], total: 1 });
   h.metrics.mockResolvedValue({ items: [dayMetric], total: 1 });
+  h.models.mockResolvedValue({ items: [modelInsight], total: 1 });
+  h.tools.mockResolvedValue({ items: [toolInsight], total: 1 });
   h.alertsList.mockResolvedValue({ items: [alert], total: 1 });
   h.alertsUpdate.mockResolvedValue({ id: "a1", status: "acknowledged" });
   h.alertsRemove.mockResolvedValue({ deleted: "a1" });
@@ -561,7 +595,7 @@ describe("Manager", () => {
     expect(screen.getByText("Projects")).toBeInTheDocument();
     expect(screen.getByText("Teams")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Tool calls per day")).toBeInTheDocument();
+    expect(screen.getByText("LLM & tool calls")).toBeInTheDocument();
     expect(screen.getByText("Team cap")).toBeInTheDocument();
 
     // The Detail view renders the capped table.
@@ -586,6 +620,46 @@ describe("Manager", () => {
     await waitFor(() => {
       const last = h.costs.mock.calls[h.costs.mock.calls.length - 1];
       expect(last[1].workflow).toBeUndefined();
+    });
+  });
+
+  it("renders the insight sections and filters the entity panels independently", async () => {
+    renderWithProviders(
+      <Manager />,
+      { route: "/manager?model_insights_project_id=p1" }
+    );
+    await screen.findByText("Top models by cost");
+
+    // The model panels carry the card's namespaced filter, the tool panels none.
+    await waitFor(() =>
+      expect(h.models).toHaveBeenCalledWith(expect.objectContaining({ project_id: "p1" }))
+    );
+    expect(h.tools).toHaveBeenCalledWith(
+      expect.not.objectContaining({ project_id: expect.anything() })
+    );
+
+    for (const title of [
+      "Executions over time",
+      "Error rate over time",
+      "Latency over time",
+      "Tokens over time",
+      "Cost per execution",
+      "Failures by kind",
+      "Top models by cost",
+      "Latency by model",
+      "Tool calls and errors",
+      "Slowest tools",
+      "LLM & tool calls",
+    ]) {
+      // Panel titles can repeat a stat label, so presence is what matters.
+      expect(screen.getAllByText(title).length).toBeGreaterThan(0);
+    }
+    // The chip mirrors the model section's filter and clears it.
+    expect(screen.getByText("Project: Checkout")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Remove Project: Checkout"));
+    await waitFor(() => {
+      const last = h.models.mock.calls[h.models.mock.calls.length - 1];
+      expect(last[0].project_id).toBeUndefined();
     });
   });
 
@@ -769,10 +843,34 @@ describe("Executive", () => {
     expect(await screen.findByText("Total AI cost")).toBeInTheDocument();
     // Unit economics are per-1M, and the success-only card is gone.
     expect(screen.getByText("Cost per 1M tokens")).toBeInTheDocument();
-    expect(screen.getByText("Cost per execution")).toBeInTheDocument();
     expect(screen.queryByText("Cost per 1k tokens")).not.toBeInTheDocument();
     expect(screen.queryByText("Cost per successful execution")).not.toBeInTheDocument();
-    expect(screen.getByText("p95 latency")).toBeInTheDocument();
+    const metrics = Array.from(document.querySelectorAll(".metric__label")).map(
+      (el) => el.textContent
+    );
+    expect(metrics).toEqual([
+      "Total AI cost",
+      "Cost per 1M tokens",
+      "Cost per execution",
+      "Executions",
+      "Total tokens",
+      "p95 latency",
+    ]);
+
+    // Phoenix-style panels: traffic, usage economics and model economics.
+    for (const title of [
+      "Executions over time",
+      "Latency over time",
+      "Error rate over time",
+      "Tokens over time",
+      "Failures by kind",
+      "Top models by cost",
+      "Top models by tokens",
+      "Latency by model",
+      "Cost over time",
+    ]) {
+      expect(screen.getByText(title)).toBeInTheDocument();
+    }
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Projects")).toBeInTheDocument();
     expect(screen.getByText("Forecast")).toBeInTheDocument();

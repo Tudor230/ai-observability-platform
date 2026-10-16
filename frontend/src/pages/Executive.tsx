@@ -1,9 +1,29 @@
-import { useCosts, useMetrics, useOverview, useProjectNameMap } from "../api/hooks";
+import { useMemo } from "react";
+import {
+  useCosts,
+  useFailuresSeries,
+  useMetrics,
+  useModels,
+  useOverview,
+  useProjectNameMap,
+} from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
+import {
+  CostChart,
+  CostPerExecutionChart,
+  ErrorRateChart,
+  FailuresByKindChart,
+  LatencyChart,
+  ModelLatencyChart,
+  ModelsByCostChart,
+  ModelsByTokensChart,
+  TokensChart,
+  TrafficChart,
+} from "../components/charts/insights";
 import { CostCard, CostCardBars } from "../components/CostCard";
 import { TableFilterChips, TableFilters } from "../components/TableFilters";
 import { useTableFilters } from "../state/useTableFilters";
@@ -17,6 +37,7 @@ import {
 } from "../components/core";
 import { formatMoney, formatMs, formatPct, formatTokens, formatUnitCost } from "../lib/format";
 import { buildForecast, forecastAsOf } from "../lib/forecast";
+import { dayMetricsToSeries } from "../lib/insightSeries";
 import type { DayMetric } from "../api/types";
 
 const FORECAST_DAYS = 7;
@@ -45,6 +66,10 @@ export default function Executive() {
   const byProject = useCosts("project", { ...filters, ...projectCard.filters });
   const projectNames = useProjectNameMap();
   const trends = useMetrics("total", filters);
+  // Model economics share the Models card's filter; the time-series panels
+  // follow the page window like Overview.
+  const models = useModels({ ...filters, ...modelCard.filters });
+  const failures = useFailuresSeries(filters, true);
 
   const data = overview.data;
   const items = trends.data?.items ?? [];
@@ -58,12 +83,14 @@ export default function Executive() {
   const costPerExecution = executions ? totalCost / executions : null;
   const tokens = data?.total_tokens ?? 0;
   const costPer1mTokens = tokens ? (totalCost / tokens) * 1_000_000 : null;
+  const points = useMemo(() => dayMetricsToSeries(trends.data?.items), [trends.data]);
   const inputTokens = items.reduce((sum, m) => sum + (m.input_tokens ?? 0), 0);
   const outputTokens = items.reduce((sum, m) => sum + (m.output_tokens ?? 0), 0);
   const deltas = data?.deltas;
 
-  const anyError = overview.isError || byModel.isError || byProject.isError;
-  const loadError = overview.error ?? byModel.error ?? byProject.error;
+  const anyError =
+    overview.isError || byModel.isError || byProject.isError || models.isError;
+  const loadError = overview.error ?? byModel.error ?? byProject.error ?? models.error;
 
   return (
     <div className="page">
@@ -117,6 +144,28 @@ export default function Executive() {
           />
         </div>
       )}
+
+      <div className="grid grid-3">
+        <TrafficChart data={points} loading={trends.isLoading} />
+        <LatencyChart data={points} loading={trends.isLoading} />
+        <ErrorRateChart data={points} loading={trends.isLoading} />
+      </div>
+
+      <div className="grid grid-3">
+        <TokensChart data={points} loading={trends.isLoading} />
+        <CostPerExecutionChart data={points} loading={trends.isLoading} />
+        <FailuresByKindChart
+          items={failures.data?.items}
+          kinds={failures.data?.kinds ?? []}
+          loading={failures.isLoading}
+        />
+      </div>
+
+      <div className="grid grid-3">
+        <ModelsByCostChart items={models.data?.items} loading={models.isLoading} />
+        <ModelsByTokensChart items={models.data?.items} loading={models.isLoading} />
+        <ModelLatencyChart items={models.data?.items} loading={models.isLoading} />
+      </div>
 
       <CardPanel
         title="Forecast"
@@ -233,16 +282,7 @@ export default function Executive() {
         />
       </div>
 
-      <CardPanel title="Cost trend" subTitle="USD per day">
-        <div style={{ padding: "var(--global-dimension-size-100)" }}>
-          <TrendChart
-            data={items.map((m) => ({ day: m.day.slice(5), cost: m.total_cost }))}
-            series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
-            valueFormatter={(v) => formatMoney(v)}
-            height={240}
-          />
-        </div>
-      </CardPanel>
+      <CostChart data={points} loading={trends.isLoading} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -7,9 +7,12 @@ import {
   useBudgetSeries,
   useBudgetStatus,
   useCosts,
+  useFailuresSeries,
   useMetrics,
+  useModels,
   useOverview,
   useProjectNameMap,
+  useTools,
 } from "../api/hooks";
 import { api } from "../api/client";
 import type { BudgetStatus } from "../api/types";
@@ -20,6 +23,20 @@ import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { BudgetDialog } from "../components/BudgetDialog";
 import { TrendChart } from "../components/charts/TrendChart";
+import {
+  CallsChart,
+  CostChart,
+  CostPerExecutionChart,
+  ErrorRateChart,
+  FailuresByKindChart,
+  LatencyChart,
+  ModelLatencyChart,
+  ModelsByCostChart,
+  TokensChart,
+  ToolCallsChart,
+  ToolLatencyChart,
+  TrafficChart,
+} from "../components/charts/insights";
 import { CostCard, CostCardBars } from "../components/CostCard";
 import { TableFilterChips, TableFilters } from "../components/TableFilters";
 import { useTableFilters } from "../state/useTableFilters";
@@ -43,6 +60,7 @@ import {
   formatTokens,
   formatUnitCost,
 } from "../lib/format";
+import { dayMetricsToSeries } from "../lib/insightSeries";
 
 export default function Manager() {
   const { filters } = useFilters();
@@ -62,6 +80,13 @@ export default function Manager() {
   const alerts = useAlerts();
   const trends = useMetrics("total", filters);
   const budgets = useBudgetStatus();
+  // Insight sections (phoenix insights): each entity panel owns a namespaced
+  // filter, the time-series charts follow the page window.
+  const modelSection = useTableFilters("model_insights");
+  const toolSection = useTableFilters("tool_insights");
+  const models = useModels({ ...filters, ...modelSection.filters });
+  const tools = useTools({ ...filters, ...toolSection.filters });
+  const failures = useFailuresSeries(filters, hasRole("engineer", "manager", "client"));
 
   const canCreateGlobal = hasRole("exec");
   const toast = useToast();
@@ -94,6 +119,7 @@ export default function Manager() {
     : null;
   const inputTokens = metricItems.reduce((sum, m) => sum + (m.input_tokens ?? 0), 0);
   const outputTokens = metricItems.reduce((sum, m) => sum + (m.output_tokens ?? 0), 0);
+  const points = useMemo(() => dayMetricsToSeries(trends.data?.items), [trends.data]);
 
   const refreshBudgets = () => {
     void queryClient.invalidateQueries({ queryKey: ["budgets"] });
@@ -118,20 +144,20 @@ export default function Manager() {
   };
 
   const loadError =
-    overview.error ?? costsByWorkflow.error ?? costsByProject.error ?? agents.error;
+    overview.error ??
+    costsByWorkflow.error ??
+    costsByProject.error ??
+    agents.error ??
+    models.error ??
+    tools.error;
   const anyError =
     overview.isError ||
     costsByWorkflow.isError ||
     costsByProject.isError ||
     alerts.isError ||
-    budgets.isError;
-
-  const trendSeries = (trends.data?.items ?? []).map((m) => ({
-    day: m.day.slice(5),
-    total_cost: m.total_cost,
-    executions: m.executions,
-    tool_calls: m.tool_calls,
-  }));
+    budgets.isError ||
+    models.isError ||
+    tools.isError;
 
   return (
     <div className="page">
@@ -369,6 +395,45 @@ export default function Manager() {
       />
 
       <div className="grid grid-2">
+        <TrafficChart data={points} loading={trends.isLoading} />
+        <ErrorRateChart data={points} loading={trends.isLoading} />
+      </div>
+
+      <div className="grid grid-2">
+        <LatencyChart data={points} loading={trends.isLoading} />
+        <TokensChart data={points} loading={trends.isLoading} />
+      </div>
+
+      <div className="grid grid-2">
+        <CostPerExecutionChart data={points} loading={trends.isLoading} />
+        <FailuresByKindChart
+          items={failures.data?.items}
+          kinds={failures.data?.kinds ?? []}
+          loading={failures.isLoading}
+        />
+      </div>
+
+      <TableFilterChips card="model_insights" />
+      <div className="grid grid-2">
+        <ModelsByCostChart
+          items={models.data?.items}
+          loading={models.isLoading}
+          filters={<TableFilters card="model_insights" title="Models" />}
+        />
+        <ModelLatencyChart items={models.data?.items} loading={models.isLoading} />
+      </div>
+
+      <TableFilterChips card="tool_insights" />
+      <div className="grid grid-2">
+        <ToolCallsChart
+          items={tools.data?.items}
+          loading={tools.isLoading}
+          filters={<TableFilters card="tool_insights" title="Tools" />}
+        />
+        <ToolLatencyChart items={tools.data?.items} loading={tools.isLoading} />
+      </div>
+
+      <div className="grid grid-2">
         <CardPanel
           title="Budgets"
           subTitle="Utilization against configured caps"
@@ -479,25 +544,8 @@ export default function Manager() {
       </div>
 
       <div className="grid grid-2">
-        <CardPanel title="Consumption trend" subTitle="Cost per day">
-          <div style={{ padding: "var(--global-dimension-size-100)" }}>
-            <TrendChart
-              data={trendSeries}
-              series={[{ key: "total_cost", label: "Cost", type: "bar", colorIndex: 0 }]}
-              valueFormatter={(v) => formatMoney(v)}
-              height={220}
-            />
-          </div>
-        </CardPanel>
-        <CardPanel title="Tool calls per day" subTitle="Agent tool usage">
-          <div style={{ padding: "var(--global-dimension-size-100)" }}>
-            <TrendChart
-              data={trendSeries}
-              series={[{ key: "tool_calls", label: "Tool calls", colorIndex: 6 }]}
-              height={220}
-            />
-          </div>
-        </CardPanel>
+        <CostChart data={points} loading={trends.isLoading} />
+        <CallsChart data={points} loading={trends.isLoading} />
       </div>
 
       {budgetDialog.open ? (

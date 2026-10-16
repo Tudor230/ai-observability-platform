@@ -111,6 +111,35 @@ export interface AggregateRow {
   output_tokens?: number;
 }
 
+export interface ModelInsight {
+  key: string;
+  provider?: string | null;
+  model?: string | null;
+  calls: number;
+  executions: number;
+  failed_calls: number;
+  error_rate: number;
+  /** Stripped server-side for client accounts. */
+  total_cost?: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  avg_duration_ms: number;
+  p95_duration_ms: number;
+  last_seen?: string | null;
+}
+
+export interface ToolInsight {
+  name: string;
+  calls: number;
+  executions: number;
+  failed_calls: number;
+  error_rate: number;
+  avg_duration_ms: number;
+  p95_duration_ms: number;
+  last_seen?: string | null;
+}
+
 export interface DayMetric {
   day: string;
   dimension: string;

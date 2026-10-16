@@ -68,6 +68,24 @@ export function useAgents(f: Filters) {
   });
 }
 
+export function useModels(f: Filters) {
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["models", f],
+    queryFn: () => api.models(f),
+    refetchInterval,
+  });
+}
+
+export function useTools(f: Filters) {
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["tools", f],
+    queryFn: () => api.tools(f),
+    refetchInterval,
+  });
+}
+
 export function useCosts(dimension: string, f: Filters) {
   const refetchInterval = useRefetchInterval();
   return useQuery({

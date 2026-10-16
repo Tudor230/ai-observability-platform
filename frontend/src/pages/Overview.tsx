@@ -11,7 +11,14 @@ import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
-import { TrendChart } from "../components/charts/TrendChart";
+import {
+  CostChart,
+  ErrorRateChart,
+  FailuresByKindChart,
+  LatencyChart,
+  TokensChart,
+  TrafficChart,
+} from "../components/charts/insights";
 import { SeverityBadge } from "../components/domain";
 import {
   CardPanel,
@@ -22,6 +29,7 @@ import {
   Skeleton,
 } from "../components/core";
 import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
+import { dayMetricsToSeries } from "../lib/insightSeries";
 
 export default function Overview() {
   const { filters } = useFilters();
@@ -33,32 +41,11 @@ export default function Overview() {
   const failures = useFailuresSeries(filters, canSeeFailures);
 
   const data = overview.data;
-  const series = (metrics.data?.items ?? []).map((m) => ({
-    day: m.day.slice(5),
-    cost: m.total_cost,
-    executions: m.executions,
-    ok: Math.max(0, m.executions - m.failed_executions),
-    failed: m.failed_executions,
-    input_tokens: m.input_tokens,
-    output_tokens: m.output_tokens,
-    p50_duration_ms: m.p50_duration_ms,
-    p95_duration_ms: m.p95_duration_ms,
-    p99_duration_ms: m.p99_duration_ms,
-    error_rate: m.error_rate,
-  }));
-
+  const points = useMemo(
+    () => dayMetricsToSeries(metrics.data?.items),
+    [metrics.data]
+  );
   const failureKinds = failures.data?.kinds ?? [];
-  const failureRows = useMemo(() => {
-    const byDay = new Map<string, Record<string, number>>();
-    for (const item of failures.data?.items ?? []) {
-      const row = byDay.get(item.day) ?? {};
-      row[item.kind] = (row[item.kind] ?? 0) + item.count;
-      byDay.set(item.day, row);
-    }
-    return Array.from(byDay.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([day, counts]) => ({ day: day.slice(5), ...counts }));
-  }, [failures.data]);
 
   const loadError = overview.error ?? metrics.error;
   const loading = overview.isLoading;
@@ -131,99 +118,26 @@ export default function Overview() {
 
           <div className="grid grid-2">
             {costVisible ? (
-              <CardPanel title="Cost over time" subTitle="USD per day">
-                <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                  <TrendChart
-                    data={series}
-                    series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
-                    valueFormatter={(v) => formatMoney(v)}
-                    height={240}
-                  />
-                </div>
-              </CardPanel>
+              <CostChart data={points} loading={metrics.isLoading} />
             ) : null}
-            <CardPanel title="Executions over time" subTitle="Succeeded vs failed per day">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[
-                    { key: "ok", label: "Succeeded", type: "bar", stack: true, colorIndex: 6 },
-                    { key: "failed", label: "Failed", type: "bar", stack: true, colorIndex: 3 },
-                  ]}
-                  height={240}
-                />
-              </div>
-            </CardPanel>
+            <TrafficChart data={points} loading={metrics.isLoading} />
           </div>
 
           <div className="grid grid-2">
-            <CardPanel title="Tokens over time" subTitle="Input vs output tokens">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[
-                    { key: "input_tokens", label: "Input", colorIndex: 0, stack: true },
-                    { key: "output_tokens", label: "Output", colorIndex: 3, stack: true },
-                  ]}
-                  valueFormatter={(v) => formatTokens(v)}
-                  height={220}
-                />
-              </div>
-            </CardPanel>
-            <CardPanel title="Latency over time" subTitle="p50 / p95 / p99 per day">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[
-                    { key: "p50_duration_ms", label: "p50", colorIndex: 0 },
-                    { key: "p95_duration_ms", label: "p95", colorIndex: 3 },
-                    { key: "p99_duration_ms", label: "p99", colorIndex: 5, dashed: true },
-                  ]}
-                  valueFormatter={(v) => formatMs(v)}
-                  height={220}
-                />
-              </div>
-            </CardPanel>
+            <TokensChart data={points} loading={metrics.isLoading} />
+            <LatencyChart data={points} loading={metrics.isLoading} />
           </div>
 
           {canSeeFailures ? (
-            <CardPanel title="Failures by kind" subTitle="Failing executions per day">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                {failures.isLoading ? (
-                  <Skeleton shape="chart" />
-                ) : failureRows.length ? (
-                  <TrendChart
-                    data={failureRows}
-                    series={failureKinds.map((kind, index) => ({
-                      key: kind,
-                      label: kind,
-                      type: "bar" as const,
-                      stack: true,
-                      colorIndex: index,
-                    }))}
-                    height={220}
-                  />
-                ) : (
-                  <EmptyState
-                    title="No failures in range"
-                    description="Every captured execution completed without a classified failure."
-                  />
-                )}
-              </div>
-            </CardPanel>
+            <FailuresByKindChart
+              items={failures.data?.items}
+              kinds={failureKinds}
+              loading={failures.isLoading}
+            />
           ) : null}
 
           <div className="grid grid-2">
-            <CardPanel title="Error rate over time" subTitle="Failed executions per day">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[{ key: "error_rate", label: "Error rate", colorIndex: 5 }]}
-                  valueFormatter={(v) => formatPct(v)}
-                  height={200}
-                />
-              </div>
-            </CardPanel>
+            <ErrorRateChart data={points} loading={metrics.isLoading} height={200} />
             <CardPanel
               title="Open alerts"
               subTitle={alerts.data ? `${alerts.data.total} open` : undefined}

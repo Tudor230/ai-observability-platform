@@ -1,4 +1,6 @@
 import type {
+  ToolInsight,
+  ModelInsight,
   AccessRequest,
   AggregateRow,
   Alert,
@@ -124,6 +126,8 @@ export const api = {
   failures: (id: string) => get<FailureTree>(`/executions/${id}/failures`),
   workflows: (f: Filters) => get<List<AggregateRow>>(`/workflows${filterQuery(f)}`),
   agents: (f: Filters) => get<List<AggregateRow>>(`/agents${filterQuery(f)}`),
+  models: (f: Filters) => get<List<ModelInsight>>(`/models${filterQuery(f)}`),
+  tools: (f: Filters) => get<List<ToolInsight>>(`/tools${filterQuery(f)}`),
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
   metrics: (dimension: string, f: Filters, key?: string) =>
     get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key, days: f.days })}`),

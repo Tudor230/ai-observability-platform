@@ -1,7 +1,7 @@
 # 05 — Frontend: Manager and Executive insight sections
 
 Type: task
-Status: in progress
+Status: resolved
 Blocked by: 01, 03, 04
 Area: phoenix insights, pages
 Estimate: M
@@ -44,3 +44,22 @@ the cost/trend view (traffic, model economics).
 ## Tests
 
 - `npm run test` (+ coverage gate), `npm run lint`, `npm run build`.
+
+## Result
+
+- **Manager**: traffic + error rate, latency quantiles + tokens, cost per
+  execution + failures by kind, then *Models* (top models by cost, latency by
+  model — namespace `model_insights`) and *Tools* (tool calls and errors,
+  slowest tools — namespace `tool_insights`). The old "Consumption trend" and
+  "Tool calls per day" cards became the shared cost and LLM/tool-call panels.
+- **Executive**: grid-3 traffic/latency/error-rate, grid-3 tokens/cost-per-
+  execution/failures-by-kind, grid-3 model economics (cost, tokens, latency by
+  model) reusing the Models card's `models` namespace, and the cost trend is
+  now the shared cost panel.
+- `api/types.ts` (`ModelInsight`, `ToolInsight`), `api/client.ts`
+  (`api.models`, `api.tools`) and `api/hooks.ts` (`useModels`, `useTools`) wire
+  the new endpoints.
+- Evidence: new Manager test asserts the eleven panel titles and that the model
+  panels carry `model_insights_project_id` while the tool panels stay unfiltered
+  (plus chip removal clearing the param); Executive asserts the six-card row and
+  nine panel titles. 525 tests pass, lint + build clean.
