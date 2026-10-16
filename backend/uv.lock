@@ -12,6 +12,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiobs-contracts" },
+    { name = "alembic" },
     { name = "bcrypt" },
     { name = "fastapi" },
     { name = "opentelemetry-proto" },
@@ -24,7 +25,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "alembic" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -35,6 +35,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiobs-contracts", editable = "../shared/aiobs_contracts" },
+    { name = "alembic", specifier = ">=1.19.2" },
     { name = "bcrypt", specifier = ">=4.2" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "opentelemetry-proto", specifier = ">=1.30" },
@@ -47,7 +48,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "alembic", specifier = ">=1.19.2" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=1.15" },
     { name = "pytest", specifier = ">=8.0" },
