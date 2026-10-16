@@ -587,7 +587,7 @@ describe("Manager", () => {
     });
     renderWithProviders(<Manager />);
 
-    // The Workflows card (first) shows 10 of 12 bars on page 1 plus the pager.
+    // The Workflows card (first) shows 6 of 12 bars on page 1 plus the pager.
     const card = (await screen.findByText("Workflows")).closest(".card") as HTMLElement;
     expect(card.querySelectorAll(".breakdown__row")).toHaveLength(6);
     expect(within(card).getByText(/Showing 1–6 of 12 rows/)).toBeInTheDocument();
@@ -608,7 +608,7 @@ describe("Manager", () => {
     expect(card.querySelectorAll(".breakdown__row")).toHaveLength(6);
   });
 
-  it("pages the cost detail tables at 10 rows", async () => {
+  it("pages the cost detail table at a fixed 6 rows", async () => {
     h.costs.mockResolvedValue({
       items: Array.from({ length: 12 }, (_, i) => ({
         ...aggregate,
@@ -626,6 +626,83 @@ describe("Manager", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Next" }));
     expect(await within(card).findByText(/Showing 7–12 of 12 rows/)).toBeInTheDocument();
     expect(card.querySelectorAll("tbody tr")).toHaveLength(6);
+  });
+
+  it("sorts the cost detail table by any column", async () => {
+    h.costs.mockResolvedValue({
+      items: [
+        {
+          ...aggregate,
+          key: "wf-b",
+          name: "wf-b",
+          total_cost: 0.9,
+          executions: 2,
+          total_tokens: 600,
+          error_rate: 0.1,
+        },
+        {
+          ...aggregate,
+          key: "wf-c",
+          name: "wf-c",
+          total_cost: 0.5,
+          executions: 5,
+          total_tokens: 900,
+          error_rate: 0,
+        },
+        {
+          ...aggregate,
+          key: "wf-a",
+          name: "wf-a",
+          total_cost: 0.2,
+          executions: 9,
+          total_tokens: 300,
+          error_rate: 0.5,
+        },
+      ],
+      total: 3,
+    });
+    renderWithProviders(<Manager />);
+    const card = (await screen.findByText("Workflows")).closest(".card") as HTMLElement;
+    fireEvent.click(within(card).getByRole("tab", { name: /Detail/ }));
+    await within(card).findByText(/Showing 1–3 of 3 rows/);
+
+    // Every column header is a sort control, like the Engineering table.
+    expect(card.querySelectorAll("thead .table__sort")).toHaveLength(5);
+    const order = () =>
+      Array.from(card.querySelectorAll("tbody .table__cell--primary")).map(
+        (cell) => cell.textContent
+      );
+    expect(order()).toEqual(["wf-b", "wf-c", "wf-a"]); // incoming (cost) order
+
+    // Text column: the first click descends, the second flips to ascending.
+    fireEvent.click(within(card).getByRole("button", { name: /Workflow/ }));
+    expect(order()).toEqual(["wf-c", "wf-b", "wf-a"]);
+    expect(card.querySelector('th[aria-sort="descending"]')?.textContent).toContain("Workflow");
+    fireEvent.click(within(card).getByRole("button", { name: /Workflow/ }));
+    expect(order()).toEqual(["wf-a", "wf-b", "wf-c"]);
+    expect(card.querySelector('th[aria-sort="ascending"]')?.textContent).toContain("Workflow");
+
+    // Numeric column: 0.2 < 0.5 < 0.9 — compared as numbers, not text.
+    fireEvent.click(within(card).getByRole("button", { name: /Cost/ }));
+    expect(order()).toEqual(["wf-b", "wf-c", "wf-a"]); // desc
+    fireEvent.click(within(card).getByRole("button", { name: /Cost/ }));
+    expect(order()).toEqual(["wf-a", "wf-c", "wf-b"]);
+
+    // A new column starts descending again.
+    fireEvent.click(within(card).getByRole("button", { name: /Tokens/ }));
+    expect(order()).toEqual(["wf-c", "wf-b", "wf-a"]);
+    expect(card.querySelector('th[aria-sort="descending"]')?.textContent).toContain("Tokens");
+
+    // The breakdown is untouched by the detail sort: it keeps the incoming
+    // (cost) ranking, so it still leads with the top-cost row, not wf-c.
+    fireEvent.click(within(card).getByRole("tab", { name: /Breakdown/ }));
+    const bars = card.querySelectorAll(".breakdown__label");
+    expect(bars).toHaveLength(3);
+    expect(Array.from(bars).map((bar) => bar.textContent)).toEqual([
+      "wf-b",
+      "wf-c",
+      "wf-a",
+    ]);
   });
 
   it("opens the budget burn-down chart", async () => {

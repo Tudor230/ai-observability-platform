@@ -75,3 +75,21 @@ page in both views (12-row fixture: `Showing 1–6 of 12 rows` → Next →
 `Showing 7–12 of 12 rows`), the bars sit inside `.card-scroll`, and the pager
 footer is its immediate next sibling; `npm run lint` + `npm run build` clean;
 coverage 88.5% stmts / 74.1% branches / 68.4% funcs (gates 80/70/65).
+
+**Amendment 4 (new commit):** the detail table is sortable by every column,
+exactly like the Engineering table — each header is a `SortableTh` (click to
+sort descending, click again to flip, `aria-sort` + ↕/▲/▼ indicator). Sorting is
+client-side over the card's full row set, driven by the new `CostDetailRow
+.sortValues` (raw values parallel to `cells`): numbers compare numerically,
+everything else as case-insensitive text, and the sort is stable so ties keep
+the incoming cost ranking. It is a *detail-view* concern — the breakdown keeps
+the incoming order — so the two views now page independently (the shared
+`page` state became `breakdownPage` + `detailPage`, and the pager is rendered
+per view). Every row map on Manager (4 cards) and Executive (2 cards) supplies
+`sortValues`.
+
+Evidence: `npm run test` **515 passed** (new test: 5 header sort controls, text
+and numeric columns both flip desc ⇄ asc, `aria-sort` on the active header, a
+new column restarts descending, and the breakdown order is unchanged after
+sorting the detail); `npm run lint` + `npx tsc -b --noEmit` + `npm run build`
+clean; coverage 88.6% stmts / 74.2% branches / 68.6% funcs (gates 80/70/65).

@@ -23,9 +23,12 @@ Convention: phase-ordered commits, one per ticket, on `feat/refinements`.
 5. **Manager and Executive cost cards become two-view cards** — breakdown (bars)
    and detail (table) — switched with the existing `Tabs` component. Detail
    rows come from an extended `/costs` response; no new endpoints.
-6. **Cost/breakdown tables get a height cap** (sticky header + scroll) and
-   client-side pagination at 10 rows, via a shared `Pagination` component
-   extracted from Engineering. Engineering keeps its server-side pager.
+6. **Cost/breakdown tables get a fixed-height body** — a whole page of rows fits
+   and nothing scrolls; the remainder is paginated (6 rows/page) via a shared
+   `Pagination` component extracted from Engineering. The detail table sorts on
+   every column (Engineering-style, client-side); the breakdown keeps its cost
+   ranking. Engineering keeps its server-side pager. See ticket 13 for the
+   amendments that landed this shape.
 7. **Filtering becomes per-table**: the page-level `days` stays shared; each
    card gets its own control, its own chips, its own query key, and namespaced
    URL params so views stay shareable and drill-down links keep working.

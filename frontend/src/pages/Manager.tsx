@@ -165,23 +165,31 @@ export default function Manager() {
           columns={["Workflow", "Executions", "Error rate", "Tokens", "Cost"]}
           rows={(costsByWorkflow.data?.items ?? []).map((item) => {
             const key = item.key ?? String(item.name);
+            const label = item.key ?? item.name ?? "—";
             return {
               key,
               href: `/engineering?workflow=${encodeURIComponent(key)}`,
               bar: {
-                label: item.key ?? item.name ?? "—",
+                label,
                 value: item.total_cost ?? 0,
                 valueLabel: formatMoney(item.total_cost),
                 sublabel: `${item.executions} executions`,
               },
               cells: [
-                item.key ?? item.name ?? "—",
+                label,
                 item.executions,
                 <span className={item.error_rate ? "text-danger" : ""}>
                   {formatPct(item.error_rate)}
                 </span>,
                 formatTokens(item.total_tokens),
                 formatMoney(item.total_cost),
+              ],
+              sortValues: [
+                label,
+                item.executions,
+                item.error_rate ?? 0,
+                item.total_tokens,
+                item.total_cost ?? 0,
               ],
             };
           })}
@@ -218,6 +226,13 @@ export default function Manager() {
                 formatTokens(item.total_tokens),
                 formatMoney(item.total_cost),
               ],
+              sortValues: [
+                label,
+                item.executions,
+                item.error_rate ?? 0,
+                item.total_tokens,
+                item.total_cost ?? 0,
+              ],
             };
           })}
           breakdown={(visible) => <CostCardBars rows={visible} />}
@@ -253,6 +268,13 @@ export default function Manager() {
               formatTokens(item.total_tokens),
               formatMoney(item.total_cost),
             ],
+            sortValues: [
+              label,
+              item.executions,
+              item.error_rate ?? 0,
+              item.total_tokens,
+              item.total_cost ?? 0,
+            ],
           };
         })}
         breakdown={(visible) => <CostCardBars rows={visible} />}
@@ -283,6 +305,13 @@ export default function Manager() {
               <span className={a.error_rate ? "text-danger" : ""}>{formatPct(a.error_rate)}</span>,
               formatTokens(a.total_tokens),
               formatMoney(a.total_cost),
+            ],
+            sortValues: [
+              label,
+              a.executions,
+              a.error_rate ?? 0,
+              a.total_tokens,
+              a.total_cost ?? 0,
             ],
           };
         })}

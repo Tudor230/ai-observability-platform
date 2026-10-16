@@ -168,6 +168,13 @@ export default function Executive() {
                 formatTokens(item.total_tokens),
                 formatMoney(item.total_cost),
               ],
+              sortValues: [
+                label,
+                item.executions,
+                item.error_rate ?? 0,
+                item.total_tokens,
+                item.total_cost ?? 0,
+              ],
             };
           })}
           breakdown={(visible) => <CostCardBars rows={visible} />}
@@ -198,6 +205,12 @@ export default function Executive() {
                 formatMoney(m.total_cost),
                 formatTokens(m.input_tokens),
                 formatTokens(m.output_tokens),
+              ],
+              sortValues: [
+                label,
+                m.total_cost ?? 0,
+                m.input_tokens ?? 0,
+                m.output_tokens ?? 0,
               ],
             };
           })}

@@ -6,7 +6,7 @@ export function TableWrap({
   capped = false,
 }: {
   children: ReactNode;
-  /** Fixes the height (sticky header + scroll) for cost-card tables. */
+  /** Fixes the body height (one page of rows, no scroll) for cost-card tables. */
   capped?: boolean;
 }) {
   return (

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { BreakdownBars, type BreakdownRow } from "./charts/BreakdownBars";
 import {
@@ -6,11 +6,11 @@ import {
   EmptyState,
   Pagination,
   Skeleton,
+  SortableTh,
   Table,
   TableWrap,
   Tabs,
   Td,
-  Th,
   Tr,
 } from "./core";
 
@@ -18,6 +18,8 @@ export interface CostDetailRow {
   key: string;
   /** Detail columns; the first is the primary (left) cell. */
   cells: ReactNode[];
+  /** Raw values parallel to `cells`; drives the detail table's column sort. */
+  sortValues?: Array<string | number>;
   /** Detail-view link target; the breakdown bars link to the same place. */
   href?: string;
   /** Breakdown-bar inputs for this row (label falls back to the key). */
@@ -31,12 +33,31 @@ export interface BreakdownBarInput {
   sublabel?: string;
 }
 
+type SortDirection = "asc" | "desc";
+
+/** Numbers compare numerically; everything else sorts as case-insensitive text. */
+function compareValues(
+  a: string | number | undefined,
+  b: string | number | undefined
+): number {
+  if (a === undefined || b === undefined) return 0;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 /**
  * Two-view cost card (refinements v3): a breakdown (bars) and a detail table
  * over the same rows, switched with `Tabs`. **Both** views share the same
  * *fixed* body height (`--card-scroll-height`) and render one page of rows that
- * fits inside it — nothing scrolls; the remainder is paginated. Switching tabs
- * therefore never resizes the card, and both views show the same slice.
+ * fits inside it — nothing scrolls; the remainder is paginated.
+ *
+ * The detail table is sortable per column like the Engineering table: click a
+ * header to sort descending, click it again to flip. Sorting is a detail-view
+ * concern — the breakdown always keeps the incoming (cost-ranked) order — so
+ * each view pages independently and switching tabs never resizes the card.
  */
 export function CostCard({
   title,
@@ -68,22 +89,48 @@ export function CostCard({
   filterChips?: ReactNode;
 }) {
   const [view, setView] = useState<"breakdown" | "detail">("breakdown");
-  const [page, setPage] = useState(1);
+  const [breakdownPage, setBreakdownPage] = useState(1);
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailSort, setDetailSort] = useState<{
+    column: number;
+    direction: SortDirection;
+  } | null>(null);
 
-  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const current = Math.min(page, pages);
-  const visible = rows.slice((current - 1) * pageSize, current * pageSize);
+  const detailRows = useMemo(() => {
+    if (!detailSort) return rows;
+    const sign = detailSort.direction === "asc" ? 1 : -1;
+    // `sort` is stable, so ties keep the incoming cost ranking.
+    return [...rows].sort(
+      (a, b) =>
+        sign *
+        compareValues(a.sortValues?.[detailSort.column], b.sortValues?.[detailSort.column])
+    );
+  }, [rows, detailSort]);
 
-  const pager = (
+  const toggleSort = (column: number) => {
+    setDetailSort((prev) =>
+      prev?.column === column
+        ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "desc" }
+    );
+    setDetailPage(1);
+  };
+
+  const pager = (page: number, onPage: (page: number) => void, total: number) => (
     <div className="card__pager">
-      <Pagination
-        page={current}
-        pageSize={pageSize}
-        total={rows.length}
-        onPage={setPage}
-        label="rows"
-      />
+      <Pagination page={page} pageSize={pageSize} total={total} onPage={onPage} label="rows" />
     </div>
+  );
+
+  const breakdownPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const breakdownCurrent = Math.min(breakdownPage, breakdownPages);
+  const visible = rows.slice((breakdownCurrent - 1) * pageSize, breakdownCurrent * pageSize);
+
+  const detailPages = Math.max(1, Math.ceil(detailRows.length / pageSize));
+  const detailCurrent = Math.min(detailPage, detailPages);
+  const detailVisible = detailRows.slice(
+    (detailCurrent - 1) * pageSize,
+    detailCurrent * pageSize
   );
 
   const detail = rows.length ? (
@@ -93,14 +140,21 @@ export function CostCard({
           <thead>
             <tr>
               {columns.map((label, index) => (
-                <Th key={label} align={index === 0 ? "left" : "right"}>
+                <SortableTh
+                  key={label}
+                  sortKey={String(index)}
+                  active={detailSort?.column === index}
+                  direction={detailSort?.column === index ? detailSort.direction : "desc"}
+                  onSort={(key) => toggleSort(Number(key))}
+                  align={index === 0 ? "left" : "right"}
+                >
                   {label}
-                </Th>
+                </SortableTh>
               ))}
             </tr>
           </thead>
           <tbody>
-            {visible.map((row) => (
+            {detailVisible.map((row) => (
               <Tr key={row.key}>
                 {row.cells.map((cell, index) => (
                   <Td
@@ -118,7 +172,7 @@ export function CostCard({
           </tbody>
         </Table>
       </TableWrap>
-      {pager}
+      {pager(detailCurrent, setDetailPage, detailRows.length)}
     </>
   ) : (
     <EmptyState title={emptyDetail} />
@@ -132,10 +186,10 @@ export function CostCard({
     </div>
   ) : rows.length ? (
     <>
-      {/* Same cap/scroll as the detail table; the pager stays outside, pinned
+      {/* Same fixed body as the detail table; the pager stays outside, pinned
           to the bottom of the card in both views. */}
       <div className="card-scroll">{breakdown(visible)}</div>
-      {pager}
+      {pager(breakdownCurrent, setBreakdownPage, rows.length)}
     </>
   ) : (
     <EmptyState title={emptyBreakdown} />
