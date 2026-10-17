@@ -35,7 +35,7 @@ from ._state import get_state
 from ._tracing import build_provider, register_atexit_flush
 from ._workflow import workflow, Workflow
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "init",

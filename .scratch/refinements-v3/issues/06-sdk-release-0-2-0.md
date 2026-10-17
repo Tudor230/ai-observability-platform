@@ -50,3 +50,15 @@ tag-triggered release workflow.
   `aiobs-contracts 0.1.0` (satisfies `>=0.1,<0.2`). Local annotated tag
   `sdk-v0.2.0` prepared on the loop-detection tip — push it to run
   `release.yml`.
+- 2026-10-17 (post-release): **sdk-v0.2.0 shipped broken for fresh installs.**
+  PyPI still had `aiobs-contracts 0.1.0` (pre-loop names) and the workflow's
+  `skip-existing` never uploaded the updated contracts, so
+  `pip install ai-observability-sdk==0.2.0` resolved the old contracts and
+  failed at import (`LOOP_CYCLE_MAX_STEPS`). Fixed by bumping
+  `aiobs-contracts` to **0.1.1** (the additive bump that was missing), pinning
+  the SDK to `aiobs-contracts>=0.1.1,<0.2`, and releasing
+  **`sdk-v0.2.1`**; publishing 0.1.1 also repairs existing 0.2.0 installs
+  (pip resolves the newest matching contracts). `release.yml` gained a
+  `smoke-install` gate: after contracts are published, the built SDK wheel is
+  installed in a clean venv against PyPI and imported — a mismatch now fails
+  the release before the SDK is uploaded.
