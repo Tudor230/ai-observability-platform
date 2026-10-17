@@ -16,6 +16,7 @@ records exceptions as span errors.
 Env vars (12-factor, explicit init() args override):
     AI_OBSERVABILITY_API_KEY, AI_OBSERVABILITY_ENDPOINT,
     AI_OBSERVABILITY_PROJECT_ID (debug override; Phoenix routing only),
+    AI_OBSERVABILITY_LOOP_DETECTION (default true),
     OTEL_SERVICE_NAME, OTEL_SERVICE_VERSION, OTEL_DEPLOYMENT_ENVIRONMENT
 """
 
@@ -78,6 +79,7 @@ def init(
     service_version: Optional[str] = None,
     deployment_environment: Optional[str] = None,
     capture_prompts: bool = False,
+    loop_detection: Optional[bool] = None,
     **kwargs: Any,
 ) -> None:
     """Initialize the SDK: tracing pipeline + framework auto-instrumentation.
@@ -89,6 +91,10 @@ def init(
             (ADR-0008); setting this affects Phoenix routing only
             (x-project-name header + openinference.project.name).
         capture_prompts: opt-in payload capture (per-workflow override allowed).
+        loop_detection: measure repeated LLM/TOOL calls and signature-equal
+            cycles live and stamp ``sdk.loop.*`` evidence (ADR-0014). Defaults
+            to True (env: ``AI_OBSERVABILITY_LOOP_DETECTION``); disabling it
+            stops the SDK from computing/exporting call signatures at all.
     """
     config = resolve_config(
         {
@@ -99,6 +105,7 @@ def init(
             "service_version": service_version,
             "deployment_environment": deployment_environment,
             "capture_prompts": capture_prompts,
+            "loop_detection": loop_detection,
         }
     )
     # Internal test hook: swap the final sink (skips the OTLP exporter).

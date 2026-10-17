@@ -179,9 +179,42 @@ See `examples/README.md`.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).
+* **Loop detection (ADR-0014)**: identical LLM/TOOL calls are measured live.
+  Each call gets a salted, run-scoped `sdk.call.sig` (HMAC of the call input —
+  never the payload itself); when a call repeats (≥3 by default) or completes a
+  signature-equal 2–4 step cycle, the span is marked with `sdk.loop.signal` /
+  `sdk.loop.repeat_count` and the workflow root carries
+  `sdk.loop.tool_repeats` / `llm_repeats` / `cycle_repeats` evidence counts.
+  Retried attempts and failed calls never count. The backend re-derives the
+  authoritative execution flag from the exported signatures; the SDK's marks
+  are trace-UI context.
 
 The SDK records raw material — the backend (next phase) holds the
 authoritative failure taxonomy and cost engine.
+
+## Loop detection
+
+Agents can get stuck repeating themselves without any span erroring; the SDK
+measures that repetition content-free and the platform flags it (component
+tickets in `.scratch/loop-detection/`, decision in ADR-0014):
+
+* **Signals**: `tool_repeat` (same tool + arguments), `llm_repeat` (same model
+  + full input), `cycle` (consecutive repeating pattern of 2–4 calls with
+  identical signatures). Name-only alternation — a normal ReAct agent — never
+  flags.
+* **Privacy**: signatures are HMAC-SHA256 digests over canonicalized input
+  under a per-process random salt that is never exported. The digest is an
+  equality token valid only within the emitting process; prompts stay local
+  even with `capture_prompts=False`.
+* **Off switch**: `init(loop_detection=False)` or
+  `AI_OBSERVABILITY_LOOP_DETECTION=false` disables signature measurement
+  entirely. Thresholds (default 3) are backend config, so tuning needs no SDK
+  release.
+* **Demo scenarios**: `uv run aiobs-mock --scenario loop_tool_repeat` (a stuck
+  agent — expect signals and root evidence) and `--scenario loop_clean_react`
+  (a healthy alternation — expect signatures but no flags); add
+  `--endpoint http://localhost:8000 --api-key <key>` to see them in the
+  dashboard's executions list and alerts.
 
 ## Layout
 

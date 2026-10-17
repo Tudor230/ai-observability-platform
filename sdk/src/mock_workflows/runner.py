@@ -15,6 +15,7 @@ from .groq.scenarios import SCENARIOS as GROQ_SCENARIOS
 from .langchain.scenarios import SCENARIOS as LANGCHAIN_SCENARIOS
 from .langgraph.scenarios import SCENARIOS as LANGGRAPH_SCENARIOS
 from .llamaindex.scenarios import SCENARIOS as LLAMAINDEX_SCENARIOS
+from .loops.scenarios import SCENARIOS as LOOP_SCENARIOS
 from .ollama.scenarios import SCENARIOS as OLLAMA_SCENARIOS
 from .scenario import Scenario, ScenarioResult
 
@@ -25,6 +26,7 @@ SCENARIOS: list[Scenario] = (
     + LANGCHAIN_SCENARIOS
     + LLAMAINDEX_SCENARIOS
     + LANGGRAPH_SCENARIOS
+    + LOOP_SCENARIOS
     + OLLAMA_SCENARIOS
     + GROQ_SCENARIOS
 )

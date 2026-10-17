@@ -12,8 +12,12 @@ from typing import Any, Optional
 API_KEY_ENV = "AI_OBSERVABILITY_API_KEY"
 ENDPOINT_ENV = "AI_OBSERVABILITY_ENDPOINT"
 PROJECT_ID_ENV = "AI_OBSERVABILITY_PROJECT_ID"
+LOOP_DETECTION_ENV = "AI_OBSERVABILITY_LOOP_DETECTION"
 DEFAULT_ENDPOINT = "http://localhost:6006"
 DEFAULT_SERVICE_NAME = "unknown_service"
+
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,7 @@ class Config:
     service_version: Optional[str] = None
     deployment_environment: Optional[str] = None
     capture_prompts: bool = False
+    loop_detection: bool = True
 
     @property
     def capture_enabled(self) -> bool:
@@ -34,6 +39,18 @@ class Config:
 def _env(name: str) -> Optional[str]:
     value = os.environ.get(name)
     return value if value else None
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = _env(name)
+    if value is None:
+        return default
+    lowered = value.strip().lower()
+    if lowered in _FALSE_VALUES:
+        return False
+    if lowered in _TRUE_VALUES:
+        return True
+    return default
 
 
 def resolve_config(kwargs: dict[str, Any]) -> Config:
@@ -51,6 +68,12 @@ def resolve_config(kwargs: dict[str, Any]) -> Config:
         "OTEL_DEPLOYMENT_ENVIRONMENT"
     )
     capture_prompts = bool(kwargs.get("capture_prompts", False))
+    loop_detection_kwarg = kwargs.get("loop_detection")
+    loop_detection = (
+        _env_bool(LOOP_DETECTION_ENV, True)
+        if loop_detection_kwarg is None
+        else bool(loop_detection_kwarg)
+    )
     return Config(
         api_key=api_key,
         endpoint=endpoint,
@@ -59,4 +82,5 @@ def resolve_config(kwargs: dict[str, Any]) -> Config:
         service_version=service_version,
         deployment_environment=deployment_environment,
         capture_prompts=capture_prompts,
+        loop_detection=loop_detection,
     )

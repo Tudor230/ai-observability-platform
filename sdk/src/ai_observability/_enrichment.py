@@ -23,10 +23,11 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
+from operator import attrgetter
 from typing import Callable, Optional
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -34,17 +35,32 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace.status import Status, StatusCode
 
 from ._attributes import (
+    LOOP_CYCLE_MAX_STEPS,
+    LOOP_DEFAULT_THRESHOLD,
+    LOOP_SIGNAL_CYCLE,
+    LOOP_SIGNAL_LLM,
+    LOOP_SIGNAL_TOOL,
     METADATA,
     OPENINFERENCE_SPAN_KIND,
+    SDK_CALL_SIG,
     SDK_CAPTURE_PROMPTS,
     SDK_ERROR_KIND,
     SDK_HITL_INTERRUPTED,
     SDK_HITL_NODE,
+    SDK_LOOP_CYCLE_REPEATS,
+    SDK_LOOP_LLM_REPEATS,
+    SDK_LOOP_REPEAT_COUNT,
+    SDK_LOOP_SIGNAL,
+    SDK_LOOP_TOOL_REPEATS,
+    SDK_RETRY_COUNT,
     SESSION_ID,
+    LoopStep,
+    scan_loop_steps,
 )
 from ._config import Config
 from ._errors import enrich_error_attributes, is_failed
 from ._retries import enrich_retry_attributes
+from ._signature import call_signature
 from ._state import get_state
 from ._usage import backfill_token_counts, normalize_provider
 
@@ -55,6 +71,11 @@ _FALSE = "false"
 
 _MAX_PENDING_TRACES = 1000
 _MAX_METAS_PER_TRACE = 2000
+
+# Loop detection (ADR-0014): live, bounded measurement over LLM/TOOL calls.
+_MAX_DISTINCT_SIGS_PER_TRACE = 512
+_MAX_LOOP_STEPS = 64
+_LOOP_KINDS = frozenset({"LLM", "TOOL"})
 
 _RETRYABLE_KINDS = frozenset({"LLM", "TOOL"})
 _ERROR_ENRICH_KINDS = frozenset({"LLM", "TOOL", "RETRIEVER", "CHAIN", "AGENT"})
@@ -167,14 +188,20 @@ class _SpanMeta:
     error_kind: Optional[str] = None
     capture: Optional[bool] = None
     interrupt_node: Optional[str] = None
+    call_sig: Optional[str] = None
 
 
 class _TraceState:
-    __slots__ = ("metas", "capture_override")
+    __slots__ = ("metas", "capture_override", "sig_counts", "steps")
 
     def __init__(self) -> None:
         self.metas: "OrderedDict[int, _SpanMeta]" = OrderedDict()
         self.capture_override: Optional[bool] = None
+        # Loop detection: signature -> repeat count, plus the recent ordered
+        # LLM/TOOL step window. Both are bounded and evict oldest first, so a
+        # long-running workflow cannot grow SDK memory (F14).
+        self.sig_counts: "OrderedDict[str, int]" = OrderedDict()
+        self.steps: "deque[LoopStep]" = deque(maxlen=_MAX_LOOP_STEPS)
 
 
 class EnrichingExporter(SpanExporter):
@@ -271,7 +298,12 @@ class EnrichingExporter(SpanExporter):
                 if span.context is not None
             ]
             return [
-                self._propagate_root_failure(copy, states.get(copy.context.trace_id))
+                self._stamp_loop_evidence(
+                    self._propagate_root_failure(
+                        copy, states.get(copy.context.trace_id)
+                    ),
+                    states.get(copy.context.trace_id),
+                )
                 for copy in copies
             ]
 
@@ -346,7 +378,18 @@ class EnrichingExporter(SpanExporter):
         if is_failed(span) and kind in _ERROR_ENRICH_KINDS:
             attrs = enrich_error_attributes(span, attrs)
 
-        enrich_retry_attributes(span, attrs, self._infer_retry(span, state, kind))
+        retry_count = self._infer_retry(span, state, kind)
+        enrich_retry_attributes(span, attrs, retry_count)
+
+        if (
+            self._config.loop_detection
+            and state is not None
+            and span.context is not None
+            and kind in _LOOP_KINDS
+            and SDK_RETRY_COUNT not in attrs
+            and not is_failed(span)
+        ):
+            self._record_loop_call(attrs, state, kind, span)
 
         if not self._resolve_capture(span, state, context_override):
             attrs = _strip_payload(attrs)
@@ -420,6 +463,97 @@ class EnrichingExporter(SpanExporter):
             and m.name == name
         ]
         return len(failed_siblings) or None
+
+    def _record_loop_call(
+        self,
+        attrs: dict,
+        state: _TraceState,
+        kind: str,
+        span: ReadableSpan,
+    ) -> None:
+        """Measure one LLM/TOOL call for loop detection (ADR-0014).
+
+        Stamps ``sdk.call.sig`` — the salted equality token the backend
+        re-derives repeats and cycles from — and, once the live threshold
+        trips, marks this span with ``sdk.loop.signal`` (repeat signal, cycle,
+        or both) plus ``sdk.loop.repeat_count``.
+
+        Retried attempts and failed calls never reach this method, so retry
+        storms do not feed the loop counters.
+        """
+        sig = call_signature(kind, attrs)
+        if sig is None:
+            # No usable input: skip rather than guess (never false-positive on
+            # instrumentors that do not capture arguments).
+            return
+        attrs[SDK_CALL_SIG] = sig
+
+        if span.context is not None:
+            meta = state.metas.get(span.context.span_id)
+            if meta is not None:
+                meta.call_sig = sig
+
+        counts = state.sig_counts
+        counts[sig] = counts.get(sig, 0) + 1
+        while len(counts) > _MAX_DISTINCT_SIGS_PER_TRACE:
+            counts.popitem(last=False)
+
+        state.steps.append(LoopStep(kind=kind, name=span.name or "", sig=sig))
+
+        signals: list[str] = []
+        repeat = counts.get(sig, 0)
+        if repeat >= LOOP_DEFAULT_THRESHOLD:
+            signals.append(LOOP_SIGNAL_TOOL if kind == "TOOL" else LOOP_SIGNAL_LLM)
+        cycle = _tail_cycle_repeats(state.steps)
+        if cycle >= LOOP_DEFAULT_THRESHOLD:
+            signals.append(LOOP_SIGNAL_CYCLE)
+        if signals:
+            attrs[SDK_LOOP_SIGNAL] = ",".join(signals)
+            attrs[SDK_LOOP_REPEAT_COUNT] = max(repeat, cycle)
+
+    @staticmethod
+    def _stamp_loop_evidence(
+        root: ReadableSpan, state: Optional[_TraceState]
+    ) -> ReadableSpan:
+        """Stamp loop evidence counts on the workflow root (ADR-0014).
+
+        Scoped to the root's own subtree: a continued trace (a HITL interrupt
+        run next to its resume run) lands sibling roots under one trace id, and
+        they must not inherit each other's repeats. The stamped counts are
+        trace-UI context at the SDK's default threshold — the backend
+        re-derives the authoritative execution flag from ``sdk.call.sig``.
+        """
+        if root.parent is not None and not root.parent.is_remote:
+            return root
+        if state is None or root.context is None:
+            return root
+        roots = [
+            m
+            for m in state.metas.values()
+            if m.parent_id is None or m.parent_remote
+        ]
+        if len(roots) <= 1:
+            # Single-root trace: every other span belongs to this root.
+            metas = list(state.metas.values())
+        else:
+            descendant_ids = _descendant_meta_ids(root.context.span_id, state)
+            metas = [m for m in state.metas.values() if m.span_id in descendant_ids]
+
+        steps = [
+            LoopStep(kind=m.kind or "", name=m.name, sig=m.call_sig)
+            for m in sorted(metas, key=attrgetter("start_time"))
+            if m.kind in _LOOP_KINDS
+        ]
+        if not steps:
+            return root
+        scan = scan_loop_steps(steps)
+        if not scan.signals():
+            return root
+        attrs = dict(root.attributes or {})
+        attrs[SDK_LOOP_TOOL_REPEATS] = scan.tool_repeats
+        attrs[SDK_LOOP_LLM_REPEATS] = scan.llm_repeats
+        attrs[SDK_LOOP_CYCLE_REPEATS] = scan.cycle_repeats
+        return _copy_span(root, attrs)
 
     @staticmethod
     def _apply_hitl(
@@ -528,3 +662,32 @@ def _descendant_meta_ids(root_span_id: int, state: _TraceState) -> set[int]:
         found.add(span_id)
         stack.extend(children.get(span_id, ()))
     return found
+
+
+def _tail_cycle_repeats(steps: "deque[LoopStep]") -> int:
+    """Consecutive repetitions of a 2..N-step pattern *ending at the last step*.
+
+    The live counterpart of ``scan_loop_steps``: only a pattern that the
+    current call completes counts, so unrelated later calls never inherit an
+    earlier cycle's mark on their span.
+    """
+    items = list(steps)
+    total = len(items)
+    best = 0
+    for length in range(2, LOOP_CYCLE_MAX_STEPS + 1):
+        if total < length:
+            continue
+        block = items[-length:]
+        if not all(step.sig for step in block):
+            continue
+        repeats = 1
+        cursor = total - length
+        while cursor - length >= 0:
+            earlier = items[cursor - length : cursor]
+            if earlier != block or not all(step.sig for step in earlier):
+                break
+            repeats += 1
+            cursor -= length
+        if repeats >= 2:
+            best = max(best, repeats)
+    return best
