@@ -2,14 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { useDirectoryProjects } from "../api/hooks";
 import { Button, Field, SearchableSelect, TextInput } from "./core";
 import { IconFilter, IconX } from "./core/icons";
-import { TABLE_FILTER_FIELDS, useTableFilters } from "../state/useTableFilters";
+import {
+  TABLE_FILTER_FIELDS,
+  useTableFilters,
+  type TableFilterField,
+} from "../state/useTableFilters";
 
 /**
  * Per-table filter control (refinements v3): a compact button for the card
  * header plus removable chips for the card body. State is namespaced per card
  * in the URL, so two cards on one page filter independently.
  */
-export function TableFilters({ card, title }: { card: string; title: string }) {
+export function TableFilters({
+  card,
+  title,
+  fields = [...TABLE_FILTER_FIELDS],
+}: {
+  card: string;
+  title: string;
+  /** Which fields this card's endpoint actually supports (default: all). */
+  fields?: TableFilterField[];
+}) {
   const { filters, setFilter, clear, activeCount } = useTableFilters(card);
   const projects = useDirectoryProjects();
   const [open, setOpen] = useState(false);
@@ -42,26 +55,30 @@ export function TableFilters({ card, title }: { card: string; title: string }) {
           role="dialog"
           aria-label={`${title} filters`}
         >
-          <Field label="Project">
-            <SearchableSelect
-              value={filters.project_id ?? ""}
-              onChange={(value) => setFilter("project_id", value || undefined)}
-              options={(projects.data?.items ?? []).map((project) => ({
-                value: project.project_id,
-                label: project.name,
-              }))}
-              placeholder="All projects"
-              aria-label="Project"
-            />
-          </Field>
-          <Field label="Workflow">
-            <TextInput
-              value={filters.workflow ?? ""}
-              placeholder="workflow name"
-              aria-label="Workflow"
-              onChange={(e) => setFilter("workflow", e.target.value || undefined)}
-            />
-          </Field>
+          {fields.includes("project_id") ? (
+            <Field label="Project">
+              <SearchableSelect
+                value={filters.project_id ?? ""}
+                onChange={(value) => setFilter("project_id", value || undefined)}
+                options={(projects.data?.items ?? []).map((project) => ({
+                  value: project.project_id,
+                  label: project.name,
+                }))}
+                placeholder="All projects"
+                aria-label="Project"
+              />
+            </Field>
+          ) : null}
+          {fields.includes("workflow") ? (
+            <Field label="Workflow">
+              <TextInput
+                value={filters.workflow ?? ""}
+                placeholder="workflow name"
+                aria-label="Workflow"
+                onChange={(e) => setFilter("workflow", e.target.value || undefined)}
+              />
+            </Field>
+          ) : null}
           <div className="row" style={{ justifyContent: "flex-end" }}>
             <Button variant="quiet" disabled={!activeCount} onClick={clear}>
               Reset

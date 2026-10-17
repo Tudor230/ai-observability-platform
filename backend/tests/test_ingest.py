@@ -503,6 +503,17 @@ def test_costs_items_expose_total_cost(client, project):
             assert "cost" not in item, (dimension, item)
 
 
+def test_model_cost_rows_carry_executions_and_calls(client, project):
+    """Margin 04: model rows carry real counts, so cards never show undefined."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    items = client.get("/api/v1/costs?dimension=model").json()["items"]
+    assert items
+    item = items[0]
+    assert item["executions"] == 1, item
+    assert item["calls"] == 1, item
+    assert item["total_tokens"] == item["tokens"] == 1500, item
+
+
 def test_costs_rows_carry_detail_fields(client, project):
     """Ticket 04: execution-based cost rows power the detail views."""
     client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())

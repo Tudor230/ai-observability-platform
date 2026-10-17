@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -77,6 +78,10 @@ class Project(Base):
     # The unique human handle (ADR-0012): every dashboard surface shows this.
     name: Mapped[str] = mapped_column(String(120), unique=True)
     enabled: Mapped[bool] = mapped_column(default=True)
+    # Internal projects serve the org itself (tooling, R&D, demos): they need no
+    # revenue, so their AI cost is reported separately instead of dragging the
+    # margin down (ADR-0013).
+    internal: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -478,4 +483,41 @@ class AlertRule(Base):
     __table_args__ = (
         Index("ix_alert_rules_scope", "scope_type", "scope_id"),
         Index("ix_alert_rules_enabled", "enabled"),
+    )
+
+
+class ProjectRate(Base):
+    """A versioned project rate: what a project pays and what it costs to serve.
+
+    Versions never overwrite each other (ADR-0013): the active rate for a day is
+    the row with the greatest ``effective_from <= day``, so a price change shows
+    as a step in revenue accrual instead of rewriting history. Manual cost is an
+    explicit input, not an inferred default.
+    """
+
+    __tablename__ = "project_rates"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    revenue_amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    revenue_period: Mapped[str] = mapped_column(String(16), default="month")  # month|year
+    manual_cost_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 6), default=Decimal("0")
+    )
+    manual_cost_period: Mapped[str] = mapped_column(String(16), default="month")
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    __table_args__ = (
+        # One version per project per day: a clash is a 409, never an overwrite.
+        UniqueConstraint(
+            "project_id", "effective_from", name="uq_project_rate_version"
+        ),
     )

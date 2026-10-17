@@ -54,6 +54,23 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   spans).
 - **Tool insights** — per-tool reliability from `GET /tools`: calls, failures,
   error rate and avg/p95 duration of TOOL spans.
+- **Project rate** — what a project pays (and optionally what it costs to serve
+  manually), entered by an exec as a *versioned* run-rate with an explicit
+  `effective_from` (ADR-0013).
+- **Rate version** — one rate row; the active rate for a day is the greatest
+  `effective_from <= day`. Versions never overwrite each other, and two
+  versions may not share a date.
+- **Contribution** — prorated revenue minus prorated manual cost, before AI
+  cost.
+- **Margin** — contribution minus AI cost, over the selected window; only
+  computed for external projects with an active rate.
+- **Internal project** — a project flagged as serving the org itself; it needs
+  no revenue, so its AI cost is reported as internal spend rather than as a
+  loss (ADR-0013).
+- **Coverage** — how much of the external AI cost has revenue behind it:
+  projects with an active rate, and the covered share of cost.
+- **Break-even scale** — contribution ÷ AI cost: the multiple of current volume
+  whose AI cost consumes the contribution.
 
 ## Explicitly avoided synonyms
 

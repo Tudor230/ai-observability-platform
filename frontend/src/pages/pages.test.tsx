@@ -18,6 +18,12 @@ const h = vi.hoisted(() => ({
   metrics: vi.fn(),
   models: vi.fn(),
   tools: vi.fn(),
+  margin: vi.fn(),
+  ratesList: vi.fn(),
+  ratesCreate: vi.fn(),
+  ratesUpdate: vi.fn(),
+  ratesRemove: vi.fn(),
+  ratesInternal: vi.fn(),
   alertsList: vi.fn(),
   alertsUpdate: vi.fn(),
   alertsRemove: vi.fn(),
@@ -84,6 +90,14 @@ vi.mock("../api/client", () => ({
     metrics: h.metrics,
     models: h.models,
     tools: h.tools,
+    margin: h.margin,
+    projectRates: {
+      list: h.ratesList,
+      create: h.ratesCreate,
+      update: h.ratesUpdate,
+      remove: h.ratesRemove,
+      setInternal: h.ratesInternal,
+    },
     alerts: { list: h.alertsList, update: h.alertsUpdate, remove: h.alertsRemove },
     alertRules: {
       list: h.rulesList,
@@ -259,6 +273,107 @@ const toolInsight = {
   last_seen: "2026-10-01T10:00:00Z",
 };
 
+const marginRow = {
+  project_id: "p1",
+  name: "Checkout",
+  internal: false,
+  rate: {
+    id: "r1",
+    effective_from: "2026-10-01",
+    revenue_amount: 300,
+    revenue_period: "month",
+    manual_cost_amount: 50,
+    manual_cost_period: "month",
+  },
+  covered_days: 10,
+  window_days: 10,
+  revenue: 300,
+  manual_cost: 50,
+  ai_cost: 1,
+  margin: 249,
+  margin_pct: 0.83,
+  executions: 12,
+  cost_per_execution: 0.08,
+  break_even_scale: 250,
+  break_even_executions: 3112,
+};
+
+const marginInternalRow = {
+  ...marginRow,
+  project_id: "p2",
+  name: "Sandbox",
+  internal: true,
+  rate: null,
+  covered_days: 0,
+  revenue: 0,
+  manual_cost: 0,
+  ai_cost: 0.25,
+  margin: null,
+  margin_pct: null,
+  executions: 0,
+  cost_per_execution: null,
+  break_even_scale: null,
+  break_even_executions: null,
+};
+
+const marginData = {
+  items: [marginRow, marginInternalRow],
+  total: 2,
+  series: [
+    {
+      day: "2026-10-01",
+      revenue: 9.86,
+      manual_cost: 1.64,
+      ai_cost: 0.1,
+      internal_cost: 0.02,
+      margin: 8.12,
+    },
+  ],
+  totals: {
+    revenue: 300,
+    manual_cost: 50,
+    ai_cost: 1,
+    margin: 249,
+    margin_pct: 0.83,
+    executions: 12,
+    projects: 2,
+    projects_rated: 1,
+    internal_projects: 1,
+    coverage_pct: 1,
+    covered_cost: 1,
+    internal_cost: 0.25,
+    break_even_scale: 250,
+  },
+  window: { start: "2026-10-01", end: "2026-10-10", days: 10 },
+};
+
+const rateEntry = {
+  project_id: "p1",
+  project_name: "Checkout",
+  internal: false,
+  versions: [
+    {
+      id: "r1",
+      project_id: "p1",
+      project_name: "Checkout",
+      effective_from: "2026-10-01",
+      revenue_amount: 300,
+      revenue_period: "month",
+      manual_cost_amount: 50,
+      manual_cost_period: "month",
+      currency: "USD",
+      updated_at: null,
+    },
+  ],
+};
+
+const internalEntry = {
+  project_id: "p2",
+  project_name: "Sandbox",
+  internal: true,
+  versions: [],
+};
+
 const alert = {
   id: "a1",
   rule_id: "rule:1",
@@ -375,6 +490,16 @@ function resetMocks() {
   h.metrics.mockResolvedValue({ items: [dayMetric], total: 1 });
   h.models.mockResolvedValue({ items: [modelInsight], total: 1 });
   h.tools.mockResolvedValue({ items: [toolInsight], total: 1 });
+  h.margin.mockResolvedValue(marginData);
+  h.ratesList.mockResolvedValue({ items: [rateEntry, internalEntry], total: 2 });
+  h.ratesCreate.mockResolvedValue(rateEntry.versions[0]);
+  h.ratesUpdate.mockResolvedValue(rateEntry.versions[0]);
+  h.ratesRemove.mockResolvedValue({ deleted: "r1" });
+  h.ratesInternal.mockResolvedValue({
+    project_id: "p2",
+    project_name: "Sandbox",
+    internal: false,
+  });
   h.alertsList.mockResolvedValue({ items: [alert], total: 1 });
   h.alertsUpdate.mockResolvedValue({ id: "a1", status: "acknowledged" });
   h.alertsRemove.mockResolvedValue({ deleted: "a1" });
@@ -850,36 +975,156 @@ describe("Executive", () => {
     );
     expect(metrics).toEqual([
       "Total AI cost",
+      "Revenue",
+      "Margin",
+      "Margin %",
       "Cost per 1M tokens",
       "Cost per execution",
       "Executions",
       "Total tokens",
-      "p95 latency",
     ]);
 
-    // Phoenix-style panels: traffic, usage economics and model economics.
+    // Margin is the exec headline; latency panels are gone from this page.
     for (const title of [
+      "Margin over time",
+      "Scaling forecast",
+      "Margin by project",
       "Executions over time",
-      "Latency over time",
       "Error rate over time",
       "Tokens over time",
       "Failures by kind",
       "Top models by cost",
       "Top models by tokens",
-      "Latency by model",
       "Cost over time",
     ]) {
-      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(screen.getAllByText(title).length).toBeGreaterThan(0);
     }
+    expect(screen.queryByText("Latency over time")).not.toBeInTheDocument();
+    expect(screen.queryByText("Latency by model")).not.toBeInTheDocument();
+
+    // Coverage and internal spend are stated next to the totals.
+    expect(
+      screen.getByText(/Rates cover 100.0% of AI cost · 1 of 2 projects have a rate/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/1 internal \(no revenue expected\)/)).toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Projects")).toBeInTheDocument();
     expect(screen.getByText("Forecast")).toBeInTheDocument();
 
-    // Both cards switch to the capped detail view (Projects card first).
-    fireEvent.click(screen.getAllByRole("tab", { name: /Detail/ })[0]);
-    expect(await screen.findByText("Project")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("tab", { name: /Detail/ })[1]);
-    expect(await screen.findByText("Provider · model")).toBeInTheDocument();
+    // Both cost cards switch to the capped detail view.
+    const projectsCard = screen.getByText("Projects").closest(".card") as HTMLElement;
+    fireEvent.click(within(projectsCard).getByRole("tab", { name: /Detail/ }));
+    expect(await within(projectsCard).findByText("Project")).toBeInTheDocument();
+    const modelsCard = screen.getByText("Models").closest(".card") as HTMLElement;
+    fireEvent.click(within(modelsCard).getByRole("tab", { name: /Detail/ }));
+    expect(await within(modelsCard).findByText("Provider · model")).toBeInTheDocument();
+  });
+});
+
+describe("Margin", () => {
+  it("asks for rates instead of showing a fabricated loss", async () => {
+    h.margin.mockResolvedValue({
+      ...marginData,
+      items: [marginInternalRow],
+      totals: {
+        ...marginData.totals,
+        revenue: 0,
+        manual_cost: 0,
+        margin: 0,
+        margin_pct: null,
+        projects_rated: 0,
+        coverage_pct: 0,
+        covered_cost: 0,
+        break_even_scale: null,
+      },
+    });
+    renderWithProviders(<Executive />);
+
+    expect(await screen.findByText("No project rates yet")).toBeInTheDocument();
+    expect(screen.queryByText("Margin over time")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add project rates" }));
+    expect(await screen.findByRole("dialog", { name: "Project rates" })).toBeInTheDocument();
+  });
+
+  it("compounds volume into the margin at the scaling forecast", async () => {
+    renderWithProviders(<Executive />);
+    const select = await screen.findByLabelText("Scale");
+    // ×2: AI cost doubles, revenue and manual cost stay as entered.
+    fireEvent.change(select, { target: { value: "2" } });
+    expect(
+      await screen.findByText(
+        /At ×2: AI cost \$2\.00 · margin \$248\.00 \(82\.7% of revenue\)/
+      )
+    ).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "10" } });
+    expect(
+      await screen.findByText(/At ×10: AI cost \$10\.00 · margin \$240\.00/)
+    ).toBeInTheDocument();
+    // Break-even multiple comes from the totals.
+    expect(
+      screen.getByText(/Revenue covers AI cost up to ×250\.0 of today's volume/)
+    ).toBeInTheDocument();
+  });
+
+  it("manages rate versions from the dialog", async () => {
+    renderWithProviders(<Executive />);
+    fireEvent.click(await screen.findByRole("button", { name: "Project rates" }));
+    const dialog = await screen.findByRole("dialog", { name: "Project rates" });
+
+    // The project's existing version is listed with its amounts.
+    expect(await within(dialog).findByText("2026-10-01")).toBeInTheDocument();
+    expect(within(dialog).getByText(/300\.00 \/month/)).toBeInTheDocument();
+
+    // Adding a version starts a new price rather than overwriting one.
+    fireEvent.change(within(dialog).getByLabelText("Effective from"), {
+      target: { value: "2026-11-01" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Revenue amount"), {
+      target: { value: "600" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add version" }));
+    await waitFor(() =>
+      expect(h.ratesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_id: "p1",
+          effective_from: "2026-11-01",
+          revenue_amount: 600,
+        })
+      )
+    );
+
+    // A duplicate date is reported inline, not swallowed.
+    h.ratesCreate.mockRejectedValueOnce(
+      Object.assign(new Error("409: conflict"), { status: 409 })
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add version" }));
+    expect(
+      await within(dialog).findByText("A rate version already starts on that date.")
+    ).toBeInTheDocument();
+
+    // Editing a version, then deleting one.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(dialog).getByLabelText("Revenue amount"), {
+      target: { value: "350" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save version" }));
+    await waitFor(() =>
+      expect(h.ratesUpdate).toHaveBeenCalledWith(
+        "r1",
+        expect.objectContaining({ revenue_amount: 350 })
+      )
+    );
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(h.ratesRemove).toHaveBeenCalledWith("r1"));
+  });
+
+  it("flags a project as internal so no revenue is expected", async () => {
+    renderWithProviders(<Executive />);
+    fireEvent.click(await screen.findByRole("button", { name: "Project rates" }));
+    const dialog = await screen.findByRole("dialog", { name: "Project rates" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Mark internal" }));
+    await waitFor(() => expect(h.ratesInternal).toHaveBeenCalledWith("p1", true));
   });
 });
 

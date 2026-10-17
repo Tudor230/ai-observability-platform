@@ -86,6 +86,23 @@ export function useTools(f: Filters) {
   });
 }
 
+export function useMargin(f: Filters) {
+  const refetchInterval = useRefetchInterval();
+  return useQuery({
+    queryKey: ["margin", f],
+    queryFn: () => api.margin(f),
+    refetchInterval,
+  });
+}
+
+export function useProjectRates(enabled = true) {
+  return useQuery({
+    queryKey: ["project-rates"],
+    queryFn: () => api.projectRates.list(),
+    enabled,
+  });
+}
+
 export function useCosts(dimension: string, f: Filters) {
   const refetchInterval = useRefetchInterval();
   return useQuery({

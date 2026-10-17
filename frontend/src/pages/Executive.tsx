@@ -1,12 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   useCosts,
   useFailuresSeries,
+  useMargin,
   useMetrics,
   useModels,
   useOverview,
   useProjectNameMap,
 } from "../api/hooks";
+import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
@@ -17,17 +19,19 @@ import {
   CostPerExecutionChart,
   ErrorRateChart,
   FailuresByKindChart,
-  LatencyChart,
-  ModelLatencyChart,
+  MarginChart,
   ModelsByCostChart,
   ModelsByTokensChart,
   TokensChart,
   TrafficChart,
 } from "../components/charts/insights";
+import { MarginScaling } from "../components/MarginScaling";
+import { ProjectRatesDialog } from "../components/ProjectRatesDialog";
 import { CostCard, CostCardBars } from "../components/CostCard";
 import { TableFilterChips, TableFilters } from "../components/TableFilters";
 import { useTableFilters } from "../state/useTableFilters";
 import {
+  Button,
   CardPanel,
   Delta,
   EmptyState,
@@ -35,7 +39,7 @@ import {
   QueryError,
   Skeleton,
 } from "../components/core";
-import { formatMoney, formatMs, formatPct, formatTokens, formatUnitCost } from "../lib/format";
+import { formatMoney, formatPct, formatTokens, formatUnitCost } from "../lib/format";
 import { buildForecast, forecastAsOf } from "../lib/forecast";
 import { dayMetricsToSeries } from "../lib/insightSeries";
 import type { DayMetric } from "../api/types";
@@ -70,6 +74,13 @@ export default function Executive() {
   // follow the page window like Overview.
   const models = useModels({ ...filters, ...modelCard.filters });
   const failures = useFailuresSeries(filters, true);
+  // The margin card owns its project filter (`margin_project_id`); /margin only
+  // narrows by project, so the workflow field is not offered for this card.
+  const marginCard = useTableFilters("margin");
+  const margin = useMargin({ ...filters, project_id: marginCard.filters.project_id });
+  const { hasRole } = useAuth();
+  const canManageRates = hasRole("exec");
+  const [ratesOpen, setRatesOpen] = useState(false);
 
   const data = overview.data;
   const items = trends.data?.items ?? [];
@@ -84,22 +95,35 @@ export default function Executive() {
   const tokens = data?.total_tokens ?? 0;
   const costPer1mTokens = tokens ? (totalCost / tokens) * 1_000_000 : null;
   const points = useMemo(() => dayMetricsToSeries(trends.data?.items), [trends.data]);
+  const marginTotals = margin.data?.totals;
+  const hasRates = (marginTotals?.projects_rated ?? 0) > 0;
+  const marginRows = margin.data?.items ?? [];
   const inputTokens = items.reduce((sum, m) => sum + (m.input_tokens ?? 0), 0);
   const outputTokens = items.reduce((sum, m) => sum + (m.output_tokens ?? 0), 0);
   const deltas = data?.deltas;
 
   const anyError =
-    overview.isError || byModel.isError || byProject.isError || models.isError;
-  const loadError = overview.error ?? byModel.error ?? byProject.error ?? models.error;
+    overview.isError ||
+    byModel.isError ||
+    byProject.isError ||
+    models.isError ||
+    margin.isError;
+  const loadError =
+    overview.error ?? byModel.error ?? byProject.error ?? models.error ?? margin.error;
 
   return (
     <div className="page">
       <PageHeader
         title="Executive"
-        subTitle="Unit economics of agentic AI — total spend, cost per execution and forecast."
+        subTitle="Unit economics of agentic AI — spend, revenue, margin and the scaling forecast."
         extra={
           <>
             <FiltersControl dimensions={["days"]} />
+            {canManageRates ? (
+              <Button variant="quiet" onClick={() => setRatesOpen(true)}>
+                Project rates
+              </Button>
+            ) : null}
             <RefreshButton />
           </>
         }
@@ -109,17 +133,37 @@ export default function Executive() {
       {anyError ? <QueryError what="executive data" error={loadError} /> : null}
 
       {overview.isLoading ? (
-        <div className="grid grid-3">
-          {Array.from({ length: 6 }, (_, i) => (
+        <div className="grid grid-4">
+          {Array.from({ length: 8 }, (_, i) => (
             <Skeleton key={i} shape="chart" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-3">
+        <div className="grid grid-4">
           <Metric
             label="Total AI cost"
             value={formatMoney(totalCost)}
             sub={<Delta pct={deltas?.total_cost_pct} polarity="up-is-bad" />}
+          />
+          <Metric
+            label="Revenue"
+            value={formatMoney(marginTotals?.revenue)}
+            sub={`${marginTotals?.projects_rated ?? 0} of ${marginTotals?.projects ?? 0} projects rated`}
+          />
+          <Metric
+            label="Margin"
+            value={formatMoney(marginTotals?.margin)}
+            tone={(marginTotals?.margin ?? 0) < 0 ? "danger" : "default"}
+            sub={`${formatMoney(marginTotals?.internal_cost)} internal spend`}
+          />
+          <Metric
+            label="Margin %"
+            value={
+              marginTotals?.margin_pct === null || marginTotals?.margin_pct === undefined
+                ? "—"
+                : formatPct(marginTotals.margin_pct)
+            }
+            sub={`${formatPct(marginTotals?.coverage_pct ?? 0)} of cost covered`}
           />
           <Metric label="Cost per 1M tokens" value={formatUnitCost(costPer1mTokens)} />
           <Metric label="Cost per execution" value={formatUnitCost(costPerExecution)} />
@@ -137,35 +181,122 @@ export default function Executive() {
             value={formatTokens(tokens)}
             sub={`${formatTokens(inputTokens)} in / ${formatTokens(outputTokens)} out`}
           />
-          <Metric
-            label="p95 latency"
-            value={formatMs(data?.p95_duration_ms)}
-            sub={`p50 ${formatMs(data?.p50_duration_ms)}`}
-          />
         </div>
       )}
 
-      <div className="grid grid-3">
+      {margin.isLoading ? (
+        <div className="grid grid-2">
+          <Skeleton shape="chart" />
+          <Skeleton shape="chart" />
+        </div>
+      ) : hasRates && marginTotals ? (
+        <>
+          <p className="muted" style={{ margin: 0 }}>
+            Rates cover {formatPct(marginTotals.coverage_pct)} of AI cost ·{" "}
+            {marginTotals.projects_rated} of {marginTotals.projects} projects have a rate
+            {marginTotals.internal_projects
+              ? ` · ${marginTotals.internal_projects} internal (no revenue expected)`
+              : ""}
+          </p>
+          <div className="grid grid-2">
+            <MarginChart data={margin.data?.series ?? []} />
+            <MarginScaling totals={marginTotals} />
+          </div>
+          <CostCard
+            filters={
+              <TableFilters card="margin" title="Margin" fields={["project_id"]} />
+            }
+            filterChips={<TableFilterChips card="margin" />}
+            title="Margin by project"
+            subTitle="Revenue, cost, margin and break-even per project"
+            loading={margin.isFetching}
+            emptyBreakdown="No margin to show"
+            emptyDetail="No projects in range."
+            columns={["Project", "Revenue", "Manual", "AI cost", "Margin", "Margin %"]}
+            rows={marginRows.map((row) => {
+              const label = row.name ?? row.project_id;
+              const note = row.internal ? "internal" : row.rate === null ? "no rate" : null;
+              return {
+                key: row.project_id,
+                href: `/engineering?project_id=${encodeURIComponent(row.project_id)}`,
+                bar: {
+                  label,
+                  value: Math.abs(row.margin ?? row.ai_cost),
+                  valueLabel:
+                    row.margin === null ? formatMoney(row.ai_cost) : formatMoney(row.margin),
+                  sublabel: note
+                    ? `${note} · ${formatMoney(row.ai_cost)} AI cost`
+                    : `${row.covered_days}/${row.window_days} days covered · ${
+                        row.break_even_scale === null
+                          ? "no break-even"
+                          : `breaks even at ×${row.break_even_scale.toFixed(1)}`
+                      }`,
+                },
+                cells: [
+                  note ? (
+                    <>
+                      {label} <span className="muted">· {note}</span>
+                    </>
+                  ) : (
+                    label
+                  ),
+                  formatMoney(row.revenue),
+                  formatMoney(row.manual_cost),
+                  formatMoney(row.ai_cost),
+                  <span className={(row.margin ?? 0) < 0 ? "text-danger" : ""}>
+                    {row.margin === null ? "—" : formatMoney(row.margin)}
+                  </span>,
+                  row.margin_pct === null ? "—" : formatPct(row.margin_pct),
+                ],
+                sortValues: [
+                  label,
+                  row.revenue,
+                  row.manual_cost,
+                  row.ai_cost,
+                  row.margin ?? -1e12,
+                  row.margin_pct ?? -1,
+                ],
+              };
+            })}
+            breakdown={(visible) => <CostCardBars rows={visible} />}
+          />
+        </>
+      ) : (
+        <CardPanel title="Margin" subTitle="Revenue from your project rates">
+          <EmptyState
+            title="No project rates yet"
+            description="Margin needs to know what each project pays. Add a rate — and flag internal projects so their cost is reported separately instead of as a loss."
+            extra={
+              canManageRates ? (
+                <Button variant="primary" onClick={() => setRatesOpen(true)}>
+                  Add project rates
+                </Button>
+              ) : null
+            }
+          />
+        </CardPanel>
+      )}
+
+      <div className="grid-2">
         <TrafficChart data={points} loading={trends.isLoading} />
-        <LatencyChart data={points} loading={trends.isLoading} />
         <ErrorRateChart data={points} loading={trends.isLoading} />
       </div>
 
-      <div className="grid grid-3">
+      <div className="grid-2">
         <TokensChart data={points} loading={trends.isLoading} />
         <CostPerExecutionChart data={points} loading={trends.isLoading} />
-        <FailuresByKindChart
-          items={failures.data?.items}
-          kinds={failures.data?.kinds ?? []}
-          loading={failures.isLoading}
-        />
       </div>
 
-      <div className="grid grid-3">
+      <div className="grid-2">
         <ModelsByCostChart items={models.data?.items} loading={models.isLoading} />
         <ModelsByTokensChart items={models.data?.items} loading={models.isLoading} />
-        <ModelLatencyChart items={models.data?.items} loading={models.isLoading} />
       </div>
+
+      <FailuresByKindChart
+        items={failures.data?.items}
+        kinds={failures.data?.kinds ?? []}
+        loading={failures.isLoading}
+      />
 
       <CardPanel
         title="Forecast"
@@ -283,6 +414,10 @@ export default function Executive() {
       </div>
 
       <CostChart data={points} loading={trends.isLoading} />
+
+      {ratesOpen ? (
+        <ProjectRatesDialog open onClose={() => setRatesOpen(false)} />
+      ) : null}
     </div>
   );
 }

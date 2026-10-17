@@ -18,7 +18,12 @@ import {
   type ModelRow,
   type ToolRow,
 } from "../../lib/insightSeries";
-import type { FailureSeriesItem, ModelInsight, ToolInsight } from "../../api/types";
+import type {
+  FailureSeriesItem,
+  MarginPoint,
+  ModelInsight,
+  ToolInsight,
+} from "../../api/types";
 
 /**
  * Shared insight panels (phoenix insights): one implementation of every chart
@@ -278,6 +283,48 @@ export function CallsChart({
           { key: "llm_calls", label: "LLM calls", colorIndex: 0 },
           { key: "tool_calls", label: "Tool calls", colorIndex: 4 },
         ]}
+        height={height}
+      />
+    </Panel>
+  );
+}
+
+export function MarginChart({
+  data,
+  loading,
+  height = 240,
+  filters,
+}: {
+  data: MarginPoint[];
+  loading?: boolean;
+  height?: number;
+  filters?: ReactNode;
+}) {
+  // Mapped into chart rows here (like the other panels) so the day labels match
+  // and the array stays assignable to TrendChart's row type.
+  const rows = data.map((point) => ({
+    day: point.day.slice(5),
+    margin: point.margin,
+    ai_cost: point.ai_cost,
+    internal_cost: point.internal_cost,
+  }));
+  return (
+    <Panel
+      title="Margin over time"
+      subTitle="Revenue accrual minus cost, per day"
+      loading={loading}
+      empty={!rows.length}
+      emptyText="No margin in range"
+      filters={filters}
+    >
+      <TrendChart
+        data={rows}
+        series={[
+          { key: "margin", label: "Margin", colorIndex: 0 },
+          { key: "ai_cost", label: "AI cost", colorIndex: 3, dashed: true },
+          { key: "internal_cost", label: "Internal cost", colorIndex: 5, dashed: true },
+        ]}
+        valueFormatter={formatMoney}
         height={height}
       />
     </Panel>

@@ -111,6 +111,89 @@ export interface AggregateRow {
   output_tokens?: number;
 }
 
+export interface ProjectRateVersion {
+  id: string;
+  project_id: string;
+  project_name: string | null;
+  effective_from: string;
+  revenue_amount: number;
+  revenue_period: "month" | "year";
+  manual_cost_amount: number;
+  manual_cost_period: "month" | "year";
+  currency: string;
+  updated_at: string | null;
+}
+
+export interface ProjectRatesEntry {
+  project_id: string;
+  project_name: string;
+  /** Internal projects serve the org itself: no revenue expected (ADR-0013). */
+  internal: boolean;
+  versions: ProjectRateVersion[];
+}
+
+export interface MarginRate {
+  id: string;
+  effective_from: string;
+  revenue_amount: number;
+  revenue_period: "month" | "year";
+  manual_cost_amount: number;
+  manual_cost_period: "month" | "year";
+}
+
+export interface MarginRow {
+  project_id: string;
+  name: string | null;
+  internal: boolean;
+  /** The version active on the window's last day, or null without a rate. */
+  rate: MarginRate | null;
+  covered_days: number;
+  window_days: number;
+  revenue: number;
+  manual_cost: number;
+  ai_cost: number;
+  /** Null when the project is internal or has no active rate. */
+  margin: number | null;
+  margin_pct: number | null;
+  executions: number;
+  cost_per_execution: number | null;
+  break_even_scale: number | null;
+  break_even_executions: number | null;
+}
+
+export interface MarginPoint {
+  day: string;
+  revenue: number;
+  manual_cost: number;
+  ai_cost: number;
+  internal_cost: number;
+  margin: number;
+}
+
+export interface MarginTotals {
+  revenue: number;
+  manual_cost: number;
+  ai_cost: number;
+  margin: number;
+  margin_pct: number | null;
+  executions: number;
+  projects: number;
+  projects_rated: number;
+  internal_projects: number;
+  coverage_pct: number;
+  covered_cost: number;
+  internal_cost: number;
+  break_even_scale: number | null;
+}
+
+export interface MarginResponse {
+  items: MarginRow[];
+  total: number;
+  series: MarginPoint[];
+  totals: MarginTotals;
+  window: { start: string | null; end: string | null; days: number };
+}
+
 export interface ModelInsight {
   key: string;
   provider?: string | null;

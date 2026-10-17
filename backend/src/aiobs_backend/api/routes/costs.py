@@ -70,13 +70,30 @@ def get_costs(
         for record, _ in rows:
             key = f"{record.provider or 'unknown'}:{record.model or 'unknown'}"
             bucket = agg.setdefault(
-                key, {"key": key, "provider": record.provider, "model": record.model, "total_cost": Decimal("0"), "input_tokens": 0, "output_tokens": 0}
+                key,
+                {
+                    "key": key,
+                    "provider": record.provider,
+                    "model": record.model,
+                    "total_cost": Decimal("0"),
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "calls": 0,
+                    "_executions": set(),
+                },
             )
             bucket["total_cost"] += record.amount or Decimal("0")
             bucket["input_tokens"] += record.input_tokens
             bucket["output_tokens"] += record.output_tokens
+            # One billing row per billed LLM call; the card shows the call count
+            # and how many executions those calls came from (F54).
+            bucket["calls"] += 1
+            bucket["_executions"].add(record.execution_id)
         items = sorted(agg.values(), key=lambda i: i["total_cost"], reverse=True)
         for i in items:
+            i["executions"] = len(i.pop("_executions"))
+            i["total_tokens"] = i["input_tokens"] + i["output_tokens"]
+            i["tokens"] = i["total_tokens"]
             i["total_cost"] = money(i["total_cost"])
         return {"items": items, "total": len(items)}
 

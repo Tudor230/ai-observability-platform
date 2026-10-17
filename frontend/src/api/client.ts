@@ -1,4 +1,7 @@
 import type {
+  ProjectRatesEntry,
+  ProjectRateVersion,
+  MarginResponse,
   ToolInsight,
   ModelInsight,
   AccessRequest,
@@ -127,6 +130,34 @@ export const api = {
   workflows: (f: Filters) => get<List<AggregateRow>>(`/workflows${filterQuery(f)}`),
   agents: (f: Filters) => get<List<AggregateRow>>(`/agents${filterQuery(f)}`),
   models: (f: Filters) => get<List<ModelInsight>>(`/models${filterQuery(f)}`),
+  margin: (f: Filters) => get<MarginResponse>(`/margin${qs({ days: f.days, project_id: f.project_id })}`),
+  projectRates: {
+    list: () => get<List<ProjectRatesEntry>>(`/project-rates`),
+    create: (body: {
+      project_id: string;
+      effective_from: string;
+      revenue_amount: number;
+      revenue_period: "month" | "year";
+      manual_cost_amount?: number;
+      manual_cost_period?: "month" | "year";
+    }) => post<ProjectRateVersion>(`/project-rates`, body),
+    update: (
+      id: string,
+      body: Partial<{
+        effective_from: string;
+        revenue_amount: number;
+        revenue_period: "month" | "year";
+        manual_cost_amount: number;
+        manual_cost_period: "month" | "year";
+      }>
+    ) => patch<ProjectRateVersion>(`/project-rates/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/project-rates/${id}`),
+    setInternal: (projectId: string, internal: boolean) =>
+      patch<{ project_id: string; project_name: string; internal: boolean }>(
+        `/project-rates/${projectId}/internal`,
+        { internal }
+      ),
+  },
   tools: (f: Filters) => get<List<ToolInsight>>(`/tools${filterQuery(f)}`),
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
   metrics: (dimension: string, f: Filters, key?: string) =>

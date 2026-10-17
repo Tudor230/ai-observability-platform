@@ -196,9 +196,12 @@ one. Computed per request in `require_access`.
 
 | Endpoint(s) | Roles |
 |---|---|
-| `executions`, `executions/{id}` (+spans/failures), `agents` | engineer, manager, client (scoped) |
+| `executions`, `executions/{id}` (+spans/failures) | engineer, manager, client (scoped) |
+| `agents` | engineer, manager, client (scoped), exec (global) — the Manager page is manager+exec |
 | `workflows` | engineer, manager, client (scoped), exec (global) |
-| `costs`, `clients`, `budgets/status` | manager (scoped), exec (global) |
+| `costs`, `budgets/status` | manager (scoped), exec (global) |
+| `models`, `tools` (model/tool insights) | manager (scoped), exec (global) — same row as `costs` |
+| `project-rates` (read + write), `margin` | exec (global) — admin key bypasses as usual (ADR-0013) |
 | `overview`, `metrics`, `alerts` | all authenticated (scoped) |
 | admin endpoints (projects/users/pricing/budgets CRUD/maintenance) | admin key or admin session |
 
