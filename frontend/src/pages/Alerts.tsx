@@ -53,6 +53,7 @@ const METRIC_LABELS: Record<AlertMetric, string> = {
   tool_calls_per_execution: "Tool calls / execution",
   p95_latency: "P95 latency (ms)",
   cost_anomaly: "Cost anomaly (× 7-day avg)",
+  loop_executions: "Looped executions",
 };
 
 export default function Alerts() {

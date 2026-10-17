@@ -91,7 +91,7 @@ const patch = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
-export function qs(params: Record<string, string | number | undefined>): string {
+export function qs(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") search.set(k, String(v));
@@ -111,6 +111,8 @@ interface List<T> {
 
 export interface ExecutionQuery {
   status?: string;
+  /** Loop filter (ADR-0014): only looped or only clean executions. */
+  loop?: boolean;
   /** Case-insensitive search over trace id, workflow and error message. */
   q?: string;
   sort?: "started_at" | "duration_ms" | "total_cost" | "total_tokens" | "error_count" | "status";

@@ -23,6 +23,7 @@ import {
   Tr,
 } from "../components/core";
 import { formatMoney, formatMs, formatTokens } from "../lib/format";
+import { loopSummary } from "../lib/loops";
 
 const PAGE_SIZE = 100;
 
@@ -43,6 +44,7 @@ export default function Engineering() {
   const sort = (params.get("sort") as SortKey | null) ?? "started_at";
   const order = (params.get("order") as "asc" | "desc" | null) ?? "desc";
   const status = (params.get("status") as "" | "ok" | "error" | null) ?? "";
+  const loop = (params.get("loop") as "" | "true" | "false" | null) ?? "";
   const limit = Number(params.get("limit")) || PAGE_SIZE;
   const page = Math.max(1, Number(params.get("page")) || 1);
   const offset = (page - 1) * limit;
@@ -85,6 +87,7 @@ export default function Engineering() {
 
   const { data, isLoading, isError, error, isFetching } = useExecutions(filters, {
     status: status || undefined,
+    loop: loop === "" ? undefined : loop === "true",
     q: q || undefined,
     sort,
     order,
@@ -118,6 +121,17 @@ export default function Engineering() {
               <option value="">All statuses</option>
               <option value="ok">Succeeded</option>
               <option value="error">Failed</option>
+            </Select>
+            <Select
+              value={loop}
+              aria-label="Filter by loop"
+              onChange={(e) => {
+                updateParams({ loop: e.target.value || undefined, limit: undefined, page: undefined });
+              }}
+            >
+              <option value="">All runs</option>
+              <option value="true">Looped only</option>
+              <option value="false">Clean only</option>
             </Select>
             <RefreshButton />
           </>
@@ -217,6 +231,11 @@ export default function Engineering() {
                       <Td>{e.project_name ?? "—"}</Td>
                       <Td>
                         <StatusBadge status={e.status} />
+                        {e.loop_detected ? (
+                          <Badge variant="warning" title={loopSummary(e.loop_info)}>
+                            loop
+                          </Badge>
+                        ) : null}
                       </Td>
                       <Td>{e.error_kind ?? "—"}</Td>
                       <Td align="right" className="num">

@@ -230,6 +230,8 @@ const execution = {
   retry_count: 0,
   unpriced_calls: 0,
   cost_complete: true,
+  loop_detected: false,
+  loop_info: null,
 };
 
 const aggregate = {
@@ -658,6 +660,45 @@ describe("Engineering", () => {
     expect(await screen.findByText(/No executions in range/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Register a project" })).toBeInTheDocument();
   });
+
+  it("badges looped executions with the signal summary", async () => {
+    h.executions.mockResolvedValue({
+      items: [
+        {
+          ...execution,
+          id: "e-loop",
+          loop_detected: true,
+          loop_info: {
+            signals: ["tool_repeat"],
+            tool_repeats: 3,
+            llm_repeats: 0,
+            cycle_repeats: 0,
+            cycle_steps: [],
+          },
+        },
+      ],
+      total: 1,
+      limit: 100,
+      offset: 0,
+    });
+    renderWithProviders(<Engineering />);
+    const badge = await screen.findByText("loop");
+    expect(badge).toHaveAttribute("title", "Loop detected: 3× the same tool call");
+  });
+
+  it("filters looped executions through the URL param", async () => {
+    renderWithProviders(<Engineering />);
+    expect(await screen.findByRole("link", { name: /checkout/ })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Filter by loop"), {
+      target: { value: "true" },
+    });
+    await waitFor(() =>
+      expect(h.executions).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ loop: true })
+      )
+    );
+  });
 });
 
 describe("ExecutionDetail", () => {
@@ -672,6 +713,36 @@ describe("ExecutionDetail", () => {
     expect(await screen.findByText("checkout")).toBeInTheDocument();
     expect(screen.getByText("fully priced")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Failures/ })).toBeInTheDocument();
+  });
+
+  it("renders the loop panel for a looped execution", async () => {
+    h.execution.mockResolvedValue({
+      ...execution,
+      loop_detected: true,
+      loop_info: {
+        signals: ["tool_repeat", "cycle"],
+        tool_repeats: 3,
+        llm_repeats: 3,
+        cycle_repeats: 3,
+        cycle_steps: ["llm_call", "lookup_order"],
+      },
+    });
+    renderWithProviders(<Routed />, { route: "/engineering/e1" });
+    expect(await screen.findByText("Loop detected")).toBeInTheDocument();
+    expect(screen.getByText("3× same tool call")).toBeInTheDocument();
+    expect(
+      screen.getByText("3× cycle llm_call → lookup_order")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Repeated tool calls · Repeating cycle")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a clean execution free of loop chrome", async () => {
+    renderWithProviders(<Routed />, { route: "/engineering/e1" });
+    expect(await screen.findByText("checkout")).toBeInTheDocument();
+    expect(screen.queryByText("Loop detected")).not.toBeInTheDocument();
+    expect(screen.queryByText("loop")).not.toBeInTheDocument();
   });
 
   it("shows a not-found state for a 404", async () => {

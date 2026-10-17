@@ -19,6 +19,14 @@ export interface Overview {
   open_alerts: number;
 }
 
+export interface LoopInfo {
+  signals: string[];
+  tool_repeats: number;
+  llm_repeats: number;
+  cycle_repeats: number;
+  cycle_steps: string[];
+}
+
 export interface Execution {
   id: string;
   trace_id: string;
@@ -48,6 +56,9 @@ export interface Execution {
   retry_count: number;
   unpriced_calls?: number;
   cost_complete?: boolean;
+  /** Loop detection (ADR-0014): repeated identical calls inside this execution. */
+  loop_detected: boolean;
+  loop_info: LoopInfo | null;
 }
 
 export interface Span {
@@ -343,7 +354,8 @@ export type AlertMetric =
   | "daily_tokens"
   | "tool_calls_per_execution"
   | "p95_latency"
-  | "cost_anomaly";
+  | "cost_anomaly"
+  | "loop_executions";
 
 export interface AlertRule {
   id: string;
