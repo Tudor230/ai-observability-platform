@@ -86,11 +86,12 @@ export function useTools(f: Filters) {
   });
 }
 
-export function useMargin(f: Filters) {
+export function useMargin(f: Filters, enabled = true) {
   const refetchInterval = useRefetchInterval();
   return useQuery({
     queryKey: ["margin", f],
     queryFn: () => api.margin(f),
+    enabled,
     refetchInterval,
   });
 }

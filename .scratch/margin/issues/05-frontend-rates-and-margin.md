@@ -64,3 +64,15 @@ rates that drive it all from the same page.
 - Evidence: 529 frontend tests (new: the 8-card row, latency absence, coverage
   line, the no-rates CTA, the scaling maths at ×2/×10, the versions dialog
   incl. the 409 message, and the internal toggle).
+
+## Follow-up
+
+- The editor was extracted into `components/ProjectRateEditor.tsx` and is now
+  embedded on **each project's page** (`/projects/:id` → *Rate & margin*), which
+  is where costs are entered per the product decision: versions list, add/edit,
+  internal toggle, plus this project's Revenue / Manual cost / Margin /
+  Break-even for the selected window (from `/margin?project_id=…`). The
+  Executive dialog kept the cross-project flow on the same component.
+- Evidence: 531 frontend tests — a new *Project rate book* suite covers adding a
+  version and flagging internal from the project page, and that managers (who
+  cannot manage rates) never see the panel or issue the request.

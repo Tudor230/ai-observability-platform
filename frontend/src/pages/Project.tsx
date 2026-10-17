@@ -2,12 +2,20 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { useDirectoryProjects, useMetrics, useOverview, useProjectKeys } from "../api/hooks";
+import {
+  useDirectoryProjects,
+  useMargin,
+  useMetrics,
+  useOverview,
+  useProjectKeys,
+  useProjectRates,
+} from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { PageHeader } from "../components/PageHeader";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
+import { ProjectRateEditor } from "../components/ProjectRateEditor";
 import {
   Alert,
   Badge,
@@ -47,6 +55,12 @@ export default function Project() {
     projectId
   );
   const keys = useProjectKeys(projectId, canManageKeys);
+  // Rates and margin are exec/admin surfaces (ADR-0013) — admins pass `exec`.
+  const canEditRates = hasRole("exec");
+  const rates = useProjectRates(canEditRates);
+  const margin = useMargin({ days: filters.days, project_id: projectId }, canEditRates);
+  const rateEntry = rates.data?.items.find((item) => item.project_id === projectId);
+  const marginRow = margin.data?.items[0];
 
   const [label, setLabel] = useState("");
   const [created, setCreated] = useState<ProjectKey | null>(null);
@@ -207,6 +221,63 @@ export default function Project() {
           </div>
         </div>
       </CardPanel>
+
+      {canEditRates ? (
+        <CardPanel
+          title="Rate & margin"
+          subTitle="What this project pays, what it costs to serve and what it delivers"
+        >
+          {rates.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="70%" />
+            </div>
+          ) : rateEntry ? (
+            <>
+              {marginRow ? (
+                marginRow.internal ? (
+                  <p
+                    className="muted"
+                    style={{ padding: "0 var(--global-dimension-size-100)", margin: 0 }}
+                  >
+                    Internal project — no revenue expected. Its AI cost (
+                    {formatMoney(marginRow.ai_cost)}) is reported as internal spend, not
+                    as a loss.
+                  </p>
+                ) : (
+                  <div
+                    className="grid grid-4"
+                    style={{ padding: "var(--global-dimension-size-100)" }}
+                  >
+                    <Metric
+                      label="Revenue"
+                      value={formatMoney(marginRow.revenue)}
+                      sub={`${marginRow.covered_days}/${marginRow.window_days} days covered`}
+                    />
+                    <Metric label="Manual cost" value={formatMoney(marginRow.manual_cost)} />
+                    <Metric
+                      label="Margin"
+                      value={marginRow.margin === null ? "—" : formatMoney(marginRow.margin)}
+                      tone={(marginRow.margin ?? 0) < 0 ? "danger" : "default"}
+                    />
+                    <Metric
+                      label="Break-even"
+                      value={
+                        marginRow.break_even_scale === null
+                          ? "—"
+                          : `×${marginRow.break_even_scale.toFixed(1)}`
+                      }
+                      sub="volume the contribution covers"
+                    />
+                  </div>
+                )
+              ) : null}
+              <ProjectRateEditor entry={rateEntry} />
+            </>
+          ) : (
+            <EmptyState title="No rate book entry for this project" />
+          )}
+        </CardPanel>
+      ) : null}
 
       <div className="grid grid-2">
         <CardPanel title="Executions over time" subTitle={`This project, last ${filters.days} days`}>

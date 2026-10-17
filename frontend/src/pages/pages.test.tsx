@@ -1352,9 +1352,67 @@ describe("Project key lifecycle", () => {
     await waitFor(() => expect(h.keysRotate).toHaveBeenCalledWith("p1", "k1"));
     expect(await screen.findByText("rotated-key")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    // Scope to the key's row: the rate editor has a Delete button too.
+    fireEvent.click(
+      within(screen.getByText("prod").closest("tr") as HTMLElement).getByRole("button", {
+        name: "Delete",
+      })
+    );
     fireEvent.click(await screen.findByRole("button", { name: "Delete key" }));
     await waitFor(() => expect(h.keysRevoke).toHaveBeenCalledWith("p1", "k1"));
+  });
+});
+
+describe("Project rate book", () => {
+  const Routed = () => (
+    <Routes>
+      <Route path="/projects/:projectId" element={<Project />} />
+    </Routes>
+  );
+
+  it("lets an exec maintain this project's rate from its own page", async () => {
+    h.me.mockResolvedValue(profile(["exec"]));
+    renderWithProviders(<Routed />, { route: "/projects/p1" });
+
+    expect(await screen.findByText("Rate & margin")).toBeInTheDocument();
+    // This project's window numbers, straight from /margin?project_id=…
+    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    expect(screen.getByText("Break-even")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(h.margin).toHaveBeenCalledWith(expect.objectContaining({ project_id: "p1" }))
+    );
+
+    // Its existing version is listed, and a new one is added in place.
+    expect(await screen.findByText("2026-10-01")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Effective from"), {
+      target: { value: "2026-11-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Revenue amount"), {
+      target: { value: "900" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add version" }));
+    await waitFor(() =>
+      expect(h.ratesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_id: "p1",
+          effective_from: "2026-11-01",
+          revenue_amount: 900,
+        })
+      )
+    );
+
+    // Flagging the project internal never leaves the page.
+    fireEvent.click(screen.getByRole("button", { name: "Mark internal" }));
+    await waitFor(() => expect(h.ratesInternal).toHaveBeenCalledWith("p1", true));
+  });
+
+  it("hides the rate book from roles that cannot manage rates", async () => {
+    h.me.mockResolvedValue(profile(["manager"]));
+    renderWithProviders(<Routed />, { route: "/projects/p1" });
+
+    expect(await screen.findByText("Executions over time")).toBeInTheDocument();
+    expect(screen.queryByText("Rate & margin")).not.toBeInTheDocument();
+    expect(h.ratesList).not.toHaveBeenCalled();
   });
 });
 

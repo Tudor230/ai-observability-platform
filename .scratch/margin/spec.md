@@ -34,6 +34,10 @@ Convention: phase-ordered commits, one per ticket, on `feat/refinements`.
    can be flagged *internal* (tooling, R&D, demos). Its AI cost is reported as
    *internal spend*, excluded from margin totals and coverage, and the flag wins
    over any rate versions — so internal work never reads as a loss.
+10. **Rates are maintained from each project's own page.** Follow-up: the
+    per-project editor (`ProjectRateEditor`) is embedded on `/projects/:id` as a
+    *Rate & margin* panel (exec/admin) with this project's window numbers, and
+    the Executive dialog reuses the same component for cross-project entry.
 
 ## Tickets
 
