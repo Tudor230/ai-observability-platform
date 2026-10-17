@@ -379,7 +379,7 @@ def _upsert_spans(
     return _recompute_execution(session, execution, merged=len(derived))
 
 
-def _derive_loops(execution: Execution, spans: list[Span]) -> None:
+def _derive_loops(execution: Execution, spans: Sequence[Span]) -> None:
     """Re-derive the loop flag from stored call signatures (ADR-0014).
 
     The SDK measures live (span/root marks); the backend is authoritative:

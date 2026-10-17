@@ -40,6 +40,17 @@ def main():
         os.environ["AIOBS_ADMIN_EMAIL"], os.environ["AIOBS_ADMIN_PASSWORD"]
     )
 
+    # ADR-0012: the project id is server-generated; the root assertion must
+    # carry the real one (a conflicting sdk.project_id is rejected per ADR-0008).
+    from sqlalchemy import select
+
+    from aiobs_backend.models import Project
+
+    with db.session_scope() as session:
+        project_ext = session.execute(
+            select(Project.project_id).where(Project.name == "E2E Project")
+        ).scalar_one()
+
     client = TestClient(app)
     # Key-first ingest (ADR-0008): no x-project-name needed.
     headers = {"authorization": f"Bearer {key}"}
@@ -55,7 +66,7 @@ def main():
         start=now,
         end=now + timedelta(seconds=2),
         attrs={
-            "sdk.project_id": "proj-e2e",
+            "sdk.project_id": project_ext,
             "sdk.workflow_id": "order-e2e",
             "session.id": "order-e2e",
             "metadata": '{"channel": "web"}',
