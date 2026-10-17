@@ -38,3 +38,15 @@ tag-triggered release workflow.
 - `python -c "import ai_observability, inspect; assert 'client_id' not in
   inspect.signature(ai_observability.workflow).parameters"` in a fresh venv with
   the published version.
+
+## Comments
+
+- 2026-10-17: the loop-detection change set landed on this branch before the
+  tag, so `sdk-v0.2.0` also ships it (additive: `sdk.call.sig` / `sdk.loop.*`
+  attributes, `init(loop_detection=...)`, no signature changes). Full gates
+  re-run on the frozen tree: SDK 177 passed + 30/30 mock scenarios +
+  `uv lock --check`; backend 178 passed; frontend 538 passed + typecheck/lint;
+  `uv build` produces `ai-observability-sdk 0.2.0` and unchanged
+  `aiobs-contracts 0.1.0` (satisfies `>=0.1,<0.2`). Local annotated tag
+  `sdk-v0.2.0` prepared on the loop-detection tip — push it to run
+  `release.yml`.
