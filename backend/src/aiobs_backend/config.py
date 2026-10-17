@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     alert_p95_latency_ms: float = 30_000
     alert_tool_calls_per_execution: float = 20
     alert_cost_anomaly_factor: float = 3.0
+    alert_loop_executions: float = 5
+    # Loop re-derivation (ADR-0014): identical LLM/TOOL calls needed for
+    # tool_repeat/llm_repeat, consecutive cycle repetitions needed for
+    # `cycle`, and the longest cycle pattern considered.
+    loop_repeat_threshold: int = 3
+    loop_cycle_repeats: int = 3
+    loop_cycle_max_steps: int = 4
 
 
 @lru_cache

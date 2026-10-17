@@ -121,6 +121,16 @@ attempt (tests plus routed alerts, including the fallback webhook) is recorded
 in `alert_deliveries`, exposed newest-first via `GET /api/v1/alert-deliveries`
 (admin/exec, filterable by `channel_id`/`status`).
 
+**Loop detection.** The ingest pipeline re-derives an execution-level loop flag
+from the SDK's salted call signatures (`sdk.call.sig`, ADR-0014): identical
+tool/LLM calls at or above `AIOBS_LOOP_REPEAT_THRESHOLD` (default 3) or a
+signature-equal call cycle repeating `AIOBS_LOOP_CYCLE_REPEATS` times (pattern
+length up to `AIOBS_LOOP_CYCLE_MAX_STEPS`) set `executions.loop_detected` +
+`loop_info`. It is a flag, not a failure kind — the execution keeps its status.
+`GET /api/v1/executions` exposes both fields and filters with `loop=true|false`;
+the `loop_executions` alert metric counts flagged executions per day (seeded
+built-in rule "Looped executions").
+
 ## Layout
 
 ```

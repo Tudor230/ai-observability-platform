@@ -283,7 +283,13 @@ Evaluate rules on the analytics/execution data (`docs/03 §3.12`):
 - error-rate increase,
 - excessive tool calls (inefficient execution),
 - budget exceeded (against `budgets`),
-- unusual consumption vs historical baseline (v1: simple moving-average deviation).
+- unusual consumption vs historical baseline (v1: simple moving-average deviation),
+- looped executions per day (`loop_executions`): executions the ingest
+  pipeline flagged as repeating identical LLM/TOOL calls (ADR-0014). The count
+  is day-scoped and rule-scope-aware like the other metrics; the flag itself
+  is re-derived on ingest (`loop_repeat_threshold`, `loop_cycle_repeats`,
+  `loop_cycle_max_steps` env knobs) and exposed on executions as
+  `loop_detected` / `loop_info` plus a `loop=true|false` list filter.
 
 Each rule produces an `alerts` record exposed via the API. Budget utilization is surfaced
 as a metric (percent of budget used).

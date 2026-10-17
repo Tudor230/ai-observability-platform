@@ -49,6 +49,8 @@ def execution_dict(
         "agent_calls": ex.agent_calls,
         "error_count": ex.error_count,
         "retry_count": ex.retry_count,
+        "loop_detected": bool(ex.loop_detected),
+        "loop_info": ex.loop_info,
     }
     if not include_cost:
         # Client role: costs are stripped server-side (plans/roles.md §6.3).

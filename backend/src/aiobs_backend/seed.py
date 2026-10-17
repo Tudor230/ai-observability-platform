@@ -132,6 +132,14 @@ def builtin_alert_rules(settings=None) -> list[AlertRule]:
             scope_type="global",
             builtin=True,
         ),
+        AlertRule(
+            name="Looped executions",
+            metric="loop_executions",
+            warning_threshold=settings.alert_loop_executions,
+            critical_threshold=settings.alert_loop_executions * 2,
+            scope_type="global",
+            builtin=True,
+        ),
     ]
 
 

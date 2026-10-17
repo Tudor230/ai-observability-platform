@@ -252,6 +252,11 @@ class Execution(Base):
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     unpriced_calls: Mapped[int] = mapped_column(Integer, default=0)
+    # Loop detection (ADR-0014): a flag, not a failure kind — a looping
+    # execution may be perfectly "ok". ``loop_info`` carries the signals,
+    # repeat counts and cycle step names (bounded, no payloads).
+    loop_detected: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    loop_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     spans = relationship("Span", back_populates="execution")
 
@@ -284,9 +289,16 @@ class Span(Base):
     retrieval_doc_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    # Salted, run-scoped call signature (ADR-0014): equality token for loop
+    # re-derivation, never the payload. LLM/TOOL spans only.
+    call_sig: Mapped[str | None] = mapped_column(String(24), nullable=True)
     attributes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     execution: Mapped[Execution] = relationship(back_populates="spans")
+
+    __table_args__ = (
+        Index("ix_spans_execution_call_sig", "execution_id", "call_sig"),
+    )
 
 
 class Pricing(Base):
@@ -467,7 +479,7 @@ class AlertRule(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(120))
-    # error_rate|daily_tokens|tool_calls_per_execution|p95_latency|cost_anomaly
+    # error_rate|daily_tokens|tool_calls_per_execution|p95_latency|cost_anomaly|loop_executions
     metric: Mapped[str] = mapped_column(String(40))
     warning_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     critical_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 6))

@@ -49,7 +49,7 @@ def _seed_org(session):
 
 def test_builtin_rules_are_seeded(client):
     body = client.get("/api/v1/alert-rules").json()
-    assert body["total"] == 5
+    assert body["total"] == 6
     assert all(r["builtin"] for r in body["items"])
     assert {r["metric"] for r in body["items"]} == {
         "error_rate",
@@ -57,6 +57,7 @@ def test_builtin_rules_are_seeded(client):
         "tool_calls_per_execution",
         "p95_latency",
         "cost_anomaly",
+        "loop_executions",
     }
 
 
@@ -75,7 +76,7 @@ def test_manager_rule_crud_matrix(anon, client, session_factory):
 
     # Manager sees the global builtins plus covered rules.
     listed = anon.get("/api/v1/alert-rules", headers=mgr).json()
-    assert listed["total"] == 5 and all(r["scope_type"] == "global" for r in listed["items"])
+    assert listed["total"] == 6 and all(r["scope_type"] == "global" for r in listed["items"])
 
     # Covered scope → OK.
     created = anon.post(

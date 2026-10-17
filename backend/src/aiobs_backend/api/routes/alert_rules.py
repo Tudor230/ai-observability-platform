@@ -21,7 +21,12 @@ from ..memberships import approved_memberships, covers_scope, scope_exists, scop
 router = APIRouter(tags=["alert-rules"])
 
 MetricName = Literal[
-    "error_rate", "daily_tokens", "tool_calls_per_execution", "p95_latency", "cost_anomaly"
+    "error_rate",
+    "daily_tokens",
+    "tool_calls_per_execution",
+    "p95_latency",
+    "cost_anomaly",
+    "loop_executions",
 ]
 ScopeType = Literal["global", "department", "team", "project"]
 

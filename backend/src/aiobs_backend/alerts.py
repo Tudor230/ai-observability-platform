@@ -178,6 +178,7 @@ METRICS = (
     "tool_calls_per_execution",
     "p95_latency",
     "cost_anomaly",
+    "loop_executions",
 )
 
 
@@ -223,6 +224,8 @@ def _fmt_value(metric: str, value: float) -> str:
         return f"{value:.0f}ms"
     if metric == "cost_anomaly":
         return f"{value:.1f}x the 7-day average"
+    if metric == "loop_executions":
+        return f"{value:,.0f} looped executions"
     return f"{value:.2f}"
 
 
@@ -289,6 +292,8 @@ def evaluate_threshold_rules(
             if baseline <= 0:
                 continue
             value = sum(float(e.total_cost or 0) for e in scoped) / baseline
+        elif metric == "loop_executions":
+            value = float(sum(1 for e in scoped if e.loop_detected))
         else:
             continue
 

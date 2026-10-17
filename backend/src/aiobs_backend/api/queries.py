@@ -149,6 +149,7 @@ def exec_rows(
     project_ids: Collection[str] | None = None,
     workflow: str | None = None,
     status: str | None = None,
+    loop: bool | None = None,
     q: str | None = None,
     sort: str | None = None,
     order: str | None = None,
@@ -168,6 +169,8 @@ def exec_rows(
         stmt = stmt.where(Execution.workflow_name == workflow)
     if status:
         stmt = stmt.where(Execution.status == status)
+    if loop is not None:
+        stmt = stmt.where(Execution.loop_detected.is_(loop))
     if q:
         pattern = f"%{q}%"
         stmt = stmt.where(
