@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from helpers import build_request, build_span, seed_project
+from helpers import build_request, build_span, seed_project, seed_user
 from sqlalchemy import select
 
 from aiobs_backend.models import Agent
@@ -78,3 +78,32 @@ def test_agent_cost_is_counted_once_per_execution(client, project):
     assert item["total_tokens"] == 1500  # once, not once per AGENT span
     assert abs(item["total_cost"] - 0.00045) < 1e-9
     assert item["error_rate"] == 0.0
+
+
+def test_exec_reads_agent_insights(anon, session_factory):
+    """The Manager page is exec-visible, so exec must read /agents too."""
+    with session_factory() as session:
+        seed_project(session, project_id="p1", api_key="k1", name="P1")
+        _, exec_key = seed_user(session, "exec@x", role="exec", scope_type="global")
+        session.commit()
+
+    now = datetime.now(timezone.utc)
+    spans = [
+        build_span(
+            name="wf", oi_kind="CHAIN", span_id=1, trace_id=4400,
+            start=now, end=now + timedelta(seconds=1),
+            attrs={"sdk.project_id": "p1"},
+        ),
+        build_span(
+            name="assistant", oi_kind="AGENT", span_id=2, trace_id=4400, parent_span_id=1,
+            start=now, end=now + timedelta(seconds=1),
+        ),
+    ]
+    anon.post(
+        "/api/v1/traces",
+        content=build_request(spans),
+        headers={"x-project-name": "p1", "authorization": "Bearer k1"},
+    )
+
+    items = anon.get("/api/v1/agents", headers={"x-api-key": exec_key}).json()["items"]
+    assert [item["name"] for item in items] == ["assistant"]

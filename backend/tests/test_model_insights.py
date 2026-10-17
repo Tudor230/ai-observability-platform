@@ -107,10 +107,10 @@ def _seed_two_project_readers(session):
     seed_project(session, project_id="proj-1", api_key="k1", name="P1", team=team_a)
     seed_project(session, project_id="proj-2", api_key="k2", name="P2", team=team_b)
     _, key_a = seed_user(
-        session, "a@x", role="engineer", scope_type="team", scope_id=team_a.id
+        session, "a@x", role="manager", scope_type="team", scope_id=team_a.id
     )
     _, key_b = seed_user(
-        session, "b@x", role="engineer", scope_type="team", scope_id=team_b.id
+        session, "b@x", role="manager", scope_type="team", scope_id=team_b.id
     )
     session.commit()
     return key_a, key_b
@@ -137,12 +137,14 @@ def test_models_are_scoped_per_project(anon, session_factory):
     assert [item["key"] for item in other] == ["openai:gpt-4o"]
 
 
-def test_clients_do_not_see_model_cost(anon, session_factory):
+def test_model_insights_read_like_costs(anon, session_factory):
+    """manager (scoped) and exec (global) can read them; clients cannot."""
     with session_factory() as session:
         project = seed_project(session, project_id="p1", api_key="k1", name="P1")
         _, client_key = seed_user(
             session, "cli@x", role="client", scope_type="project", scope_id=project.id
         )
+        _, exec_key = seed_user(session, "exec@x", role="exec", scope_type="global")
         session.commit()
 
     anon.post(
@@ -151,10 +153,13 @@ def test_clients_do_not_see_model_cost(anon, session_factory):
         headers={"x-project-name": "p1", "authorization": "Bearer k1"},
     )
 
-    items = anon.get("/api/v1/models", headers={"x-api-key": client_key}).json()["items"]
-    assert items
-    assert "total_cost" not in items[0]
-    assert items[0]["total_tokens"] == 1500
+    denied = anon.get("/api/v1/models", headers={"x-api-key": client_key})
+    assert denied.status_code == 403
+
+    allowed = anon.get("/api/v1/models", headers={"x-api-key": exec_key}).json()["items"]
+    assert allowed
+    assert allowed[0]["total_tokens"] == 1500
+    assert allowed[0]["total_cost"] > 0
 
 
 def test_models_empty_window(client):

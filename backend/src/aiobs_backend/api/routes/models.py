@@ -36,7 +36,7 @@ def list_models(
     days: int = Query(default=90, ge=1, le=3650),
     project_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
-    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
+    access: AccessScope = Depends(require_access("manager", "exec")),
 ) -> dict:
     end_dt = parse_dt(end, end_of_day=True) or default_range(days)[1]
     start_dt = parse_dt(start) or (end_dt - timedelta(days=days))
@@ -138,8 +138,6 @@ def list_models(
         item["p95_duration_ms"] = round(percentile(durations, 0.95), 2)
         item["total_cost"] = money(item["total_cost"])
         item["last_seen"] = last_seen.isoformat() if last_seen else None
-        if not access.cost_visible:
-            item.pop("total_cost", None)
         items.append(item)
     items.sort(key=lambda i: (i.get("total_cost") or 0, i["calls"]), reverse=True)
     return {"items": items, "total": len(items)}

@@ -50,13 +50,17 @@ exposes: per-model economics (`Model Insights`) and per-tool reliability
   LLM spans (calls, failures, latency) on the `provider:model` key; every row
   now carries tokens and cost, which `/costs?dimension=model` alone could not.
 - `GET /tools` groups TOOL spans by `spans.tool_name` (span-name fallback).
-- Both are scope-aware (`resolve_project_filter`), support
-  `start/end/days/project_id/workflow`, gate on
-  `require_access("engineer", "manager", "client")`, and strip `total_cost` for
-  client callers.
-- Evidence: 156 backend tests pass (+9: aggregation, project scoping via
-  team-scoped user keys, client cost stripping, empty window), `ruff check`
-  clean, `mypy src` clean, coverage 88.99%.
+- Both are scope-aware (`resolve_project_filter`) and support
+  `start/end/days/project_id/workflow`.
+- Gate corrected during the live pass: they read like `/costs`
+  (`require_access("manager", "exec")`) because the Executive page is exec-only
+  and the Manager page is manager+exec — the original engineer/manager/client
+  gate 403'd the very roles that need them. `/agents` gained `exec` for the same
+  reason (the Manager page renders its agents card; without it an exec login saw
+  an error banner). `plans/roles.md` §6.2 records both rows.
+- Evidence: backend suite green (+10 tests: aggregation, project scoping via
+  team-scoped manager keys, exec read + client 403 for both endpoints, exec
+  read for `/agents`, empty window), `ruff check` clean, `mypy src` clean.
 
 Note: the Bearer project key is an *ingest* credential — read-scope tests use
 `x-api-key` user keys with team-scoped memberships.

@@ -97,10 +97,10 @@ def test_tools_are_scoped_per_project(anon, session_factory):
         seed_project(session, project_id="proj-1", api_key="k1", name="P1", team=team_a)
         seed_project(session, project_id="proj-2", api_key="k2", name="P2", team=team_b)
         _, key_a = seed_user(
-            session, "a@x", role="engineer", scope_type="team", scope_id=team_a.id
+            session, "a@x", role="manager", scope_type="team", scope_id=team_a.id
         )
         _, key_b = seed_user(
-            session, "b@x", role="engineer", scope_type="team", scope_id=team_b.id
+            session, "b@x", role="manager", scope_type="team", scope_id=team_b.id
         )
         session.commit()
 
@@ -125,12 +125,14 @@ def test_tools_are_scoped_per_project(anon, session_factory):
     assert {item["name"] for item in other} == {"search", "shell"}
 
 
-def test_tool_insights_are_readable_by_a_client(anon, session_factory):
+def test_tool_insights_read_like_costs(anon, session_factory):
+    """manager (scoped) and exec (global) can read them; clients cannot."""
     with session_factory() as session:
         project = seed_project(session, project_id="p1", api_key="k1", name="P1")
         _, client_key = seed_user(
             session, "cli@x", role="client", scope_type="project", scope_id=project.id
         )
+        _, exec_key = seed_user(session, "exec@x", role="exec", scope_type="global")
         session.commit()
 
     anon.post(
@@ -139,7 +141,8 @@ def test_tool_insights_are_readable_by_a_client(anon, session_factory):
         headers={"x-project-name": "p1", "authorization": "Bearer k1"},
     )
 
-    items = anon.get("/api/v1/tools", headers={"x-api-key": client_key}).json()["items"]
+    assert anon.get("/api/v1/tools", headers={"x-api-key": client_key}).status_code == 403
+    items = anon.get("/api/v1/tools", headers={"x-api-key": exec_key}).json()["items"]
     assert [item["name"] for item in items] == ["search"]
 
 
