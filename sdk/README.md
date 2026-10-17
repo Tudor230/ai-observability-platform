@@ -7,6 +7,10 @@ auto-instrumentation, failure/usage
 capture, OTLP HTTP export into Phoenix (PostgreSQL-backed), and a deterministic
 mock-workflow regression suite.
 
+> **Adding the SDK to an existing agent/app?** Follow
+> [`INTEGRATION.md`](INTEGRATION.md) — a step-by-step guide (smoke test →
+> init → workflow boundary → verification → troubleshooting).
+
 ## Install
 
 ```bash
