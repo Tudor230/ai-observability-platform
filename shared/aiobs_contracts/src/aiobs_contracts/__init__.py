@@ -13,6 +13,8 @@ them in lockstep by importing from here rather than re-declaring.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import Optional, Sequence
 
 # --- SDK namespaced attributes ------------------------------------------------
 SDK_CLIENT_ID = "sdk.client_id"
@@ -33,6 +35,30 @@ SDK_HITL_INTERRUPT_PAYLOAD = "sdk.hitl.interrupt_payload"
 SDK_HITL_RESUME_VALUE = "sdk.hitl.resume_value"
 SDK_HITL_NODE = "sdk.hitl.node"
 SDK_HITL_CHECKPOINT_ID = "sdk.hitl.checkpoint_id"
+
+# Loop detection (ADR-0014): the SDK measures call repetition live, the
+# backend re-derives it from stored spans and owns the execution-level flag.
+# ``sdk.call.sig`` is a salted, run-scoped signature of a call's input — an
+# opaque equality token, never the payload itself (see ADR-0003 amendment).
+SDK_CALL_SIG = "sdk.call.sig"
+SDK_LOOP_SIGNAL = "sdk.loop.signal"
+SDK_LOOP_REPEAT_COUNT = "sdk.loop.repeat_count"
+SDK_LOOP_TOOL_REPEATS = "sdk.loop.tool_repeats"
+SDK_LOOP_LLM_REPEATS = "sdk.loop.llm_repeats"
+SDK_LOOP_CYCLE_REPEATS = "sdk.loop.cycle_repeats"
+
+LOOP_SIGNAL_TOOL = "tool_repeat"
+LOOP_SIGNAL_LLM = "llm_repeat"
+LOOP_SIGNAL_CYCLE = "cycle"
+
+# Every signal the backend can flag on an execution.
+LOOP_SIGNALS = frozenset({LOOP_SIGNAL_TOOL, LOOP_SIGNAL_LLM, LOOP_SIGNAL_CYCLE})
+
+# Default live-measurement constants (the SDK's span/root marks). The
+# authoritative thresholds are backend config; these mirror their defaults so
+# a trace looks the same in Phoenix and on the platform.
+LOOP_DEFAULT_THRESHOLD = 3
+LOOP_CYCLE_MAX_STEPS = 4
 
 # --- OpenInference / standard attribute names ---------------------------------
 OI_SPAN_KIND = "openinference.span.kind"
@@ -143,6 +169,100 @@ def is_control_flow_exception(exc_type: str | None) -> bool:
     if not exc_type:
         return False
     return any(name in exc_type for name in CONTROL_FLOW_EXCEPTION_TYPES)
+
+
+# --- Loop detection: shared repeat/cycle scan (ADR-0014) ----------------------
+@dataclass(frozen=True)
+class LoopStep:
+    """One call in an ordered sequence: kind, display name, signature."""
+
+    kind: str
+    name: str
+    sig: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class LoopScan:
+    """Repeat counts over an ordered call sequence (one execution)."""
+
+    tool_repeats: int = 0
+    llm_repeats: int = 0
+    cycle_repeats: int = 0
+    cycle_steps: tuple[str, ...] = ()
+
+    @property
+    def detected(self) -> bool:
+        return bool(self.tool_repeats or self.llm_repeats or self.cycle_repeats)
+
+    def signals(self, threshold: int = LOOP_DEFAULT_THRESHOLD) -> list[str]:
+        """Signal names whose counts reached ``threshold``, in stable order."""
+        found = []
+        if self.tool_repeats >= threshold:
+            found.append(LOOP_SIGNAL_TOOL)
+        if self.llm_repeats >= threshold:
+            found.append(LOOP_SIGNAL_LLM)
+        if self.cycle_repeats >= threshold:
+            found.append(LOOP_SIGNAL_CYCLE)
+        return found
+
+
+def scan_loop_steps(
+    steps: Sequence[LoopStep],
+    max_pattern: int = LOOP_CYCLE_MAX_STEPS,
+) -> LoopScan:
+    """Count identical calls and signature-equal cycles in an ordered sequence.
+
+    Shared by the SDK (live measurement, bounded window) and the backend
+    (re-derivation from stored spans) so both sides always agree.
+
+    * ``tool_repeats`` / ``llm_repeats``: the highest number of times one
+      signature repeats across the sequence, per kind.
+    * ``cycle_repeats``: the highest number of *consecutive* repetitions of a
+      pattern of ``2..max_pattern`` steps in which every position carries the
+      same kind, name and signature. Calls without a signature break cycles —
+      unknown inputs never count as equal.
+
+    Counts are raw; callers compare them against their own threshold.
+    """
+    tool_counts: dict[str, int] = {}
+    llm_counts: dict[str, int] = {}
+    for step in steps:
+        if step.sig is None:
+            continue
+        if step.kind == KIND_TOOL:
+            tool_counts[step.sig] = tool_counts.get(step.sig, 0) + 1
+        elif step.kind == KIND_LLM:
+            llm_counts[step.sig] = llm_counts.get(step.sig, 0) + 1
+
+    best_repeats = 0
+    best_names: tuple[str, ...] = ()
+    for length in range(2, max_pattern + 1):
+        index = 0
+        while index + length <= len(steps):
+            block = steps[index : index + length]
+            if not all(step.sig for step in block):
+                index += 1
+                continue
+            repeats = 1
+            cursor = index + length
+            while (
+                cursor + length <= len(steps)
+                and steps[cursor : cursor + length] == block
+                and all(step.sig for step in steps[cursor : cursor + length])
+            ):
+                repeats += 1
+                cursor += length
+            if repeats >= 2 and repeats > best_repeats:
+                best_repeats = repeats
+                best_names = tuple(step.name for step in block)
+            index = cursor if repeats > 1 else index + 1
+
+    return LoopScan(
+        tool_repeats=max(tool_counts.values(), default=0),
+        llm_repeats=max(llm_counts.values(), default=0),
+        cycle_repeats=best_repeats,
+        cycle_steps=best_names,
+    )
 
 
 # --- Payload redaction --------------------------------------------------------

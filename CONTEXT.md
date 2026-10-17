@@ -54,6 +54,15 @@ One context: the **Agentic Observability and FinOps Platform**. Vision in
   spans).
 - **Tool insights** — per-tool reliability from `GET /tools`: calls, failures,
   error rate and avg/p95 duration of TOOL spans.
+- **Loop flag** — the backend's authoritative marker (`executions.loop_detected`
+  + `loop_info`) that one execution repeated identical LLM/TOOL calls, via the
+  `tool_repeat` / `llm_repeat` / `cycle` signals. Not a failure kind: a looping
+  execution may be `ok` (ADR-0014).
+- **Call signature** — `sdk.call.sig`: a salted, run-scoped HMAC of one
+  LLM/TOOL call's input (tool name + arguments; model + input messages),
+  exported as an equality token for loop detection. Never the payload, and
+  never linkable across processes or executions (ADR-0003 amendment,
+  ADR-0014).
 - **Project rate** — what a project pays (and optionally what it costs to serve
   manually), entered by an exec as a *versioned* run-rate with an explicit
   `effective_from` (ADR-0013).

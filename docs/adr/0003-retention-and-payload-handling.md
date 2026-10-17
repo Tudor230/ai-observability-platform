@@ -32,6 +32,12 @@ balances §4.9 against a usable debugging surface.
   `scripts/purge_retention.py`) deletes executions, spans, cost records, daily
   metrics and alerts older than the window. Dimension rows (clients, workflows,
   agents) are retained as attribution history.
+- **Salted call signatures are derived data, not payload** (amendment,
+  ADR-0014): the SDK exports one HMAC-SHA256 digest per LLM/TOOL call
+  (`sdk.call.sig`) for loop detection even when `capture_prompts` is off. The
+  digest is computed before payload stripping, uses a per-process random salt
+  that is never exported, and is valid only for equality within one execution —
+  it cannot be reversed or correlated across processes/runs.
 - **Deletion/erasure**: purging a window is the supported erasure mechanism;
   operators can scope it by running the purge against a database copy with a
   shorter window if needed.
