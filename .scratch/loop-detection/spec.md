@@ -1,6 +1,6 @@
 # Loop detection — spec
 
-Status: in progress (2026-10-17)
+Status: implemented (2026-10-17) — demo evidence in `demo/`
 Source: planning session (grilling of the loop-detection idea, 2026-10-17)
 
 ## Problem
