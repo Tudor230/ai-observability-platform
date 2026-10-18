@@ -1,10 +1,11 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
-import { Skeleton } from "./components/core";
+import { Skeleton, ToastProvider } from "./components/core";
 import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./state/AuthContext";
 import { FiltersProvider } from "./state/FiltersContext";
+import { RefreshProvider } from "./state/RefreshContext";
 import { ThemeProvider } from "./state/ThemeContext";
 
 const Overview = lazy(() => import("./pages/Overview"));
@@ -17,6 +18,8 @@ const Projects = lazy(() => import("./pages/Projects"));
 const Requests = lazy(() => import("./pages/Requests"));
 const Project = lazy(() => import("./pages/Project"));
 const Accounts = lazy(() => import("./pages/Accounts"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const Alerts = lazy(() => import("./pages/Alerts"));
 const Login = lazy(() => import("./pages/Login"));
 
 function Loading() {
@@ -71,8 +74,10 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <FiltersProvider>
-          <Suspense fallback={<Loading />}>
-            <Routes>
+          <RefreshProvider>
+            <ToastProvider>
+              <Suspense fallback={<Loading />}>
+                <Routes>
               <Route path="/login" element={<Login />} />
               <Route
                 element={
@@ -122,9 +127,25 @@ export default function App() {
                     </RequireRoles>
                   }
                 />
-                <Route path="requests" element={<Requests />} />
+                <Route
+                  path="requests"
+                  element={
+                    <RequireRoles allow={["admin", "exec", "manager", "engineer"]}>
+                      <Requests />
+                    </RequireRoles>
+                  }
+                />
+                <Route path="alerts" element={<Alerts />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="projects/:projectId" element={<Project />} />
+                <Route
+                  path="pricing"
+                  element={
+                    <RequireRoles allow={["admin"]}>
+                      <Pricing />
+                    </RequireRoles>
+                  }
+                />
                 <Route
                   path="accounts"
                   element={
@@ -135,8 +156,10 @@ export default function App() {
                 />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
-            </Routes>
-          </Suspense>
+              </Routes>
+            </Suspense>
+            </ToastProvider>
+          </RefreshProvider>
         </FiltersProvider>
       </AuthProvider>
     </ThemeProvider>

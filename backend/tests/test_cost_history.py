@@ -18,7 +18,7 @@ def _trace(trace_id: int, start: datetime, prompt: int = 1000, completion: int =
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
         start=start, end=start + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=trace_id, parent_span_id=1,

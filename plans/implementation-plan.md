@@ -13,13 +13,13 @@ The platform observes agentic applications without owning their business logic: 
 ## 2. Problem (from `docs/01`–`docs/02`)
 
 - Teams run agentic applications on different frameworks with no common observability or FinOps layer.
-- No cost visibility (tokens ≠ cost until pricing is applied), no business attribution (which client/workflow/project produced a trace), no historical analysis, no anomaly detection, no cross-team comparison.
+- No cost visibility (tokens ≠ cost until pricing is applied), no business attribution (which project/workflow produced a trace), no historical analysis, no anomaly detection, no cross-team comparison.
 
 ## 3. Target users (from `docs/01`)
 
 - **Engineers**: execution traces, LLM/tool calls, errors, latency.
-- **Managers (SDM)**: cost per workflow/client, consumption trends, budget utilization, agent efficiency.
-- **Finance/executives**: total AI cost, cost per client/service, unit economics, forecasts.
+- **Managers (SDM)**: cost per workflow/project, consumption trends, budget utilization, agent efficiency.
+- **Finance/executives**: total AI cost, cost per project, unit economics, forecasts.
 
 ## 4. Architecture (from `docs/04`, confirmed by SDK research)
 
@@ -49,7 +49,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 | **Project registration & API keys** (teams register project → get API key; the key is the ingest identity — ADR-0008) | **Implemented** | `plans/backend.md` §4 → `backend/src/aiobs_backend/api/routes/projects.py` |
 | **Backend: trace processing** (validate, normalize, enrich with business context, build workflow-level info) | **Implemented** | `plans/backend.md` §6 → `backend/src/aiobs_backend/ingest/pipeline.py` |
 | **Backend: failure classification** (consume `sdk.error.*` + exception events + span status → failure tree) | **Implemented** | `plans/backend.md` §7 → `backend/src/aiobs_backend/classify.py` |
-| **Backend: cost engine** (Phoenix pricing + attribution by client/project/workflow/agent/team) | **Implemented** | `plans/backend.md` §8 → `backend/src/aiobs_backend/cost.py` |
+| **Backend: cost engine** (Phoenix pricing + attribution by project/workflow/agent/team) | **Implemented** | `plans/backend.md` §8 → `backend/src/aiobs_backend/cost.py` |
 | **Backend: analytics & alerts** (consumption, error rate, budgets; cost thresholds) | **Implemented** (budget rules) | `plans/backend.md` §9–10 → `backend/src/aiobs_backend/analytics.py`, `alerts.py` |
 | **Phoenix deployment** (self-hosted, containerized) | root `docker-compose.yml` (shared Postgres instance) | backend plan |
 | **Dashboard** (engineering / manager / executive views) | **Implemented** | `plans/frontend.md` → `frontend/` |
@@ -69,7 +69,7 @@ Key facts locked by research (`.scratch/sdk/research/01-openinference-coverage.m
 
 - **SDK captures raw failure material; backend classifies.** The failure taxonomy lives in exactly one place (backend).
 - **SDK records usage; backend computes cost** (Phoenix pricing server-side).
-- **SDK manual workflow wrapper** provides business context (`client_id`, `project_id`, `workflow_id`, free-form context) — the foundation for cost attribution per client/workflow.
+- **SDK manual workflow wrapper** provides business context (`workflow_id`, free-form context, debug-only `project_id`) — the foundation for cost attribution per project/workflow.
 - **Mock workflows as the acceptance path**: deterministic scenarios with fixed tokens/inputs/outputs validate SDK capture now, and backend classification + cost computation when they exist (KPIs in `docs/05`).
 - **No sampling in v1** — mock workflows require complete traces.
 - **Authorization is membership-derived**: role+scope live in one `memberships`

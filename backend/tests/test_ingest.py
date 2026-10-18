@@ -31,7 +31,6 @@ def _happy_trace():
         end=now + timedelta(seconds=2),
         attrs={
             "sdk.project_id": "proj-1",
-            "sdk.client_id": "client-42",
             "sdk.workflow_id": "order-123",
             "sdk.workflow.version": "v2",
             "session.id": "order-123",
@@ -81,7 +80,7 @@ def test_happy_path_ingest_and_cost(client, session_factory, project):
         ex = session.execute(select(Execution)).scalar_one()
         assert ex.workflow_name == "checkout"
         assert ex.workflow_id == "order-123"
-        assert ex.client_id is not None
+        assert ex.project_id == project.id
         assert ex.status == "ok"
         assert ex.llm_calls == 1
         assert ex.tool_calls == 1
@@ -105,7 +104,7 @@ def test_failure_classification_rate_limit(client, session_factory, project):
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=200,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=200, parent_span_id=1,
@@ -143,16 +142,16 @@ def test_api_reads(client, session_factory, project):
     # detail
     det = client.get(f"/api/v1/executions/{ex_id}").json()
     assert det["workflow"] == "checkout"
-    assert det["client_id"] == "client-42"
+    assert det["project_id"] == "proj-1"
+    assert det["project_name"] == "Test Project"
     # spans
     spans = client.get(f"/api/v1/executions/{ex_id}/spans").json()
     assert spans["total"] == 3
     # failures (empty for ok)
     fails = client.get(f"/api/v1/executions/{ex_id}/failures").json()
     assert fails["error_count"] == 0
-    # workflows / clients / costs
+    # workflows / costs
     assert client.get("/api/v1/workflows").json()["total"] == 1
-    assert client.get("/api/v1/clients").json()["total"] == 1
     costs = client.get("/api/v1/costs?dimension=project").json()
     assert costs["total"] == 1
 
@@ -174,7 +173,7 @@ def test_project_mismatch_answers_409(client, session_factory, project):
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=300,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "other-proj", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "other-proj"},
     )
     resp = client.post("/api/v1/traces", content=build_request([root]), headers=_headers())
     assert resp.status_code == 409
@@ -189,7 +188,7 @@ def test_key_alone_identifies_project(client, session_factory, project):
     root = build_span(
         name="key-only", oi_kind="CHAIN", span_id=1, trace_id=1300,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.client_id": "client-42"},
+        attrs={},
     )
     resp = client.post(
         "/api/v1/traces",
@@ -247,7 +246,6 @@ def test_continued_trace_resume_extends_instead_of_replacing(
         attrs={
             "sdk.workflow_id": "thread-1",
             "session.id": "thread-1",
-            "sdk.client_id": "client-42",
             "sdk.hitl.interrupted": "true",
         },
     )
@@ -276,7 +274,6 @@ def test_continued_trace_resume_extends_instead_of_replacing(
         attrs={
             "sdk.workflow_id": "thread-1",
             "session.id": "thread-1",
-            "sdk.client_id": "client-42",
             "sdk.hitl.resumed": "true",
         },
     )
@@ -319,7 +316,7 @@ def test_partial_langgraph_node_is_not_the_identity_root(
         name="fetch_context", oi_kind="CHAIN", span_id=2, trace_id=1800,
         parent_span_id=1,  # the parent arrives in the next batch
         start=now, end=now + timedelta(milliseconds=50),
-        attrs={"session.id": "thread-9", "sdk.client_id": "client-42"},
+        attrs={"session.id": "thread-9"},
     )
     first = client.post(
         "/api/v1/traces", content=build_request([node]), headers=_headers()
@@ -416,7 +413,7 @@ def test_project_scope_header(client, session_factory, project):
     root2 = build_span(
         name="other", oi_kind="CHAIN", span_id=1, trace_id=400,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-2", "sdk.client_id": "client-7"},
+        attrs={"sdk.project_id": "proj-2"},
     )
     client.post(
         "/api/v1/traces",
@@ -453,7 +450,9 @@ def test_budget_alert(client, session_factory, project):
     assert created, "expected at least one alert"
     alerts_list = client.get("/api/v1/alerts?status=open").json()
     assert alerts_list["total"] >= 1
-    assert alerts_list["items"][0]["severity"] == "critical"
+    # Both the critical and the warning alert exist; same triggered_at, so the
+    # list order between them is not meaningful (stable tiebreaker is the id).
+    assert any(a["severity"] == "critical" for a in alerts_list["items"])
 
 
 # ---------------------------------------------------------------------------
@@ -496,12 +495,38 @@ def _partial_children(trace_id: int = 100, prompt: int = 2000, completion: int =
 def test_costs_items_expose_total_cost(client, project):
     """F01: /costs must use the same `total_cost` key as every other aggregate."""
     client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
-    for dimension in ("project", "client", "workflow", "model"):
+    for dimension in ("project", "workflow", "model"):
         data = client.get(f"/api/v1/costs?dimension={dimension}").json()
         assert data["total"] >= 1, dimension
         for item in data["items"]:
             assert "total_cost" in item, (dimension, item)
             assert "cost" not in item, (dimension, item)
+
+
+def test_model_cost_rows_carry_executions_and_calls(client, project):
+    """Margin 04: model rows carry real counts, so cards never show undefined."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    items = client.get("/api/v1/costs?dimension=model").json()["items"]
+    assert items
+    item = items[0]
+    assert item["executions"] == 1, item
+    assert item["calls"] == 1, item
+    assert item["total_tokens"] == item["tokens"] == 1500, item
+
+
+def test_costs_rows_carry_detail_fields(client, project):
+    """Ticket 04: execution-based cost rows power the detail views."""
+    client.post("/api/v1/traces", content=build_request(_happy_trace()), headers=_headers())
+    for dimension in ("project", "workflow", "team"):
+        items = client.get(f"/api/v1/costs?dimension={dimension}").json()["items"]
+        assert items, dimension
+        item = items[0]
+        assert item["executions"] == 1, (dimension, item)
+        assert item["failed_executions"] == 0, (dimension, item)
+        assert item["error_rate"] == 0.0, (dimension, item)
+        assert item["total_tokens"] == item["tokens"] == 1500, (dimension, item)
+        assert item["avg_duration_ms"] > 0, (dimension, item)
+        assert item["last_seen"], (dimension, item)
 
 
 def test_costs_invalid_dimension_is_422(client, project):
@@ -550,7 +575,7 @@ def test_children_before_root_are_kept_in_a_provisional_execution(
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=555,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     resp = client.post("/api/v1/traces", content=build_request([root]), headers=_headers())
     assert resp.status_code == 200
@@ -573,7 +598,7 @@ def test_project_mismatch_preserves_existing_rows(client, session_factory, proje
         trace_id=100,
         start=now,
         end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "other-proj", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "other-proj"},
     )
     resp = client.post(
         "/api/v1/traces", content=build_request([bad_root]), headers=_headers()
@@ -593,7 +618,7 @@ def test_root_failure_kind_prefers_specific_descendant(client, session_factory, 
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=600,
         start=now, end=now + timedelta(seconds=1),
         status=2,
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=600, parent_span_id=1,
@@ -621,7 +646,7 @@ def test_wrapper_spans_do_not_get_failure_kinds(client, session_factory, project
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=602,
         start=now, end=now + timedelta(seconds=1), status=2,
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     wrapper = build_span(
         name="RunnableSequence", oi_kind="CHAIN", span_id=2, trace_id=602,
@@ -662,7 +687,7 @@ def test_unpriced_calls_surface_in_reads(client, session_factory, project):
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=601,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=601, parent_span_id=1,
@@ -707,7 +732,7 @@ def test_executions_days_filter(client, project):
     tl = build_span(
         name="old_run", oi_kind="CHAIN", span_id=1, trace_id=700,
         start=old, end=old + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     client.post("/api/v1/traces", content=build_request([tl]), headers=_headers())
     assert client.get("/api/v1/executions?days=1").json()["total"] == 1
@@ -725,7 +750,7 @@ def _single_root(trace_id: int, project_id: str = "proj-1"):
         build_span(
             name="wf", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
             start=now, end=now + timedelta(seconds=1),
-            attrs={"sdk.project_id": project_id, "sdk.client_id": "client-42"},
+            attrs={"sdk.project_id": project_id},
         )
     ]
 
@@ -782,7 +807,7 @@ def test_estimated_token_flag_is_persisted(client, project):
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=1700,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=1700, parent_span_id=1,
@@ -799,3 +824,27 @@ def test_estimated_token_flag_is_persisted(client, project):
 
 
 
+
+def test_client_dimension_is_gone(client, session_factory, project):
+    """ADR-0011: a legacy root carrying sdk.client_id still ingests, and the
+    dimension is rejected everywhere it used to exist."""
+    now = _now()
+    root = build_span(
+        name="legacy", oi_kind="CHAIN", span_id=1, trace_id=1500,
+        start=now, end=now + timedelta(seconds=1),
+        attrs={"sdk.client_id": "legacy-client", "sdk.workflow_id": "w-1500"},
+    )
+    resp = client.post(
+        "/api/v1/traces", content=build_request([root]), headers=_headers()
+    )
+    assert resp.status_code == 200, resp.text
+
+    with session_factory() as session:
+        execution = session.execute(select(Execution)).scalar_one()
+        # The column is gone from the model, so nothing client-shaped is stored.
+        assert not hasattr(execution, "client_id")
+
+    assert client.get("/api/v1/costs?dimension=client").status_code == 422
+    assert client.get("/api/v1/metrics?dimension=client").status_code == 422
+    # The retired aggregate route is gone (not merely empty).
+    assert client.get("/api/v1/clients").status_code == 404

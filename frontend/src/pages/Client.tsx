@@ -9,12 +9,12 @@ import {
 } from "../api/hooks";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import { TrendChart } from "../components/charts/TrendChart";
 import { SeverityBadge, StatusBadge } from "../components/domain";
 import {
-  Alert,
+  Badge,
   Button,
   CardPanel,
   EmptyState,
@@ -29,6 +29,7 @@ import {
   Tr,
 } from "../components/core";
 import { formatMs, formatPct, formatTokens } from "../lib/format";
+import { loopSummary } from "../lib/loops";
 
 export default function Client() {
   const { filters } = useFilters();
@@ -39,11 +40,10 @@ export default function Client() {
   const alerts = useAlerts();
   const [drilldown, setDrilldown] = useState<string | null>(null);
 
-  const recent = useExecutions(filters, undefined, 20);
+  const recent = useExecutions(filters, { limit: 20 });
   const errors = useExecutions(
     { ...filters, workflow: drilldown ?? undefined },
-    "error",
-    200
+    { status: "error", limit: 200 }
   );
 
   const failuresByKind = useMemo(() => {
@@ -70,15 +70,14 @@ export default function Client() {
       <PageHeader
         title="Client"
         subTitle="Read-only usage view for the projects you belong to."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days", "project"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
-
-      <Alert
-        variant="info"
-        message="Scoped to your project memberships."
-        detail="Cost and budget data are not exposed to client accounts; raw spans and prompts stay hidden."
-      />
+      <FilterChips dimensions={["days", "project"]} />
 
       {overview.isError ? <QueryError what="the client overview" error={loadError} /> : null}
 
@@ -253,6 +252,11 @@ export default function Client() {
                     </Td>
                     <Td>
                       <StatusBadge status={execution.status} />
+                      {execution.loop_detected ? (
+                        <Badge variant="warning" title={loopSummary(execution.loop_info)}>
+                          loop
+                        </Badge>
+                      ) : null}
                     </Td>
                     <Td align="right" className="num">{formatMs(execution.duration_ms)}</Td>
                     <Td align="right" className="num">{formatTokens(execution.total_tokens)}</Td>

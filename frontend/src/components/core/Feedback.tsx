@@ -61,9 +61,11 @@ export function Skeleton({ shape = "text", width }: { shape?: "text" | "title" |
 export function EmptyState({
   title,
   description,
+  extra,
 }: {
   title: string;
   description?: ReactNode;
+  extra?: ReactNode;
 }) {
   return (
     <div className="empty-state">
@@ -72,6 +74,7 @@ export function EmptyState({
       </span>
       <div className="empty-state__title">{title}</div>
       {description ? <div className="empty-state__description">{description}</div> : null}
+      {extra ? <div className="empty-state__actions">{extra}</div> : null}
     </div>
   );
 }

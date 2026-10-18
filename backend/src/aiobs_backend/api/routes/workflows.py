@@ -21,7 +21,6 @@ def list_workflows(
     end: str | None = Query(default=None),
     days: int = Query(default=90, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    client_id: str | None = Query(default=None),
     access: AccessScope = Depends(
         require_access("engineer", "manager", "client", "exec")
     ),
@@ -34,7 +33,6 @@ def list_workflows(
         start=start_dt,
         end=end_dt,
         project_ids=access.resolve_project_filter(project_id),
-        client_id=client_id,
     )
     items = []
     for row in rows:

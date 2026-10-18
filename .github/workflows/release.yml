@@ -104,9 +104,48 @@ jobs:
           skip-existing: true # unchanged contracts on an SDK release are a no-op
           print-hash: true
 
+  smoke-install:
+    # Gate the SDK publish on a *clean-environment* install: the built wheel
+    # resolves aiobs-contracts from PyPI (now published), so a contracts
+    # version bump that was never uploaded fails here instead of shipping a
+    # wheel that cannot import (sdk-v0.2.0 regression).
+    name: Install smoke (built SDK + published contracts)
+    needs: [build, publish-contracts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Download ai-observability-sdk distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-sdk
+          path: dist
+
+      - name: Install the built wheel against PyPI and import it
+        run: |
+          uv venv /tmp/smoke
+          for attempt in 1 2 3; do
+            uv pip install --python /tmp/smoke/bin/python dist/*.whl && break
+            echo "install attempt $attempt failed; retrying" && sleep 15
+          done
+          /tmp/smoke/bin/python - <<'PY'
+          import inspect
+
+          import aiobs_contracts as c
+
+          import ai_observability
+          from ai_observability import init
+
+          assert "loop_detection" in inspect.signature(init).parameters
+          assert c.LOOP_DEFAULT_THRESHOLD == 3
+          assert c.LoopStep and c.LoopScan and c.scan_loop_steps
+          print("installed wheel OK:", ai_observability.__version__, "contracts", c.__file__)
+          PY
+
   publish-sdk:
     name: Publish ai-observability-sdk to PyPI
-    needs: [build, publish-contracts]
+    needs: [build, publish-contracts, smoke-install]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:

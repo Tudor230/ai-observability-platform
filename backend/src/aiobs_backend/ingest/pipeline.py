@@ -21,10 +21,10 @@ from sqlalchemy.orm import Session
 
 from .. import attrs
 from ..classify import classify_span, is_failed
+from ..config import get_settings
 from ..cost import PricingResolver, compute_llm_cost
 from ..models import (
     Agent,
-    Client,
     CostRecord,
     Execution,
     Pricing,
@@ -91,6 +91,7 @@ class DerivedSpan:
     retry: int = 0
     duration_ms: float | None = None
     cost: float | None = None
+    call_sig: str | None = None
 
 
 def derive(raw: RawSpan) -> DerivedSpan:
@@ -112,6 +113,7 @@ def derive(raw: RawSpan) -> DerivedSpan:
     d.tool_name = attrs.as_str(a, attrs.TOOL_NAME)
     d.retrieval_docs = attrs.retrieval_doc_count(raw)
     d.retry = attrs.retry_count(a)
+    d.call_sig = attrs.as_str(a, attrs.SDK_CALL_SIG)
     d.duration_ms = _duration_ms(raw.start_time, raw.end_time)
     return d
 
@@ -286,14 +288,11 @@ def _apply_root_identity(
 ) -> None:
     """Copy workflow identity/metadata from a validated root onto an execution."""
     root_a = root.raw.attributes
-    client_key = attrs.as_str(root_a, attrs.SDK_CLIENT_ID)
-    client = _upsert_client(session, client_key) if client_key else None
     wf_name = root.raw.name or root.oi_kind
     wf_version = attrs.as_str(root_a, attrs.SDK_WORKFLOW_VERSION)
     workflow = _upsert_workflow(session, project, wf_name, wf_version)
     execution.workflow_id = attrs.as_str(root_a, attrs.SDK_WORKFLOW_ID)
     execution.session_id = attrs.as_str(root_a, attrs.SESSION_ID)
-    execution.client_id = client.id if client else None
     execution.workflow_name = wf_name
     execution.workflow_ref = workflow.id
     execution.workflow_version = wf_version
@@ -371,12 +370,52 @@ def _upsert_spans(
                 retrieval_doc_count=d.retrieval_docs,
                 retry_count=d.retry,
                 cost=span_cost,
+                call_sig=d.call_sig,
                 attributes=d.raw.attributes,
             )
         )
     session.flush()
     touch_agents(session, project, derived)
     return _recompute_execution(session, execution, merged=len(derived))
+
+
+def _derive_loops(execution: Execution, spans: Sequence[Span]) -> None:
+    """Re-derive the loop flag from stored call signatures (ADR-0014).
+
+    The SDK measures live (span/root marks); the backend is authoritative:
+    it scans the whole stored call sequence, applies its own thresholds, and
+    owns ``loop_detected``/``loop_info``. Signatures are salted per process,
+    so equality only ever means "same process, same input" — exactly the
+    within-execution scope the flag has.
+    """
+    settings = get_settings()
+    steps = [
+        c.LoopStep(kind=s.kind, name=s.name or "", sig=s.call_sig)
+        for s in spans
+        if s.kind in (attrs.KIND_LLM, attrs.KIND_TOOL)
+    ]
+    scan = c.scan_loop_steps(steps, max_pattern=settings.loop_cycle_max_steps)
+
+    signals: list[str] = []
+    if scan.tool_repeats >= settings.loop_repeat_threshold:
+        signals.append(c.LOOP_SIGNAL_TOOL)
+    if scan.llm_repeats >= settings.loop_repeat_threshold:
+        signals.append(c.LOOP_SIGNAL_LLM)
+    if scan.cycle_repeats >= settings.loop_cycle_repeats:
+        signals.append(c.LOOP_SIGNAL_CYCLE)
+
+    execution.loop_detected = bool(signals)
+    execution.loop_info = (
+        {
+            "signals": signals,
+            "tool_repeats": scan.tool_repeats,
+            "llm_repeats": scan.llm_repeats,
+            "cycle_repeats": scan.cycle_repeats,
+            "cycle_steps": list(scan.cycle_steps),
+        }
+        if signals
+        else None
+    )
 
 
 def _recompute_execution(
@@ -387,7 +426,7 @@ def _recompute_execution(
         session.execute(
             select(Span)
             .where(Span.execution_id == execution.id)
-            .order_by(Span.started_at)
+            .order_by(Span.started_at, Span.span_id)
         )
         .scalars()
         .all()
@@ -419,6 +458,7 @@ def _recompute_execution(
     failed = [s for s in spans if s.status == "error" or s.error_kind]
     execution.error_count = len(failed)
     _attribute_failure(spans, failed, execution)
+    _derive_loops(execution, spans)
     session.flush()
 
     return {
@@ -496,7 +536,7 @@ def _attribute_failure(
 def _upsert_row(session: Session, model, lookup, values: dict):
     """Insert-or-select with retry, safe under concurrent exporters (F27).
 
-    Two exporters sending the same client/workflow/agent concurrently would
+    Two exporters sending the same workflow/agent concurrently would
     otherwise race between the SELECT and the INSERT; the losing insert is
     retried as a lookup once the winning transaction commits.
     """
@@ -512,18 +552,6 @@ def _upsert_row(session: Session, model, lookup, values: dict):
     except IntegrityError:
         row = session.execute(select(model).where(lookup)).scalar_one()
         return row, False
-
-
-def _upsert_client(session: Session, client_key: str) -> Client:
-    row, created = _upsert_row(
-        session,
-        Client,
-        Client.external_key == client_key,
-        {"external_key": client_key, "name": client_key},
-    )
-    if not created:
-        row.last_seen = _now()
-    return row
 
 
 def _upsert_workflow(

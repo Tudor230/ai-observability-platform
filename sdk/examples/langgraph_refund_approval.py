@@ -278,12 +278,6 @@ def main() -> int:
     )
     parser.add_argument("--request-id", default=f"ORD-{uuid.uuid4().hex[:6].upper()}", help="thread_id / workflow_id (defaults to a random one per run)")
     parser.add_argument("--issue", default="I received a damaged item, I want a refund")
-    parser.add_argument("--client-id", default="client-42")
-    parser.add_argument(
-        "--project-id",
-        default=os.environ.get("AI_OBSERVABILITY_PROJECT_ID"),
-        help="optional, deprecated: Phoenix project routing only; the API key identifies the platform project",
-    )
     parser.add_argument("--mock", action="store_true", help="use a scripted fake model (offline)")
     parser.add_argument("--capture-prompts", action="store_true", default=False)
     parser.add_argument("--auto-approve", action="store_true", help="resume with approval without prompting")
@@ -303,7 +297,6 @@ def main() -> int:
         endpoint=None
         if args.no_export
         else os.environ.get("AI_OBSERVABILITY_ENDPOINT", "http://localhost:6006"),
-        project_id=args.project_id,
         service_name="langgraph-refund-demo",
         service_version="1.0.0",
         deployment_environment="demo",
@@ -320,7 +313,6 @@ def main() -> int:
     print(f"\n>>> starting refund-approval workflow for {thread_id} (mock={args.mock})")
     with workflow(
         name="refund_approval",
-        client_id=args.client_id,
         workflow_id=thread_id,
         version="v1",
         context={"channel": "web", "ticket_id": "INC-777", "agentic": "langgraph"},
@@ -355,7 +347,6 @@ def main() -> int:
 
     with workflow(
         name="refund_approval",
-        client_id=args.client_id,
         workflow_id=thread_id,
         version="v1",
         context={"channel": "web", "ticket_id": "INC-777", "agentic": "langgraph"},

@@ -19,6 +19,7 @@ from ...models import (
     Team,
     User,
 )
+from ...security import generate_project_id
 from ..deps import AccessScope, get_db, require_access
 from ..memberships import (
     add_membership,
@@ -34,10 +35,24 @@ from ..memberships import (
 # Only these roles may ask for a brand-new department (they can become its
 # initial manager); engineers and clients cannot request one.
 DEPARTMENT_REQUESTERS = {"admin", "exec", "manager"}
+# Clients are outsiders: admins provision their memberships; they cannot use
+# the self-service request flow at all (refinements v2).
+INTERNAL_REQUEST_ROLES = {"admin", "exec", "manager", "engineer"}
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
 REQUEST_TYPES = ("create_department", "create_team", "create_project", "membership")
+
+
+def _require_internal(access: AccessScope) -> None:
+    """403 for callers whose only membership(s) are client memberships."""
+    if access.unrestricted:
+        return
+    if access.roles and not (access.roles & INTERNAL_REQUEST_ROLES):
+        raise HTTPException(
+            status_code=403,
+            detail="clients cannot use access requests; memberships are provisioned by an admin",
+        )
 
 
 class CreateDepartmentPayload(BaseModel):
@@ -50,7 +65,6 @@ class CreateTeamPayload(BaseModel):
 
 
 class CreateProjectPayload(BaseModel):
-    project_id: str = Field(min_length=2, max_length=120)
     name: str = Field(min_length=1, max_length=120)
     team_id: str = Field(min_length=1, max_length=32)
 
@@ -93,6 +107,12 @@ def _validate_payload(session: Session, req_type: str, payload: dict) -> dict:
     elif req_type == "create_project":
         if session.get(Team, data["team_id"]) is None:
             raise HTTPException(status_code=404, detail="unknown team")
+        # The name is the unique handle (ADR-0012): fail fast on a duplicate
+        # instead of queueing a request that can never be approved.
+        if session.execute(
+            select(Project.id).where(Project.name == data["name"].strip())
+        ).first():
+            raise HTTPException(status_code=409, detail="project name already exists")
     elif req_type == "membership":
         data["scope_id"] = normalize_role_scope(
             data["role"], data["scope_type"], data["scope_id"]
@@ -155,6 +175,7 @@ def list_requests(
     session: Session = Depends(get_db),
 ) -> dict:
     """Requests the caller made or can decide on."""
+    _require_internal(access)
     memberships = (
         approved_memberships(session, access.user.id) if access.user else []
     )
@@ -215,6 +236,7 @@ def create_request(
     access: AccessScope = Depends(require_access()),
     session: Session = Depends(get_db),
 ) -> dict:
+    _require_internal(access)
     if access.user is None:
         raise HTTPException(status_code=403, detail="a user session is required")
     memberships = approved_memberships(session, access.user.id)
@@ -328,17 +350,19 @@ def _materialize(session: Session, req: AccessRequest) -> None:
             team = session.get(Team, payload["team_id"])
             if team is None:
                 raise HTTPException(status_code=409, detail="team no longer exists")
-            exists = session.execute(
-                select(Project.id).where(Project.project_id == payload["project_id"])
-            ).first()
-            if exists:
-                raise HTTPException(status_code=409, detail="project_id already exists")
+            name = payload["name"].strip()
+            if session.execute(
+                select(Project.id).where(Project.name == name)
+            ).first():
+                raise HTTPException(
+                    status_code=409, detail="project name already exists"
+                )
             # Keys are added post-approval by a member (plans/roles.md §5.3).
             session.add(
                 Project(
                     team_id=team.id,
-                    project_id=payload["project_id"],
-                    name=payload["name"],
+                    project_id=generate_project_id(),
+                    name=name,
                 )
             )
         elif req.type == "membership":
@@ -365,6 +389,7 @@ def approve_request(
     access: AccessScope = Depends(require_access()),
     session: Session = Depends(get_db),
 ) -> dict:
+    _require_internal(access)
     req = _load_pending(session, request_id)
     approver = _require_approver(session, access, req)
     req.approver_id = approver.id if approver else None
@@ -386,6 +411,7 @@ def reject_request(
     reason = (body.reason or "").strip()
     if not reason:
         raise HTTPException(status_code=422, detail="a rejection reason is required")
+    _require_internal(access)
     req = _load_pending(session, request_id)
     approver = _require_approver(session, access, req)
     req.status = "rejected"
@@ -403,6 +429,7 @@ def cancel_request(
     access: AccessScope = Depends(require_access()),
     session: Session = Depends(get_db),
 ) -> dict:
+    _require_internal(access)
     req = _load_pending(session, request_id)
     if access.user is None or req.requester_id != access.user.id:
         raise HTTPException(status_code=403, detail="only the requester can cancel")

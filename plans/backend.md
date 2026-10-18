@@ -15,7 +15,7 @@ This plan is written against the **actual SDK output contract** (verified in
 Teams register an AI project, get an API key, integrate the SDK, and the backend turns the
 SDK's raw telemetry into:
 
-- normalized execution records with business attribution (client / project / workflow /
+- normalized execution records with business attribution (project / workflow /
   agent / team),
 - authoritative failure classification (a `failure tree`, not just hints),
 - token- and model-derived **cost** attributed across the same dimensions,
@@ -119,7 +119,6 @@ dollar/token aggregates are stored as `numeric` to avoid float drift in cost.
 
 - `teams` (id, name)
 - `projects` (id, team_id, project_id, name, created_at)
-- `clients` (id, external_key) — sourced dynamically from `sdk.client_id`; auto-upserted
 - `workflows` (id, project_id, name, version, latest_version, first_seen, last_seen)
 - `agents` (id, name) — auto-upserted from AGENT spans; agent → workflow via spans
 
@@ -128,7 +127,7 @@ dollar/token aggregates are stored as `numeric` to avoid float drift in cost.
 - `executions` — one row per **workflow root** (identified by a span carrying
   `sdk.workflow_id` / CHAIN root):
   - `trace_id`, `workflow_id` (business key), `session_id` (= workflow_id),
-  - `project_id`, `client_id`, `workflow` (name), `workflow_version`,
+  - `project_id` (generated, ADR-0012), `workflow` (name), `workflow_version`,
   - `status` (`ok`/`error`), `root_error_kind`, `started_at`, `ended_at`, `duration_ms`,
   - `metadata` (JSONB, from root `metadata`),
   - `total_cost` (numeric), `input_tokens`, `output_tokens`, `total_tokens`,
@@ -159,12 +158,11 @@ dollar/token aggregates are stored as `numeric` to avoid float drift in cost.
 
 - `daily_metrics` / `execution_metrics` — pre-aggregated execution/usage/financial metrics
   (see §8) keyed by dimension + time bucket.
-- `budgets` — per project/workflow/client: `amount`, `period`, `period_start`.
+- `budgets` — per project/workflow/department/team: `amount`, `period`, `period_start`.
 - `alerts` — generated alert records: `rule_id`, `severity`, `message`, `triggered_at`,
   `dimension`, `status` (open/acknowledged/closed).
 
-Indexes: `executions(project_id, started_at)`, `executions(workflow_id, started_at)`,
-`executions(client_id, started_at)`, `spans(execution_id)`, `cost_records(execution_id)`,
+Indexes: `executions(project_id, started_at)`, `executions(workflow_id, started_at)`, `spans(execution_id)`, `cost_records(execution_id)`,
 `pricing(provider, model, effective_from)`. Migrations via Alembic.
 
 ## 6. Trace processing pipeline
@@ -177,9 +175,10 @@ Steps per incoming trace (idempotent — re-processing the same `trace_id` upser
 3. **Identify workflow roots** — a span with `sdk.workflow_id` and
    `openinference.span.kind == CHAIN` (or a CHAIN with no parent). One root ⇒ one
    `executions` row. `session.id` = `workflow_id` (SDK sets both).
-4. **Business enrichment** — copy `sdk.client_id`, `sdk.project_id`, `sdk.workflow_id`,
-   `sdk.workflow.version`, `user.id`, and parse root `metadata` (JSONB) onto the execution;
-   auto-upsert dimension rows (`clients`, `workflows`, `agents`).
+4. **Business enrichment** — copy `sdk.project_id` (debug runs; ingest is
+   key-authoritative, ADR-0008), `sdk.workflow_id`, `sdk.workflow.version`,
+   `user.id`, and parse root `metadata` (JSONB) onto the execution;
+   auto-upsert dimension rows (`workflows`, `agents`).
 5. **Resource extraction** — aggregate LLM/tool/retrieval/agent counts, token totals, and
    latency per execution from child spans.
 6. **Hand off** to failure classification (§7) and cost engine (§8) per span, then
@@ -249,9 +248,9 @@ of the box.
 
 Roll up cost + tokens by the dimensions the UI needs:
 
-- **workflow**, **agent**, **project**, **client**, **team**, and **time** (hour/day/month).
+- **workflow**, **agent**, **project**, **team**, and **time** (hour/day/month).
 
-This answers the `docs/03 §3.10` questions (most expensive workflow, cost per client, etc.).
+This answers the `docs/03 §3.10` questions (most expensive workflow, cost per project, etc.).
 
 ### 8.3 Pricing resolution
 
@@ -269,7 +268,7 @@ dashboard reads.
   p50/p95/p99 latency.
 - **AI usage metrics**: input/output/total tokens, LLM calls, tool calls, retrieval calls,
   model usage breakdown.
-- **Financial metrics**: total cost, avg cost/execution, cost per workflow/agent/client/team.
+- **Financial metrics**: total cost, avg cost/execution, cost per workflow/agent/project/team.
 
 Computed by a scheduled job (or on-ingest incremental rollups) into `daily_metrics` +
 `execution_metrics`. These feed the dashboard's engineering/manager/executive views.
@@ -278,13 +277,19 @@ Computed by a scheduled job (or on-ingest incremental rollups) into `daily_metri
 
 Evaluate rules on the analytics/execution data (`docs/03 §3.12`):
 
-- cost threshold exceeded (per project/workflow/client),
+- cost threshold exceeded (per project/workflow),
 - token threshold exceeded,
 - latency (avg/p95) threshold exceeded,
 - error-rate increase,
 - excessive tool calls (inefficient execution),
 - budget exceeded (against `budgets`),
-- unusual consumption vs historical baseline (v1: simple moving-average deviation).
+- unusual consumption vs historical baseline (v1: simple moving-average deviation),
+- looped executions per day (`loop_executions`): executions the ingest
+  pipeline flagged as repeating identical LLM/TOOL calls (ADR-0014). The count
+  is day-scoped and rule-scope-aware like the other metrics; the flag itself
+  is re-derived on ingest (`loop_repeat_threshold`, `loop_cycle_repeats`,
+  `loop_cycle_max_steps` env knobs) and exposed on executions as
+  `loop_detected` / `loop_info` plus a `loop=true|false` list filter.
 
 Each rule produces an `alerts` record exposed via the API. Budget utilization is surfaced
 as a metric (percent of budget used).
@@ -298,12 +303,11 @@ Stable read-side API for the dashboard (`docs/04 §4.4.9`). Versioned under `/ap
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/v1/overview` | top-line KPIs (total cost, executions, error rate, trend) |
-| GET | `/api/v1/executions` | paginated/filtered executions (client/project/workflow/status/time) |
+| GET | `/api/v1/executions` | paginated/filtered executions (project/workflow/status/time) |
 | GET | `/api/v1/executions/{id}` | single execution + its span/failure tree |
 | GET | `/api/v1/executions/{id}/spans` | normalized spans |
 | GET | `/api/v1/workflows` | workflow list + aggregates |
 | GET | `/api/v1/workflows/{id}` | workflow detail + per-workflow cost/latency |
-| GET | `/api/v1/clients` | client list + cost aggregates |
 | GET | `/api/v1/agents` | agent list + aggregates |
 | GET | `/api/v1/costs` | cost aggregation by dimension + time range |
 | GET | `/api/v1/metrics` | execution/usage/financial metrics (time series) |
@@ -315,7 +319,7 @@ Stable read-side API for the dashboard (`docs/04 §4.4.9`). Versioned under `/ap
 ### 11.2 Conventions
 
 - FastAPI + Pydantic v2 schemas; OpenAPI generated.
-- Query params: `client_id`, `project_id`, `workflow_id`, `agent_id`, `status`,
+- Query params: `project_id`, `workflow_id`, `agent_id`, `status`,
   `start`, `end`, `granularity`, pagination (`limit`/`offset` or cursor).
 - Consistent error shape; auth for admin endpoints; read endpoints gated by project scope.
 - The dashboard must access **only** these endpoints (no direct DB access) per
@@ -367,7 +371,7 @@ Resolved during implementation on the wayfinder map `.scratch/backend/` (per
 | [01 — Ingest path](../.scratch/backend/issues/01-ingest-path.md) | Direct OTLP HTTP receive (`/v1/traces` + `/api/v1/traces`); Phoenix stays the canonical trace store, not a read dependency; Phoenix-style span upsert + per-trace recompute (ADR-0009) |
 | [02 — Failure taxonomy](../.scratch/backend/issues/02-failure-taxonomy.md) | Authoritative taxonomy in `aiobs_contracts`; trust + refine SDK hints; span-level kinds, execution root carries primary failure |
 | [03 — Cost engine](../.scratch/backend/issues/03-cost-engine.md) | Mirror Phoenix pricing; exact → prefix → provider default → unpriced (`NULL`); cache/reasoning tokens priced |
-| [04 — Analytics & alerts](../.scratch/backend/issues/04-analytics-alerts.md) | Daily rollup (total/project/client/workflow) with p50/p95/p99; budget-based alert rules; background scheduler + on-demand admin endpoints |
+| [04 — Analytics & alerts](../.scratch/backend/issues/04-analytics-alerts.md) | Daily rollup (total/project/workflow/team) with p50/p95/p99; budget-based alert rules; background scheduler + on-demand admin endpoints |
 | [05 — API surface](../.scratch/backend/issues/05-api-surface.md) | `/api/v1` reads with optional `x-project-name` scope; admin-key for mutating endpoints; SDK-header auth for ingest |
 | [06 — Shared contracts](../.scratch/backend/issues/06-shared-contracts.md) | `shared/aiobs_contracts` as the SDK↔backend single source of truth |
 

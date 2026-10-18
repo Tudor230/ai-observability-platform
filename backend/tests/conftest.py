@@ -31,6 +31,7 @@ def engine():
     Base.metadata.create_all(eng)
     with sessionmaker(bind=eng, expire_on_commit=False, future=True)() as session:
         _seed_pricing(session)
+        _seed_alert_rules(session)
     yield eng
     Base.metadata.drop_all(eng)
     eng.dispose()
@@ -39,6 +40,14 @@ def engine():
 @pytest.fixture()
 def session_factory(engine):
     return sessionmaker(bind=engine, expire_on_commit=False, future=True)
+
+
+def _seed_alert_rules(session):
+    """Mirror the app's startup seeding so rule-based tests match production."""
+    from aiobs_backend.seed import builtin_alert_rules
+
+    session.add_all(builtin_alert_rules())
+    session.commit()
 
 
 def _seed_pricing(session):

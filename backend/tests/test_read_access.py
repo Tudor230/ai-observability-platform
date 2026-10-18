@@ -20,7 +20,7 @@ def _trace(trace_id: int, project_id: str = "proj-1"):
         build_span(
             name="checkout", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
             start=now, end=now + timedelta(seconds=1),
-            attrs={"sdk.project_id": project_id, "sdk.client_id": "client-42"},
+            attrs={"sdk.project_id": project_id},
         )
     ]
 

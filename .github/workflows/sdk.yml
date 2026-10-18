@@ -22,8 +22,8 @@ jobs:
         run: uv python install 3.12
       - name: Sync dependencies
         run: uv sync --group dev
-      - name: Run unit + scenario tests (offline)
-        run: uv run pytest -q
+      - name: Run unit + scenario tests (offline, coverage floor 80%)
+        run: uv run pytest -q --cov=ai_observability --cov=mock_workflows --cov-fail-under=80
       - name: Run mock-workflow CLI report
         run: uv run aiobs-mock
 

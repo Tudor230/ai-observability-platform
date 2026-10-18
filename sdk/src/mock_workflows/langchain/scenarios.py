@@ -31,7 +31,6 @@ from .fakes import (
 
 WORKFLOW = dict(
     name="checkout",
-    client_id="client-42",
     version="v2",
     context={"channel": "web", "ticket_id": "INC-12345"},
 )
@@ -75,7 +74,6 @@ def assert_happy_path(spans, workflow_id: str) -> list[str]:
     if root is None:
         return checks.failures
     checks.project_attr_matches_config(root)
-    checks.attr_eq(root, "sdk.client_id", "client-42")
     checks.attr_eq(root, "sdk.workflow_id", workflow_id)
     checks.attr_eq(root, "session.id", workflow_id)
     checks.attr_eq(root, "sdk.workflow.version", "v2")

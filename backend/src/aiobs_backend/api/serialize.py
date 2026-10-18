@@ -17,8 +17,8 @@ def money(value) -> float | None:
 def execution_dict(
     ex: Execution,
     project_ext: str | None = None,
-    client_ext: str | None = None,
     *,
+    project_name: str | None = None,
     include_cost: bool = True,
 ) -> dict:
     data = {
@@ -27,7 +27,7 @@ def execution_dict(
         "workflow_id": ex.workflow_id,
         "session_id": ex.session_id,
         "project_id": project_ext,
-        "client_id": client_ext,
+        "project_name": project_name,
         "workflow": ex.workflow_name,
         "workflow_version": ex.workflow_version,
         "status": ex.status,
@@ -49,6 +49,8 @@ def execution_dict(
         "agent_calls": ex.agent_calls,
         "error_count": ex.error_count,
         "retry_count": ex.retry_count,
+        "loop_detected": bool(ex.loop_detected),
+        "loop_info": ex.loop_info,
     }
     if not include_cost:
         # Client role: costs are stripped server-side (plans/roles.md §6.3).

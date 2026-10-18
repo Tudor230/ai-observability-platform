@@ -19,6 +19,10 @@ decisions: [`docs/adr/`](docs/adr/).
 
 ## Getting started (SDK)
 
+> Adding the SDK to an existing agent/app? Follow
+> [`sdk/INTEGRATION.md`](sdk/INTEGRATION.md) — smoke test, `init()`, the
+> workflow boundary, verification and troubleshooting.
+
 Start the shared trace stack first (from the repo root) — Phoenix `:6006` +
 Postgres `:5432` (the same instance Phoenix, the backend, and the SDK tooling use):
 

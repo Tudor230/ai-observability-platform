@@ -2,17 +2,20 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
+    Table,
     Text,
     UniqueConstraint,
     text,
@@ -72,8 +75,13 @@ class Project(Base):
         ForeignKey("teams.id"), nullable=False, index=True
     )
     project_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(120))
+    # The unique human handle (ADR-0012): every dashboard surface shows this.
+    name: Mapped[str] = mapped_column(String(120), unique=True)
     enabled: Mapped[bool] = mapped_column(default=True)
+    # Internal projects serve the org itself (tooling, R&D, demos): they need no
+    # revenue, so their AI cost is reported separately instead of dragging the
+    # margin down (ADR-0013).
+    internal: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -180,16 +188,6 @@ class AccessRequest(Base):
     )
 
 
-class Client(Base):
-    __tablename__ = "clients"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    external_key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
-    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-
-
 class Workflow(Base):
     __tablename__ = "workflows"
 
@@ -229,9 +227,6 @@ class Execution(Base):
     project_id: Mapped[str] = mapped_column(
         ForeignKey("projects.id"), nullable=False, index=True
     )
-    client_id: Mapped[str | None] = mapped_column(
-        ForeignKey("clients.id"), nullable=True, index=True
-    )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     workflow_ref: Mapped[str | None] = mapped_column(
         ForeignKey("workflows.id"), nullable=True
@@ -257,6 +252,11 @@ class Execution(Base):
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     unpriced_calls: Mapped[int] = mapped_column(Integer, default=0)
+    # Loop detection (ADR-0014): a flag, not a failure kind — a looping
+    # execution may be perfectly "ok". ``loop_info`` carries the signals,
+    # repeat counts and cycle step names (bounded, no payloads).
+    loop_detected: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    loop_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     spans = relationship("Span", back_populates="execution")
 
@@ -289,9 +289,16 @@ class Span(Base):
     retrieval_doc_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    # Salted, run-scoped call signature (ADR-0014): equality token for loop
+    # re-derivation, never the payload. LLM/TOOL spans only.
+    call_sig: Mapped[str | None] = mapped_column(String(24), nullable=True)
     attributes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     execution: Mapped[Execution] = relationship(back_populates="spans")
+
+    __table_args__ = (
+        Index("ix_spans_execution_call_sig", "execution_id", "call_sig"),
+    )
 
 
 class Pricing(Base):
@@ -345,7 +352,7 @@ class DailyMetric(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     day: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD
-    dimension: Mapped[str] = mapped_column(String(40), index=True)  # total|project|client|workflow|team
+    dimension: Mapped[str] = mapped_column(String(40), index=True)  # total|project|workflow|team
     dimension_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     executions: Mapped[int] = mapped_column(Integer, default=0)
     failed_executions: Mapped[int] = mapped_column(Integer, default=0)
@@ -381,10 +388,15 @@ class Budget(Base):
     project_id: Mapped[str | None] = mapped_column(
         ForeignKey("projects.id"), nullable=True, index=True
     )
-    client_id: Mapped[str | None] = mapped_column(
-        ForeignKey("clients.id"), nullable=True, index=True
-    )
     workflow_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # Manager-owned budgets are scoped to an org unit (audit item 5); global
+    # budgets (all scope columns NULL) stay exec/admin-only.
+    department_id: Mapped[str | None] = mapped_column(
+        ForeignKey("departments.id"), nullable=True, index=True
+    )
+    team_id: Mapped[str | None] = mapped_column(
+        ForeignKey("teams.id"), nullable=True, index=True
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     period: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True
@@ -398,6 +410,8 @@ class Alert(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     rule_id: Mapped[str] = mapped_column(String(120), index=True)
+    # The configured rule a threshold alert came from (NULL for budget alerts).
+    rule_ref: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     severity: Mapped[str] = mapped_column(String(20), default="warning")
     message: Mapped[str] = mapped_column(Text)
     dimension: Mapped[str] = mapped_column(String(40))
@@ -405,4 +419,117 @@ class Alert(Base):
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
     triggered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, index=True
+    )
+
+
+class AlertChannel(Base):
+    """A delivery target for alerts (audit item 7): email, Slack or webhook."""
+
+    __tablename__ = "alert_channels"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    type: Mapped[str] = mapped_column(String(20))  # email|slack|webhook
+    name: Mapped[str] = mapped_column(String(120))
+    target: Mapped[str] = mapped_column(String(320))  # address or URL
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AlertDelivery(Base):
+    """One delivery attempt (refinements v2): channel test + alert routing."""
+
+    __tablename__ = "alert_deliveries"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    alert_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    channel_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    channel_type: Mapped[str] = mapped_column(String(20))  # email|slack|webhook
+    target: Mapped[str] = mapped_column(String(320))
+    status: Mapped[str] = mapped_column(String(20), index=True)  # sent|failed
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, index=True
+    )
+
+
+# Rule ↔ channel selection (a rule with no links falls back to the global webhook).
+alert_rule_channels = Table(
+    "alert_rule_channels",
+    Base.metadata,
+    Column(
+        "rule_id",
+        String(32),
+        ForeignKey("alert_rules.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "channel_id",
+        String(32),
+        ForeignKey("alert_channels.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+class AlertRule(Base):
+    """Configurable threshold rule (audit item 7); built-ins seeded from env."""
+
+    __tablename__ = "alert_rules"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120))
+    # error_rate|daily_tokens|tool_calls_per_execution|p95_latency|cost_anomaly|loop_executions
+    metric: Mapped[str] = mapped_column(String(40))
+    warning_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    critical_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    scope_type: Mapped[str] = mapped_column(String(20), default="global")
+    scope_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Built-ins are deletable only when disabled (409 otherwise); they are the
+    # seed of the env-threshold behavior (F04).
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        Index("ix_alert_rules_scope", "scope_type", "scope_id"),
+        Index("ix_alert_rules_enabled", "enabled"),
+    )
+
+
+class ProjectRate(Base):
+    """A versioned project rate: what a project pays and what it costs to serve.
+
+    Versions never overwrite each other (ADR-0013): the active rate for a day is
+    the row with the greatest ``effective_from <= day``, so a price change shows
+    as a step in revenue accrual instead of rewriting history. Manual cost is an
+    explicit input, not an inferred default.
+    """
+
+    __tablename__ = "project_rates"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    revenue_amount: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    revenue_period: Mapped[str] = mapped_column(String(16), default="month")  # month|year
+    manual_cost_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 6), default=Decimal("0")
+    )
+    manual_cost_period: Mapped[str] = mapped_column(String(16), default="month")
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    __table_args__ = (
+        # One version per project per day: a clash is a 409, never an overwrite.
+        UniqueConstraint(
+            "project_id", "effective_from", name="uq_project_rate_version"
+        ),
     )

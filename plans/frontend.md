@@ -19,11 +19,11 @@ One app, three role-scoped views, driven by the backend API.
 
 - **Engineering view** — trace explorer, execution detail with span/failure tree, LLM/tool/
   retrieval breakdown, error + latency + token panels.
-- **Manager (SDM) view** — cost per workflow/client, consumption trends, budget utilization,
+- **Manager (SDM) view** — cost per workflow/project, consumption trends, budget utilization,
   agent efficiency, alerts.
-- **Executive view** — total AI cost, cost per client/service, cost per execution, cost
+- **Executive view** — total AI cost, cost per project, cost per execution, cost
   trends, forecasts, unit economics.
-- Shared shell: navigation, role switch, global filters (date range, client/project/workflow).
+- Shared shell: navigation, role switch, page time window plus per-table filters (refinements v3).
 
 Out of scope for v1: real-time streaming push (polling is fine), auth/user management beyond
 role switching, PDF/report export, custom-dashboard builder.
@@ -65,7 +65,7 @@ frontend/
 ## 5. Shared shell & global filters
 
 - **AppShell**: top nav (Overview, Engineering, Manager, Executive), role switcher
-  (Engineer / SDM / Finance), and a global filter bar (date range, `client_id`,
+  (Engineer / SDM / Finance), and a filter bar (date range,
   `project_id`, `workflow_id`).
 - Filters are lifted into a shared query context and threaded into every API call; changing
   them re-fetches all visible panels (TanStack Query keys include the filters).
@@ -75,7 +75,7 @@ frontend/
 
 Consumes: `overview`, `executions`, `executions/{id}`, `executions/{id}/spans`.
 
-- **TraceExplorer**: paginated execution table (name, workflow, client, status, duration,
+- **TraceExplorer**: paginated execution table (name, workflow, project, status, duration,
   tokens, cost, started_at) with filters + a status filter (ok/error).
 - **ExecutionDetail**: header (trace/execution identity, status, workflow version, business
   `metadata`), KPI strip (duration, tokens, cost, LLM/tool/retrieval calls, error count,
@@ -89,7 +89,7 @@ Consumes: `overview`, `executions`, `executions/{id}`, `executions/{id}/spans`.
 
 ## 7. Manager (SDM) view
 
-Consumes: `workflows`, `clients`, `costs`, `metrics`, `alerts`, `budgets`.
+Consumes: `workflows`, `costs`, `metrics`, `alerts`, `budgets`.
 
 - **CostByWorkflow / CostByClient**: bar lists with cost + tokens + success rate; click →
   drill into executions.
@@ -97,18 +97,18 @@ Consumes: `workflows`, `clients`, `costs`, `metrics`, `alerts`, `budgets`.
 - **Budgets**: budget vs actual, utilization %, alert badges when over.
 - **Alerts**: open/acknowledged/closed list with severity; filter by dimension.
 - **AgentEfficiency**: per-agent cost + latency + error rate comparison.
-- Manager answer: *cost per workflow/client, trends, budget utilization, agent efficiency*.
+- Manager answer: *cost per workflow/project, trends, budget utilization, agent efficiency*.
 
 ## 8. Executive view
 
 Consumes: `overview`, `costs`, `metrics`.
 
 - **TotalCost / TotalTokens** headline KPIs with period-over-period delta.
-- **CostByService** (cost per client/project) and **CostByExecution** (avg cost/execution).
+- **CostByProject** and **CostByExecution** (avg cost/execution).
 - **UnitEconomics**: cost per execution, per token, per successful execution.
 - **Forecast**: simple trend projection from historical `metrics` (moving-average/linear
   fit; labeled as estimate).
-- Executive answer: *total AI cost, cost per client/service/execution, trends, forecast,
+- Executive answer: *total AI cost, cost per project/execution, trends, forecast,
   unit economics*.
 
 ## 9. API consumption contract
@@ -126,7 +126,7 @@ Consumes: `overview`, `costs`, `metrics`.
   each view is available through the frontend — assert that:
   - engineering view renders the expected trace/span/failure data for a known mock scenario,
   - manager view shows the expected cost/workflow + budget values,
-  - executive view shows total cost + per-client cost matching the backend.
+  - executive view shows total cost + per-project cost matching the backend.
 - e2e (Playwright) against the running backend + docker stack: happy-path flows for the
   three views. Mirrors the `sdk.yml` e2e pattern (docker compose up, run, teardown).
 
@@ -198,7 +198,7 @@ Shipped as planned, with these deltas (see `docs/06-project-audit.md` �7):
 
 - **Role switcher**: presentation-level role gating (nav + routes, persisted);
   server-side RBAC is opt-in via user keys (roles engineer/sdm/finance/admin).
-- **Filters**: days/project/client/workflow thread into overview, executions,
+- **Filters**: the page time window plus per-card project/workflow filters thread into overview, executions,
   metrics/trends/forecast; alerts and budget status are intentionally global.
 - **Agent efficiency**: panel backed by `/agents` (per-execution aggregation).
 - **Failure tree**: rendered hierarchically; execution detail distinguishes

@@ -33,7 +33,7 @@ DB_URL = os.environ.get(
     "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/aiobs_test",
 )
 PORT = int(os.environ.get("AIOBS_KPI_PORT", "8000"))
-PROJECT_ID = "proj-1"  # seeded project; the key alone identifies it (ADR-0008)
+PROJECT_NAME = "KPI Gate"  # seeded project (name is the unique handle, ADR-0012)
 KPI_KEY = "kpi-test-key"
 UV = os.environ.get("UV_EXE", "uv")
 ADMIN_KEY = os.environ.get("AIOBS_ADMIN_API_KEY") or "kpi-admin"
@@ -132,16 +132,18 @@ def main() -> int:
     db.drop_all()
     db.create_all()
     seed.seed_pricing()
-    # Ensure project proj-1 exists with a known key (rotate if it already exists).
+    # Ensure the KPI project exists with a known key (fresh schema above).
+    project_ext = ""
     with db.session_scope() as session:
         project = session.execute(
-            select(Project).where(Project.project_id == PROJECT_ID)
+            select(Project).where(Project.name == PROJECT_NAME)
         ).scalar_one_or_none()
         if project is None:
-            seed.seed_demo_project(PROJECT_ID, "KPI Gate")
+            seed.seed_demo_project(PROJECT_NAME)
             project = session.execute(
-                select(Project).where(Project.project_id == PROJECT_ID)
+                select(Project).where(Project.name == PROJECT_NAME)
             ).scalar_one()
+        project_ext = project.project_id
         for existing in session.execute(
             select(ProjectKey).where(ProjectKey.project_id == project.id)
         ).scalars():
@@ -173,7 +175,7 @@ def main() -> int:
         root = build_span(
             name="checkout", oi_kind="CHAIN", span_id=1, trace_id=7001,
             start=now, end=now + timedelta(seconds=1),
-            attrs={"sdk.client_id": "client-kpi"},
+            attrs={"sdk.workflow_id": "order-kpi"},
         )
         llm = build_span(
             name="llm", oi_kind="LLM", span_id=2, trace_id=7001, parent_span_id=1,
@@ -196,7 +198,8 @@ def main() -> int:
         cost_error_pct = abs(trace["total_cost"] - expected_cost) / expected_cost * 100
         assert cost_error_pct < 1.0, f"KPI 2 cost error {cost_error_pct:.4f}%"
         detail = _api(f"/executions/{trace['execution_id']}")
-        assert detail["client_id"] == "client-kpi", detail
+        assert detail["project_id"] == project_ext, detail
+        assert detail["project_name"] == "KPI Gate", detail
         assert detail["workflow"] == "checkout", detail
         print(f"KPI 2: cost error {cost_error_pct:.4f}% (expected {expected_cost})")
 

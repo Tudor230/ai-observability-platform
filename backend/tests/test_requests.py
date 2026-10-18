@@ -69,15 +69,26 @@ def test_engineer_and_client_cannot_request_departments(app, session_factory):
         )
         session.commit()
 
-    for key in (engineer_key, client_key):
-        caller = TestClient(app, headers={"x-api-key": key})
-        denied = caller.post(
+    # Engineer: department requests stay admin/exec/manager-only; the rest of
+    # the surface stays open.
+    engineer = TestClient(app, headers={"x-api-key": engineer_key})
+    denied = engineer.post(
+        "/api/v1/requests",
+        json={"type": "create_department", "payload": {"name": "Nope"}},
+    )
+    assert denied.status_code == 403, denied.text
+    assert engineer.get("/api/v1/requests").status_code == 200
+
+    # Client: the whole self-service surface is closed (refinements v2).
+    client_caller = TestClient(app, headers={"x-api-key": client_key})
+    assert (
+        client_caller.post(
             "/api/v1/requests",
             json={"type": "create_department", "payload": {"name": "Nope"}},
-        )
-        assert denied.status_code == 403, denied.text
-        # Other request types are unaffected.
-        assert caller.get("/api/v1/requests").status_code == 200
+        ).status_code
+        == 403
+    )
+    assert client_caller.get("/api/v1/requests").status_code == 403
 
 
 def test_request_lifecycle_guards(anon, client, session_factory):
@@ -161,28 +172,38 @@ def test_manager_creates_team_project_and_mints_key(anon, session_factory):
     project_request = _submit(
         anon,
         "create_project",
-        {"project_id": "core-api", "name": "Core API", "team_id": team_id},
+        {"name": "Core API", "team_id": team_id},
     )
     assert project_request.status_code == 200
     assert project_request.json()["status"] == "approved"
 
     listing = anon.get("/api/v1/projects").json()["items"]
-    assert listing and listing[0]["project_id"] == "core-api"
+    assert listing and listing[0]["name"] == "Core API"
+    generated_id = listing[0]["project_id"]
+    assert generated_id.startswith("p_")  # generated, never user-supplied (ADR-0012)
     assert listing[0]["has_keys"] is False
     # No key exists yet: ingest is rejected until a member adds one (key-first, ADR-0008).
     blocked = anon.post(
         "/api/v1/traces",
         content=b"",
-        headers={"x-project-name": "core-api", "authorization": "Bearer nope"},
+        headers={"x-project-name": generated_id, "authorization": "Bearer nope"},
     )
     assert blocked.status_code == 401
     assert "invalid API key" in blocked.json()["detail"]
 
     minted = anon.post(
-        "/api/v1/projects/core-api/keys", json={"label": "demo"}, headers=CSRF
+        f"/api/v1/projects/{generated_id}/keys", json={"label": "demo"}, headers=CSRF
     )
     assert minted.status_code == 200
     assert minted.json()["api_key"].startswith("aiobs_")
+
+    # A duplicate name is rejected before a request is queued (ADR-0012).
+    duplicate = _submit(
+        anon,
+        "create_project",
+        {"name": "Core API", "team_id": team_id},
+    )
+    assert duplicate.status_code == 409
 
 
 def test_membership_flow_and_manager_grant_restriction(

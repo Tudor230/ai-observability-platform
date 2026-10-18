@@ -8,9 +8,25 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from .config import get_settings
 from .db import session_scope
-from .models import Department, Membership, Pricing, Project, ProjectKey, Team, User
-from .security import generate_api_key, hash_api_key, hash_password, key_hint
+from .models import (
+    AlertRule,
+    Department,
+    Membership,
+    Pricing,
+    Project,
+    ProjectKey,
+    Team,
+    User,
+)
+from .security import (
+    generate_api_key,
+    generate_project_id,
+    hash_api_key,
+    hash_password,
+    key_hint,
+)
 
 # (provider, model, model_match, input/1m, output/1m, cache_read, cache_write, reasoning)
 DEFAULT_PRICING: list[tuple[str, str, str, float, float, float | None, float | None, float | None]] = [
@@ -68,31 +84,110 @@ def seed_pricing() -> int:
     return added
 
 
-def seed_demo_project(project_id: str = "proj-1", name: str = "Demo Project") -> str:
-    """Create (or return) a demo department + team + project, minting a key.
+def builtin_alert_rules(settings=None) -> list[AlertRule]:
+    """The env-threshold rules seeded when `alert_rules` is empty (#06).
 
-    Returns the plaintext API key (shown once).
+    Warning = the historical env threshold, critical = 2× (matching the old
+    `_severity` escalation), all global and marked ``builtin``.
+    """
+    settings = settings or get_settings()
+    return [
+        AlertRule(
+            name="Error rate",
+            metric="error_rate",
+            warning_threshold=settings.alert_error_rate,
+            critical_threshold=settings.alert_error_rate * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Daily tokens",
+            metric="daily_tokens",
+            warning_threshold=settings.alert_daily_tokens,
+            critical_threshold=settings.alert_daily_tokens * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Tool calls per execution",
+            metric="tool_calls_per_execution",
+            warning_threshold=settings.alert_tool_calls_per_execution,
+            critical_threshold=settings.alert_tool_calls_per_execution * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="P95 latency",
+            metric="p95_latency",
+            warning_threshold=settings.alert_p95_latency_ms,
+            critical_threshold=settings.alert_p95_latency_ms * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Cost anomaly (7-day average)",
+            metric="cost_anomaly",
+            warning_threshold=settings.alert_cost_anomaly_factor,
+            critical_threshold=settings.alert_cost_anomaly_factor * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+        AlertRule(
+            name="Looped executions",
+            metric="loop_executions",
+            warning_threshold=settings.alert_loop_executions,
+            critical_threshold=settings.alert_loop_executions * 2,
+            scope_type="global",
+            builtin=True,
+        ),
+    ]
+
+
+def seed_alert_rules() -> int:
+    """Idempotently seed the built-in rules when the table is empty."""
+    with session_scope() as session:
+        if session.execute(select(AlertRule.id).limit(1)).first() is not None:
+            return 0
+        rules = builtin_alert_rules()
+        session.add_all(rules)
+        return len(rules)
+
+
+def seed_demo_project(name: str = "Demo Project") -> str:
+    """Create (or reuse) a demo department + team + project, minting a fresh key.
+
+    The project is matched by ``name`` — the unique human handle (ADR-0012) —
+    and a generated external id is assigned on creation. Returns the plaintext
+    API key (shown once).
     """
     with session_scope() as session:
         project = session.execute(
-            select(Project).where(Project.project_id == project_id)
+            select(Project).where(Project.name == name)
         ).scalar_one_or_none()
-        if project is not None:
-            return "demo-key-not-returned-for-existing-project"
-        department = session.execute(
-            select(Department).where(Department.name == "Platform")
-        ).scalar_one_or_none()
-        if department is None:
-            department = Department(name="Platform")
-            session.add(department)
-            session.flush()
-        team = Team(name="Platform Admins", department_id=department.id)
-        session.add(team)
-        session.flush()
         key = generate_api_key()
-        project = Project(team_id=team.id, project_id=project_id, name=name)
-        session.add(project)
-        session.flush()
+        if project is None:
+            department = session.execute(
+                select(Department).where(Department.name == "Platform")
+            ).scalar_one_or_none()
+            if department is None:
+                department = Department(name="Platform")
+                session.add(department)
+                session.flush()
+            team = session.execute(
+                select(Team).where(
+                    Team.name == "Platform Admins",
+                    Team.department_id == department.id,
+                )
+            ).scalar_one_or_none()
+            if team is None:
+                team = Team(name="Platform Admins", department_id=department.id)
+                session.add(team)
+                session.flush()
+            project = Project(
+                team_id=team.id, project_id=generate_project_id(), name=name
+            )
+            session.add(project)
+            session.flush()
         session.add(
             ProjectKey(
                 project_id=project.id,
@@ -152,7 +247,7 @@ def seed_admin(email: str, password: str) -> dict:
     }
 
 
-def seed_all(project_id: str = "proj-1", project_name: str = "Demo Project") -> dict:
+def seed_all(project_name: str = "Demo Project") -> dict:
     pricing = seed_pricing()
-    key = seed_demo_project(project_id, project_name)
+    key = seed_demo_project(project_name)
     return {"pricing_added": pricing, "demo_api_key": key}

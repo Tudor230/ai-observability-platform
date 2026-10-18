@@ -3,7 +3,7 @@ import { useDirectoryProjects, useOverview } from "../api/hooks";
 import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import {
   Badge,
@@ -30,9 +30,14 @@ export default function Projects() {
       <PageHeader
         title="Projects"
         subTitle="Every project you belong to, with a usage overview and its ingest keys."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days"]} />
 
       {projects.isError ? <QueryError what="projects" error={projects.error} /> : null}
 
@@ -81,6 +86,7 @@ export default function Projects() {
           <EmptyState
             title="No projects yet"
             description="Register a project through Requests — it appears here once approved."
+            extra={<Link to="/requests">Open Requests</Link>}
           />
         )}
       </CardPanel>
@@ -106,9 +112,6 @@ function ProjectRow({
         <Link to={`/projects/${project.project_id}`} className="table__cell--primary">
           {project.name}
         </Link>
-        <div className="muted inline-code" style={{ fontSize: 12 }}>
-          {project.project_id}
-        </div>
       </Td>
       <Td>{project.team_name}</Td>
       <Td className="muted">{project.department_name}</Td>

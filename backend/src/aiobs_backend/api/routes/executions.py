@@ -1,18 +1,23 @@
-"""Executions: list (paginated, filtered), detail, span list, failure tree."""
+"""Executions: list (paginated, filtered, searchable/sortable), detail, span list, failure tree."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...models import Client, Execution, Project, Span
+from ...models import Execution, Project, Span
 from ..deps import AccessScope, get_db, require_access
 from ..queries import exec_rows, parse_dt
 from ..serialize import execution_dict, span_dict
 
 router = APIRouter(tags=["executions"])
+
+ExecutionSort = Literal[
+    "started_at", "duration_ms", "total_cost", "total_tokens", "error_count", "status"
+]
 
 
 def _scoped_execution(
@@ -38,9 +43,12 @@ def list_executions(
     end: str | None = Query(default=None),
     days: int | None = Query(default=None, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    loop: bool | None = Query(default=None, description="Only looped (true) or clean (false) executions"),
+    q: str | None = Query(default=None, max_length=200),
+    sort: ExecutionSort = Query(default="started_at"),
+    order: Literal["asc", "desc"] = Query(default="desc"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     access: AccessScope = Depends(require_access("engineer", "manager", "client")),
@@ -54,19 +62,79 @@ def list_executions(
         start=start_dt,
         end=parse_dt(end, end_of_day=True),
         project_ids=access.resolve_project_filter(project_id),
-        client_id=client_id,
         workflow=workflow,
         status=status,
+        loop=loop,
+        q=q,
+        sort=sort,
+        order=order,
     )
     total = session.execute(
         select(func.count()).select_from(base.subquery())
     ).scalar_one()
     rows = session.execute(base.limit(limit).offset(offset)).all()
     items = [
-        execution_dict(ex, project_ext, client_ext, include_cost=access.cost_visible)
-        for ex, project_ext, client_ext in rows
+        execution_dict(
+            ex,
+            project_ext,
+            project_name=project_name,
+            include_cost=access.cost_visible,
+        )
+        for ex, project_ext, project_name in rows
     ]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/failures/series")
+def failures_series(
+    session: Session = Depends(get_db),
+    start: str | None = Query(default=None),
+    end: str | None = Query(default=None),
+    days: int = Query(default=30, ge=1, le=3650),
+    project_id: str | None = Query(default=None),
+    workflow: str | None = Query(default=None),
+    access: AccessScope = Depends(require_access("engineer", "manager", "client")),
+) -> dict:
+    """Daily failure counts grouped by failure kind (scoped, refinements v2).
+
+    Powers the stacked ``Failures by kind`` chart; kinds are ordered by total
+    count so the legend stays stable across days.
+    """
+    end_dt = parse_dt(end, end_of_day=True) or datetime.now(timezone.utc)
+    start_dt = parse_dt(start) or end_dt - timedelta(days=days)
+    scoped = access.resolve_project_filter(project_id)
+    if scoped is not None and not scoped:
+        return {"items": [], "kinds": []}
+    day_col = func.date(Execution.started_at)
+    stmt = (
+        select(
+            day_col.label("day"),
+            Execution.root_error_kind.label("kind"),
+            func.count().label("count"),
+        )
+        .join(Project, Project.id == Execution.project_id)
+        .where(
+            Execution.started_at >= start_dt,
+            Execution.started_at < end_dt,
+            Execution.status == "error",
+            Execution.root_error_kind.isnot(None),
+        )
+        .group_by(day_col, Execution.root_error_kind)
+        .order_by(day_col)
+    )
+    if scoped is not None:
+        stmt = stmt.where(Project.project_id.in_(scoped))
+    if workflow:
+        stmt = stmt.where(Execution.workflow_name == workflow)
+    rows = session.execute(stmt).all()
+    items = [
+        {"day": str(row.day), "kind": row.kind, "count": row.count} for row in rows
+    ]
+    totals: dict[str, int] = {}
+    for item in items:
+        totals[item["kind"]] = totals.get(item["kind"], 0) + item["count"]
+    kinds = sorted(totals, key=lambda kind: totals[kind], reverse=True)
+    return {"items": items, "kinds": kinds}
 
 
 @router.get("/executions/{execution_id}")
@@ -76,16 +144,17 @@ def get_execution(
     access: AccessScope = Depends(require_access("engineer", "manager", "client")),
 ) -> dict:
     row = _scoped_execution(session, execution_id, access)
-    project_ext = session.execute(
-        select(Project.project_id).where(Project.id == row.project_id)
-    ).scalar_one_or_none()
-    client_ext = None
-    if row.client_id:
-        client_ext = session.execute(
-            select(Client.external_key).where(Client.id == row.client_id)
-        ).scalar_one_or_none()
+    project_ext, project_name = (
+        session.execute(
+            select(Project.project_id, Project.name).where(Project.id == row.project_id)
+        ).one_or_none()
+        or (None, None)
+    )
     return execution_dict(
-        row, project_ext, client_ext, include_cost=access.cost_visible
+        row,
+        project_ext,
+        project_name=project_name,
+        include_cost=access.cost_visible,
     )
 
 

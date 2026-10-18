@@ -9,15 +9,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...models import Department, Project, ProjectKey, Team
-from ...security import generate_api_key, hash_api_key, key_hint
+from ...security import generate_api_key, generate_project_id, hash_api_key, key_hint
 from ..deps import AccessScope, get_admin_key, get_db, require_access
 
 router = APIRouter(tags=["projects"])
 
 
 class ProjectIn(BaseModel):
-    project_id: str = Field(min_length=2, max_length=120)
-    name: str
+    name: str = Field(min_length=1, max_length=120)
     team_id: str | None = None
     # Legacy convenience: find-or-create a team inside a department.
     team_name: str = "Platform Admins"
@@ -141,25 +140,24 @@ def list_projects(session: Session = Depends(get_db)) -> dict:
 
 @router.post("/projects", response_model=KeyOut, dependencies=[Depends(get_admin_key)])
 def create_project(body: ProjectIn, session: Session = Depends(get_db)) -> KeyOut:
-    existing = session.execute(
-        select(Project.id).where(Project.project_id == body.project_id)
-    ).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="project_id already exists")
+    name = body.name.strip()
+    if session.execute(select(Project.id).where(Project.name == name)).first():
+        raise HTTPException(status_code=409, detail="project name already exists")
     team = _find_or_create_team(
         session,
         team_id=body.team_id,
         team_name=body.team_name,
         department_name=body.department_name,
     )
-    project = Project(team_id=team.id, project_id=body.project_id, name=body.name)
+    project_id = generate_project_id()
+    project = Project(team_id=team.id, project_id=project_id, name=name)
     session.add(project)
     session.flush()
     row, api_key = _mint_key(
         session, project, label="admin-created", created_by=None
     )
     session.commit()  # before the response: see the ingest route note
-    return KeyOut(id=row.id, project_id=body.project_id, label=row.label, api_key=api_key)
+    return KeyOut(id=row.id, project_id=project_id, label=row.label, api_key=api_key)
 
 
 @router.get("/projects/{project_id}/keys")

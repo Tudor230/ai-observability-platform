@@ -36,6 +36,7 @@ import {
   TextInput,
   Th,
   Tr,
+  useToast,
   type BadgeVariant,
 } from "../components/core";
 import { useAuth } from "../state/AuthContext";
@@ -84,6 +85,7 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 export default function Requests() {
   const queryClient = useQueryClient();
   const { hasRole, canApprove, profile, refresh } = useAuth();
+  const toast = useToast();
   const canRequestDepartments = hasRole("admin", "exec", "manager");
   const [tab, setTab] = useState<TabId>("new");
 
@@ -123,7 +125,6 @@ export default function Requests() {
   const [name, setName] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [teamId, setTeamId] = useState("");
-  const [projectSlug, setProjectSlug] = useState("");
   const [projectName, setProjectName] = useState("");
   const [membershipRole, setMembershipRole] = useState<Role>("engineer");
   const [scopeKey, setScopeKey] = useState("");
@@ -146,7 +147,7 @@ export default function Requests() {
     for (const t of teams.data?.items ?? [])
       map.set(`team:${t.id}`, `${t.name} (${t.department_name})`);
     for (const p of projects.data?.items ?? [])
-      map.set(`project:${p.id}`, `${p.project_id} · ${p.name}`);
+      map.set(`project:${p.id}`, p.name);
     return map;
   }, [departments.data, teams.data, projects.data]);
 
@@ -158,7 +159,7 @@ export default function Requests() {
       case "create_team":
         return `Create team “${p.name}”`;
       case "create_project":
-        return `Create project “${p.project_id} / ${p.name}”`;
+        return `Create project “${p.name}”`;
       case "membership":
         return `Join as ${ROLE_LABELS[(p.role as Role) ?? "engineer"]}`;
       default:
@@ -182,7 +183,10 @@ export default function Requests() {
   function openProjectFor(req: AccessRequest): string | null {
     if (req.type !== "create_project" || req.status !== "approved") return null;
     const p = req.payload as Record<string, string | undefined>;
-    return p.project_id ? `/projects/${p.project_id}` : null;
+    // The generated project_id is not in the payload (ADR-0012); the name is
+    // the unique handle, so match it against the directory.
+    const match = (projects.data?.items ?? []).find((item) => item.name === p.name);
+    return match ? `/projects/${match.project_id}` : null;
   }
 
   function invalidateRequests() {
@@ -197,6 +201,7 @@ export default function Requests() {
       (activeType === "membership" && !scopeKey)
     ) {
       setFeedback({ variant: "danger", text: "Select all required fields." });
+      toast.error("Select all required fields.");
       return;
     }
     setBusy(true);
@@ -207,7 +212,7 @@ export default function Requests() {
     } else if (activeType === "create_team") {
       payload = { name, department_id: departmentId };
     } else if (activeType === "create_project") {
-      payload = { project_id: projectSlug, name: projectName, team_id: teamId };
+      payload = { name: projectName, team_id: teamId };
     } else {
       const [scopeType, scopeId] = scopeKey.split(":");
       payload = {
@@ -218,26 +223,23 @@ export default function Requests() {
     }
     try {
       const result = await api.requests.create(activeType, payload);
-      setFeedback({
-        variant: "success",
-        text:
-          result.status === "approved"
-            ? activeType === "create_project"
-              ? "Auto-approved (you cover this scope) — open the project to add an ingest key."
-              : "Auto-approved: you cover this scope."
-            : "Request submitted for approval.",
-      });
+      const text =
+        result.status === "approved"
+          ? activeType === "create_project"
+            ? "Auto-approved (you cover this scope) — open the project to add an ingest key."
+            : "Auto-approved: you cover this scope."
+          : "Request submitted for approval.";
+      setFeedback({ variant: "success", text });
+      toast.success(text);
       setName("");
-      setProjectSlug("");
       setProjectName("");
       setScopeKey("");
       invalidateRequests();
       if (result.status === "approved") void refresh();
     } catch (error) {
-      setFeedback({
-        variant: "danger",
-        text: error instanceof Error ? error.message : "Request failed.",
-      });
+      const text = error instanceof Error ? error.message : "Request failed.";
+      setFeedback({ variant: "danger", text });
+      toast.error(text);
     } finally {
       setBusy(false);
     }
@@ -254,14 +256,20 @@ export default function Requests() {
       if (action === "approve") await api.requests.approve(req.id);
       else if (action === "reject") await api.requests.reject(req.id, reason ?? "");
       else await api.requests.cancel(req.id);
+      toast.success(
+        action === "approve"
+          ? "Request approved."
+          : action === "reject"
+            ? "Request rejected."
+            : "Request cancelled."
+      );
       invalidateRequests();
       void queryClient.invalidateQueries({ queryKey: ["directory"] });
       void queryClient.invalidateQueries({ queryKey: ["overview"] });
     } catch (error) {
-      setFeedback({
-        variant: "danger",
-        text: error instanceof Error ? error.message : "Action failed.",
-      });
+      const text = error instanceof Error ? error.message : "Action failed.";
+      setFeedback({ variant: "danger", text });
+      toast.error(text);
     } finally {
       setDecidingId(null);
       setRejecting(null);
@@ -275,7 +283,6 @@ export default function Requests() {
     setName(p.name ?? "");
     setDepartmentId(p.department_id ?? "");
     setTeamId(p.team_id ?? "");
-    setProjectSlug(p.project_id ?? "");
     setProjectName(p.name ?? "");
     if (req.type === "membership") {
       setMembershipRole((p.role as Role) ?? "engineer");
@@ -324,7 +331,7 @@ export default function Requests() {
         .filter((p) => !holds("project", p.id))
         .map((p) => ({
           value: `project:${p.id}`,
-          label: `Project — ${p.project_id} · ${p.name}`,
+          label: `Project — ${p.name}`,
         }));
     }
     return (teams.data?.items ?? [])
@@ -406,15 +413,7 @@ export default function Requests() {
 
                 {activeType === "create_project" ? (
                   <>
-                    <Field label="Project id (slug)">
-                      <TextInput
-                        value={projectSlug}
-                        onChange={(e) => setProjectSlug(e.target.value)}
-                        placeholder="e.g. proj-1"
-                        required
-                      />
-                    </Field>
-                    <Field label="Display name">
+                    <Field label="Project name">
                       <TextInput
                         value={projectName}
                         onChange={(e) => setProjectName(e.target.value)}

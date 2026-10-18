@@ -13,10 +13,20 @@ export interface BreakdownRow {
  * Horizontal bar breakdown — the readable "cost by X" list: label, bar
  * scaled to the largest value, and the formatted value on the right.
  */
-export function BreakdownBars({ rows }: { rows: BreakdownRow[] }) {
+export function BreakdownBars({
+  rows,
+  ariaLabel,
+}: {
+  rows: BreakdownRow[];
+  ariaLabel?: string;
+}) {
   const max = rows.reduce((m, r) => Math.max(m, r.value), 0);
   return (
-    <div className="breakdown">
+    <div
+      className="breakdown"
+      role="img"
+      aria-label={ariaLabel ?? `Breakdown: ${rows.map((r) => r.label).join(", ")}`}
+    >
       {rows.map((row) => {
         const width = max > 0 ? Math.max(2, (row.value / max) * 100) : 0;
         const label = row.href ? (

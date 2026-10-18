@@ -72,12 +72,14 @@ export function TrendChart({
   series,
   height = 240,
   valueFormatter,
+  ariaLabel,
 }: {
   data: Record<string, unknown>[];
   xKey?: string;
   series: TrendSeries[];
   height?: number;
   valueFormatter?: (value: number) => string;
+  ariaLabel?: string;
 }) {
   const theme = useChartTheme();
   const gradientId = useId().replace(/:/g, "");
@@ -97,7 +99,8 @@ export function TrendChart({
   );
 
   const renders = series.map((s) => {
-    const color = theme.series[s.colorIndex ?? 0];
+    const colors = theme.series;
+    const color = colors[(s.colorIndex ?? 0) % colors.length];
     return { ...s, color };
   });
 
@@ -105,7 +108,11 @@ export function TrendChart({
   const hasArea = renders.some((s) => (s.type ?? "area") === "area");
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <div
+      role="img"
+      aria-label={ariaLabel ?? `Chart: ${series.map((s) => s.label).join(", ")}`}
+    >
+      <ResponsiveContainer width="100%" height={height}>
       {isBar ? (
         <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={theme.grid} vertical={false} />
@@ -173,6 +180,7 @@ export function TrendChart({
           ))}
         </LineChart>
       )}
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </div>
   );
 }

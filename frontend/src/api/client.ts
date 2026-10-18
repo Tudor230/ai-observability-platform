@@ -1,16 +1,31 @@
 import type {
+  ProjectRatesEntry,
+  ProjectRateVersion,
+  MarginResponse,
+  ToolInsight,
+  ModelInsight,
   AccessRequest,
   AggregateRow,
   Alert,
+  AlertChannel,
+  AlertChannelInput,
+  AlertDelivery,
+  AlertRule,
+  AlertRuleInput,
   BudgetStatus,
+  BudgetInput,
+  BudgetSeries,
   DayMetric,
   Department,
   DirectoryProject,
   Execution,
+  FailureSeries,
   FailureTree,
   Filters,
   Membership,
   Overview,
+  Pricing,
+  PricingInput,
   Profile,
   ProjectKey,
   ProjectKeyRow,
@@ -72,9 +87,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+const patch = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: "PATCH", body: body === undefined ? undefined : JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
-export function qs(params: Record<string, string | number | undefined>): string {
+export function qs(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") search.set(k, String(v));
@@ -84,7 +101,7 @@ export function qs(params: Record<string, string | number | undefined>): string 
 }
 
 export function filterQuery(f: Filters): string {
-  return qs({ days: f.days, project_id: f.project_id, client_id: f.client_id, workflow: f.workflow });
+  return qs({ days: f.days, project_id: f.project_id, workflow: f.workflow });
 }
 
 interface List<T> {
@@ -92,22 +109,117 @@ interface List<T> {
   total: number;
 }
 
+export interface ExecutionQuery {
+  status?: string;
+  /** Loop filter (ADR-0014): only looped or only clean executions. */
+  loop?: boolean;
+  /** Case-insensitive search over trace id, workflow and error message. */
+  q?: string;
+  sort?: "started_at" | "duration_ms" | "total_cost" | "total_tokens" | "error_count" | "status";
+  order?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
 export const api = {
   get,
   overview: (f: Filters) => get<Overview>(`/overview${filterQuery(f)}`),
-  executions: (f: Filters, status?: string, limit = 100, offset = 0) =>
-    get<List<Execution>>(`/executions${qs({ ...f, status, limit, offset })}`),
+  executions: (f: Filters, opts: ExecutionQuery = {}) =>
+    get<List<Execution>>(`/executions${qs({ ...f, limit: 100, ...opts })}`),
   execution: (id: string) => get<Execution>(`/executions/${id}`),
   spans: (id: string) => get<List<Span>>(`/executions/${id}/spans`),
   failures: (id: string) => get<FailureTree>(`/executions/${id}/failures`),
   workflows: (f: Filters) => get<List<AggregateRow>>(`/workflows${filterQuery(f)}`),
-  clients: (f: Filters) => get<List<AggregateRow>>(`/clients${filterQuery(f)}`),
   agents: (f: Filters) => get<List<AggregateRow>>(`/agents${filterQuery(f)}`),
+  models: (f: Filters) => get<List<ModelInsight>>(`/models${filterQuery(f)}`),
+  margin: (f: Filters) => get<MarginResponse>(`/margin${qs({ days: f.days, project_id: f.project_id })}`),
+  projectRates: {
+    list: () => get<List<ProjectRatesEntry>>(`/project-rates`),
+    create: (body: {
+      project_id: string;
+      effective_from: string;
+      revenue_amount: number;
+      revenue_period: "month" | "year";
+      manual_cost_amount?: number;
+      manual_cost_period?: "month" | "year";
+    }) => post<ProjectRateVersion>(`/project-rates`, body),
+    update: (
+      id: string,
+      body: Partial<{
+        effective_from: string;
+        revenue_amount: number;
+        revenue_period: "month" | "year";
+        manual_cost_amount: number;
+        manual_cost_period: "month" | "year";
+      }>
+    ) => patch<ProjectRateVersion>(`/project-rates/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/project-rates/${id}`),
+    setInternal: (projectId: string, internal: boolean) =>
+      patch<{ project_id: string; project_name: string; internal: boolean }>(
+        `/project-rates/${projectId}/internal`,
+        { internal }
+      ),
+  },
+  tools: (f: Filters) => get<List<ToolInsight>>(`/tools${filterQuery(f)}`),
   costs: (dimension: string, f: Filters) => get<List<AggregateRow>>(`/costs${qs({ dimension, ...f })}`),
   metrics: (dimension: string, f: Filters, key?: string) =>
     get<List<DayMetric>>(`/metrics${qs({ dimension, dimension_key: key, days: f.days })}`),
-  alerts: () => get<List<Alert>>(`/alerts?status=open`),
+  alerts: {
+    list: (
+      params: {
+        status?: string;
+        severity?: string;
+        q?: string;
+        sort?: "triggered_at" | "severity";
+        order?: "asc" | "desc";
+        limit?: number;
+        offset?: number;
+      } = {}
+    ) => get<List<Alert>>(`/alerts${qs(params)}`),
+    update: (id: string, status: string) =>
+      patch<{ id: string; status: string }>(`/alerts/${id}?status=${encodeURIComponent(status)}`),
+    remove: (id: string) => del<{ deleted: string }>(`/alerts/${id}`),
+  },
+  alertRules: {
+    list: () => get<List<AlertRule>>(`/alert-rules`),
+    create: (body: AlertRuleInput) => post<AlertRule>(`/alert-rules`, body),
+    update: (id: string, body: Partial<AlertRuleInput> & { enabled?: boolean }) =>
+      patch<AlertRule>(`/alert-rules/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/alert-rules/${id}`),
+  },
+  alertChannels: {
+    list: () => get<List<AlertChannel>>(`/alert-channels`),
+    create: (body: AlertChannelInput) => post<AlertChannel>(`/alert-channels`, body),
+    update: (id: string, body: Partial<AlertChannelInput>) =>
+      patch<AlertChannel>(`/alert-channels/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/alert-channels/${id}`),
+    test: (id: string) =>
+      post<{ ok: boolean; error: string | null }>(`/alert-channels/${id}/test`),
+  },
+  alertDeliveries: {
+    list: (
+      params: { channel_id?: string; status?: string; limit?: number } = {}
+    ) => get<List<AlertDelivery>>(`/alert-deliveries${qs(params)}`),
+  },
   budgetStatus: () => get<List<BudgetStatus>>(`/budgets/status`),
+  budgets: {
+    list: () => get<List<BudgetStatus>>(`/budgets`),
+    create: (body: BudgetInput) => post<BudgetStatus>(`/budgets`, body),
+    update: (id: string, body: Partial<BudgetInput>) =>
+      patch<BudgetStatus>(`/budgets/${id}`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/budgets/${id}`),
+    series: (id: string) => get<BudgetSeries>(`/budgets/${id}/series`),
+  },
+  failuresSeries: (f: Filters) => get<FailureSeries>(`/failures/series${filterQuery(f)}`),
+  pricing: {
+    list: (params: {
+      q?: string;
+      sort?: "provider" | "model" | "effective_from";
+      order?: "asc" | "desc";
+    } = {}) => get<List<Pricing>>(`/pricing${qs(params)}`),
+    create: (body: PricingInput) => post<{ id: string; effective_from: string }>(`/pricing`, body),
+    remove: (id: string) => del<{ deleted: string }>(`/pricing/${id}`),
+  },
 
   auth: {
     me: () => get<Profile>("/auth/me"),
@@ -119,7 +231,8 @@ export const api = {
   directory: {
     projects: () => get<List<DirectoryProject>>("/projects"),
     departments: () => get<List<Department>>("/departments"),
-    teams: () => get<List<Team>>("/teams"),
+    teams: (departmentId?: string) =>
+      get<List<Team>>(`/teams${qs({ department_id: departmentId })}`),
   },
 
   requests: {

@@ -61,7 +61,6 @@ def overview(
     end: str | None = Query(default=None),
     days: int = Query(default=30, ge=1, le=3650),
     project_id: str | None = Query(default=None),
-    client_id: str | None = Query(default=None),
     workflow: str | None = Query(default=None),
     access: AccessScope = Depends(require_access()),
 ) -> dict:
@@ -77,7 +76,6 @@ def overview(
         window_start,
         now,
         project_ids=project_ids,
-        client_id=client_id,
         workflow=workflow,
     )
     span = now - window_start
@@ -86,11 +84,12 @@ def overview(
         window_start - span,
         window_start,
         project_ids=project_ids,
-        client_id=client_id,
         workflow=workflow,
     )
     alert_stmt = select(Alert).where(Alert.status == "open")
-    alert_clause = alert_scope_clause(project_ids)
+    alert_clause = alert_scope_clause(
+        project_ids, access.department_ids, access.team_ids
+    )
     if alert_clause is not None:
         alert_stmt = alert_stmt.where(alert_clause)
     open_alerts = session.execute(alert_stmt).scalars().all()

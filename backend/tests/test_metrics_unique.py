@@ -23,7 +23,7 @@ def _trace(trace_id: int):
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm_call", oi_kind="LLM", span_id=2, trace_id=trace_id, parent_span_id=1,
@@ -47,7 +47,7 @@ def test_rollup_is_idempotent_and_covers_team_dimension(client, session_factory,
     keys = [(m.day, m.dimension, m.dimension_key) for m in rows]
     assert len(keys) == len(set(keys)), "duplicate metric rows after two rollups"
     dims = {m.dimension for m in rows}
-    assert {"total", "project", "client", "workflow", "team"} <= dims
+    assert {"total", "project", "workflow", "team"} <= dims
     team_row = next(m for m in rows if m.dimension == "team")
     assert team_row.dimension_key == "Test"  # seed_project's team
     assert team_row.executions == 1

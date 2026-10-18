@@ -7,6 +7,10 @@ auto-instrumentation, failure/usage
 capture, OTLP HTTP export into Phoenix (PostgreSQL-backed), and a deterministic
 mock-workflow regression suite.
 
+> **Adding the SDK to an existing agent/app?** Follow
+> [`INTEGRATION.md`](INTEGRATION.md) — a step-by-step guide (smoke test →
+> init → workflow boundary → verification → troubleshooting).
+
 ## Install
 
 ```bash
@@ -32,14 +36,12 @@ from ai_observability import init, workflow, span
 init(
     api_key="...",             # env: AI_OBSERVABILITY_API_KEY — the ingest identity
     endpoint="http://localhost:6006",   # env: AI_OBSERVABILITY_ENDPOINT
-    project_id="proj-1",       # env: AI_OBSERVABILITY_PROJECT_ID — optional, DEPRECATED (Phoenix routing only)
     capture_prompts=False,     # opt-in payload capture
 )
 
 # Context manager (sync) / @workflow decorator (sync + async)
 with workflow(
     name="checkout",
-    client_id="client-42",
     workflow_id="order-123",
     version="v2",
     context={"channel": "web"},
@@ -55,11 +57,12 @@ ai_observability.flush()
 ```
 
 Explicit args override env vars. The **API key is the ingest identity**
-(ADR-0008) — the platform resolves the project from it. `project_id` is
-optional and **deprecated**: set it only for Phoenix routing/dev, where it is
-sent as `x-project-name` and as the `openinference.project.name` resource
-attribute (so Phoenix routes correctly on any version); the SDK warns when it
-is used.
+(ADR-0008) — the platform resolves the project from it and that is all a
+production integration needs. `project_id` / `AI_OBSERVABILITY_PROJECT_ID` is a
+**debug/testing override and should not be used in production**: it only routes
+traces inside a local Phoenix instance (`x-project-name` header +
+`openinference.project.name` resource attribute, so Phoenix groups correctly on
+any version), and the SDK warns when it is set.
 
 ## Trace storage: Phoenix + PostgreSQL
 
@@ -80,7 +83,7 @@ uv run python dev/inspect_traces.py --sql          # sample SQL
 ```
 
 The workflow root CHAIN span carries the business context as nested jsonb in
-`spans.attributes`: `sdk.client_id`, `sdk.project_id`, `sdk.workflow_id`,
+`spans.attributes`: `sdk.project_id` (debug runs only), `sdk.workflow_id`,
 `session.id`, `metadata` — plus `sdk.error.*` / `sdk.retry.*` when applicable.
 
 ## Mock workflows (regression suite, plans/sdk.md §9)
@@ -89,18 +92,18 @@ Deterministic scenarios through the real SDK + instrumentors with framework
 fake models (fixed responses, fixed token counts, scripted failures):
 
 ```bash
-uv run pytest                          # 160 tests, offline (in-memory export)
+uv run pytest                          # 161 tests, offline (in-memory export)
 uv run aiobs-mock                      # pass/fail CLI report (28 scenarios)
 uv run aiobs-mock --endpoint http://localhost:6006   # ...and export for real
 ```
 
 Point the suite straight at the platform backend's OTLP ingest (key-only is all
-it needs) or at Phoenix with project routing via the deprecated `--project-id`:
+it needs) or at Phoenix with project routing via the debug-only `--project-id`:
 
 ```bash
 uv run aiobs-mock --endpoint http://localhost:8000 --api-key <project-api-key>
-# Phoenix routing: --project-id sets the openinference.project.name resource
-# attribute (deprecated; also still sends the x-project-name header):
+# Debug override for Phoenix dev routing: --project-id sets the
+# openinference.project.name resource attribute (and the x-project-name header):
 uv run aiobs-mock --endpoint http://localhost:6006 --project-id proj-1
 ```
 
@@ -180,9 +183,42 @@ See `examples/README.md`.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).
+* **Loop detection (ADR-0014)**: identical LLM/TOOL calls are measured live.
+  Each call gets a salted, run-scoped `sdk.call.sig` (HMAC of the call input —
+  never the payload itself); when a call repeats (≥3 by default) or completes a
+  signature-equal 2–4 step cycle, the span is marked with `sdk.loop.signal` /
+  `sdk.loop.repeat_count` and the workflow root carries
+  `sdk.loop.tool_repeats` / `llm_repeats` / `cycle_repeats` evidence counts.
+  Retried attempts and failed calls never count. The backend re-derives the
+  authoritative execution flag from the exported signatures; the SDK's marks
+  are trace-UI context.
 
 The SDK records raw material — the backend (next phase) holds the
 authoritative failure taxonomy and cost engine.
+
+## Loop detection
+
+Agents can get stuck repeating themselves without any span erroring; the SDK
+measures that repetition content-free and the platform flags it (component
+tickets in `.scratch/loop-detection/`, decision in ADR-0014):
+
+* **Signals**: `tool_repeat` (same tool + arguments), `llm_repeat` (same model
+  + full input), `cycle` (consecutive repeating pattern of 2–4 calls with
+  identical signatures). Name-only alternation — a normal ReAct agent — never
+  flags.
+* **Privacy**: signatures are HMAC-SHA256 digests over canonicalized input
+  under a per-process random salt that is never exported. The digest is an
+  equality token valid only within the emitting process; prompts stay local
+  even with `capture_prompts=False`.
+* **Off switch**: `init(loop_detection=False)` or
+  `AI_OBSERVABILITY_LOOP_DETECTION=false` disables signature measurement
+  entirely. Thresholds (default 3) are backend config, so tuning needs no SDK
+  release.
+* **Demo scenarios**: `uv run aiobs-mock --scenario loop_tool_repeat` (a stuck
+  agent — expect signals and root evidence) and `--scenario loop_clean_react`
+  (a healthy alternation — expect signatures but no flags); add
+  `--endpoint http://localhost:8000 --api-key <key>` to see them in the
+  dashboard's executions list and alerts.
 
 ## Layout
 
@@ -198,6 +234,7 @@ dev/                     inspect tooling (SQL over the shared platform Postgres)
 ```bash
 uv sync --group dev
 uv run pytest
+uv run pytest --cov=ai_observability --cov=mock_workflows --cov-fail-under=80  # CI floor
 AI_OBSERVABILITY_E2E=1 uv run pytest -m e2e   # requires the shared stack (`docker compose up -d --wait postgres phoenix` at the repo root)
 ```
 

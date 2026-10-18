@@ -1,8 +1,19 @@
 import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 
 /** A scroll container so the header can stick. */
-export function TableWrap({ children }: { children: ReactNode }) {
-  return <div className="table-wrap">{children}</div>;
+export function TableWrap({
+  children,
+  capped = false,
+}: {
+  children: ReactNode;
+  /** Fixes the body height (one page of rows, no scroll) for cost-card tables. */
+  capped?: boolean;
+}) {
+  return (
+    <div className={capped ? "table-wrap table-wrap--capped" : "table-wrap"}>
+      {children}
+    </div>
+  );
 }
 
 export function Table({
@@ -25,8 +36,41 @@ export function Th({
   ...rest
 }: { children?: ReactNode; align?: "left" | "right" } & ThHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <th align={align} {...rest}>
+    <th scope="col" align={align} {...rest}>
       {children}
+    </th>
+  );
+}
+
+export function SortableTh({
+  children,
+  sortKey,
+  active,
+  direction,
+  onSort,
+  align,
+  ...rest
+}: {
+  children?: ReactNode;
+  sortKey: string;
+  active: boolean;
+  direction: "asc" | "desc";
+  onSort: (key: string) => void;
+  align?: "left" | "right";
+} & ThHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <th
+      scope="col"
+      align={align}
+      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
+      {...rest}
+    >
+      <button type="button" className="table__sort" onClick={() => onSort(sortKey)}>
+        {children}
+        <span aria-hidden="true" className="table__sort-indicator">
+          {active ? (direction === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
     </th>
   );
 }

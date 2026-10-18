@@ -4,12 +4,22 @@ from __future__ import annotations
 from collections.abc import Collection
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import Select, and_, false, func, select
+from sqlalchemy import Select, and_, asc, desc, false, func, or_, select
 from sqlalchemy.orm import Session
 
-from ..models import Alert, Budget, Client, Execution, Project, Team
+from ..models import Alert, AlertRule, Budget, Execution, Project, Team
 
-EXTERNAL = (Execution, Project.project_id, Client.external_key)
+EXTERNAL = (Execution, Project.project_id, Project.name)
+
+# Whitelisted sort keys for `GET /executions` (audit item 4).
+EXECUTION_SORTS = {
+    "started_at": Execution.started_at,
+    "duration_ms": Execution.duration_ms,
+    "total_cost": Execution.total_cost,
+    "total_tokens": Execution.total_tokens,
+    "error_count": Execution.error_count,
+    "status": Execution.status,
+}
 
 
 def _project_scope_clause(project_ids: Collection[str] | None):
@@ -19,28 +29,91 @@ def _project_scope_clause(project_ids: Collection[str] | None):
     return Project.project_id.in_(project_ids)
 
 
-def alert_scope_clause(project_ids: Collection[str] | None):
+def alert_scope_clause(
+    project_ids: Collection[str] | None,
+    department_ids: Collection[str] = (),
+    team_ids: Collection[str] = (),
+):
     """Clause selecting alerts visible to a scoped caller.
 
-    Rule alerts are global (exec/admin only); budget alerts follow the budget's
-    project, so they can be attributed to a team scope (plans/roles.md §6.3).
+    Budget alerts follow their budget's project/team/department; rule alerts are
+    visible when the rule's org scope intersects the caller's allowed set
+    (global rule alerts stay exec/admin-only), and rule alerts are exec/admin-only otherwise
+    (audit item 7, ticket 08).
     """
     if project_ids is None:
         return None
-    if not project_ids:
-        return false()
-    allowed = select(Project.id).where(Project.project_id.in_(project_ids))
-    return and_(Alert.dimension == "budget", Alert.dimension_key.in_(allowed))
+    budget_clauses = []
+    if project_ids:
+        allowed_projects = select(Project.id).where(
+            Project.project_id.in_(project_ids)
+        )
+        budget_clauses.append(Budget.project_id.in_(allowed_projects))
+    if team_ids:
+        budget_clauses.append(Budget.team_id.in_(team_ids))
+    if department_ids:
+        budget_clauses.append(Budget.department_id.in_(department_ids))
+    if budget_clauses:
+        visible_budgets = select(Budget.id).where(or_(*budget_clauses))
+    else:
+        visible_budgets = select(Budget.id).where(false())
+    budget_part = and_(
+        Alert.dimension == "budget", Alert.dimension_key.in_(visible_budgets)
+    )
+
+    rule_clauses = []
+    if project_ids:
+        rule_clauses.append(
+            and_(
+                AlertRule.scope_type == "project",
+                AlertRule.scope_id.in_(
+                    select(Project.id).where(Project.project_id.in_(project_ids))
+                ),
+            )
+        )
+    if team_ids:
+        rule_clauses.append(
+            and_(AlertRule.scope_type == "team", AlertRule.scope_id.in_(team_ids))
+        )
+    if department_ids:
+        rule_clauses.append(
+            and_(
+                AlertRule.scope_type == "department",
+                AlertRule.scope_id.in_(department_ids),
+            )
+        )
+    if rule_clauses:
+        visible_rules = select(AlertRule.id).where(or_(*rule_clauses))
+    else:
+        visible_rules = select(AlertRule.id).where(false())
+    rule_part = and_(Alert.dimension == "rule", Alert.rule_ref.in_(visible_rules))
+    return or_(budget_part, rule_part)
 
 
-def budget_scope_clause(project_ids: Collection[str] | None):
-    """Clause selecting budgets visible to a scoped caller (global ones excluded)."""
+def budget_scope_clause(
+    project_ids: Collection[str] | None,
+    department_ids: Collection[str] = (),
+    team_ids: Collection[str] = (),
+):
+    """Clause selecting budgets visible to a scoped caller (global ones excluded).
+
+    A budget is visible when its project, team or department scope intersects
+    the caller's allowed set; global budgets (all scope fields NULL) return
+    only for unrestricted callers.
+    """
     if project_ids is None:
         return None
-    if not project_ids:
+    clauses = []
+    if project_ids:
+        allowed = select(Project.id).where(Project.project_id.in_(project_ids))
+        clauses.append(Budget.project_id.in_(allowed))
+    if team_ids:
+        clauses.append(Budget.team_id.in_(team_ids))
+    if department_ids:
+        clauses.append(Budget.department_id.in_(department_ids))
+    if not clauses:
         return false()
-    allowed = select(Project.id).where(Project.project_id.in_(project_ids))
-    return Budget.project_id.in_(allowed)
+    return or_(*clauses)
 
 
 def parse_dt(value: str | None, *, end_of_day: bool = False) -> datetime | None:
@@ -74,14 +147,15 @@ def exec_rows(
     end: datetime | None = None,
     project_id: str | None = None,
     project_ids: Collection[str] | None = None,
-    client_id: str | None = None,
     workflow: str | None = None,
     status: str | None = None,
+    loop: bool | None = None,
+    q: str | None = None,
+    sort: str | None = None,
+    order: str | None = None,
 ) -> Select:
-    """Select (Execution, project_ext, client_ext) with the given filters applied."""
-    stmt = select(*EXTERNAL).join(Project, Project.id == Execution.project_id).outerjoin(
-        Client, Client.id == Execution.client_id
-    )
+    """Select (Execution, project_ext, project_name) with filters applied."""
+    stmt = select(*EXTERNAL).join(Project, Project.id == Execution.project_id)
     if start:
         stmt = stmt.where(Execution.started_at >= start)
     if end:
@@ -91,17 +165,32 @@ def exec_rows(
     scope_clause = _project_scope_clause(project_ids)
     if scope_clause is not None:
         stmt = stmt.where(scope_clause)
-    if client_id:
-        stmt = stmt.where(Client.external_key == client_id)
     if workflow:
         stmt = stmt.where(Execution.workflow_name == workflow)
     if status:
         stmt = stmt.where(Execution.status == status)
+    if loop is not None:
+        stmt = stmt.where(Execution.loop_detected.is_(loop))
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                Execution.trace_id.ilike(pattern),
+                Execution.workflow_name.ilike(pattern),
+                Execution.root_error_message.ilike(pattern),
+            )
+        )
     # Stable ordering for pagination and every aggregate consumer (F11).
-    return stmt.order_by(Execution.started_at.desc(), Execution.id.desc())
+    # The whitelisted sort key is validated by the route; unknown values fall
+    # back to the default instead of raising here.
+    sort_col = EXECUTION_SORTS.get(sort or "started_at", Execution.started_at)
+    order_fn = desc if (order or "desc").lower() == "desc" else asc
+    return stmt.order_by(order_fn(sort_col), order_fn(Execution.id))
 
 
-def fetch_exec_rows(session: Session, **filters) -> list[tuple[Execution, str | None, str | None]]:
+def fetch_exec_rows(
+    session: Session, **filters
+) -> list[tuple[Execution, str | None, str | None]]:
     rows = session.execute(exec_rows(session, **filters)).all()
     return [(row[0], row[1], row[2]) for row in rows]
 
@@ -114,7 +203,6 @@ def exec_aggregates(
     end: datetime | None = None,
     project_id: str | None = None,
     project_ids: Collection[str] | None = None,
-    client_id: str | None = None,
     workflow: str | None = None,
 ):
     """Aggregate executions in SQL per dimension (F11).
@@ -135,7 +223,6 @@ def exec_aggregates(
         )
         .join(Project, Project.id == Execution.project_id)
         .join(Team, Team.id == Project.team_id)
-        .outerjoin(Client, Client.id == Execution.client_id)
         .group_by(group_col)
     )
     if start:
@@ -147,8 +234,6 @@ def exec_aggregates(
     scope_clause = _project_scope_clause(project_ids)
     if scope_clause is not None:
         stmt = stmt.where(scope_clause)
-    if client_id:
-        stmt = stmt.where(Client.external_key == client_id)
     if workflow:
         stmt = stmt.where(Execution.workflow_name == workflow)
     return list(session.execute(stmt))

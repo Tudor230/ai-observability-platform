@@ -75,7 +75,6 @@ from ai_observability import workflow, span
 # Context manager
 with workflow(
     name="checkout",
-    client_id="client-42",
     workflow_id="order-123",
     version="v2",
     context={"channel": "web", "ticket_id": "INC-12345"},
@@ -83,7 +82,7 @@ with workflow(
     result = run_agent()
 
 # Decorator
-@workflow(name="checkout", client_id="client-42")
+@workflow(name="checkout")
 async def run_checkout(order_id):
     return await agent.run(order_id)
 ```
@@ -92,7 +91,7 @@ async def run_checkout(order_id):
 - **Nesting**: workflows can nest (child CHAIN under parent CHAIN) for multi-stage pipelines.
 - **Identity**: span name = provided workflow name; `session.id` = `workflow_id` automatically; `user.id` only when explicitly passed.
 - **Attributes**:
-  - Predefined, namespaced: `client_id`, `workflow_id`, `version`, plus `project_id` from init (optional, deprecated) — structured input for the backend's cost attribution. Ingest stores the authenticated project's id as the authoritative `sdk.project_id` (ADR-0008).
+  - Predefined, namespaced: `workflow_id`, `version`, plus `project_id` from init (debug-only override, ADR-0012) — structured input for the backend's attestation and cost attribution. Ingest stores the authenticated project's id as the authoritative `sdk.project_id` (ADR-0008).
   - Flexible: `context` (any JSON-serializable dict) → OpenInference `metadata`.
 
 ### 5.2 Manual span helper
@@ -109,7 +108,7 @@ with span("validate_output", context={"checks": 3}):
 ### 5.3 Trace hierarchy (OTLP)
 
 ```text
-workflow (CHAIN)                       <- session.id, client_id, workflow_id, version, metadata (project_id optional, stored server-authoritative)
+workflow (CHAIN)                       <- session.id, workflow_id, version, metadata (project_id debug-only, stored server-authoritative)
 ├── agent run (AGENT)                  <- from instrumentors
 │   ├── LLM call (LLM)                 <- model, provider, tokens, messages, error material
 │   └── Tool call (TOOL)               <- tool name, parameters, error material

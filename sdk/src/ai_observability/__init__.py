@@ -15,7 +15,8 @@ records exceptions as span errors.
 
 Env vars (12-factor, explicit init() args override):
     AI_OBSERVABILITY_API_KEY, AI_OBSERVABILITY_ENDPOINT,
-    AI_OBSERVABILITY_PROJECT_ID (deprecated; Phoenix routing only),
+    AI_OBSERVABILITY_PROJECT_ID (debug override; Phoenix routing only),
+    AI_OBSERVABILITY_LOOP_DETECTION (default true),
     OTEL_SERVICE_NAME, OTEL_SERVICE_VERSION, OTEL_DEPLOYMENT_ENVIRONMENT
 """
 
@@ -34,7 +35,7 @@ from ._state import get_state
 from ._tracing import build_provider, register_atexit_flush
 from ._workflow import workflow, Workflow
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "init",
@@ -59,10 +60,11 @@ def _warn_project_id_deprecated(project_id: Optional[str]) -> None:
         return
     _PROJECT_ID_DEPRECATION_WARNED = True
     warnings.warn(
-        "project_id / AI_OBSERVABILITY_PROJECT_ID is deprecated: the API key "
-        "identifies the project. project_id is now only used for Phoenix project "
-        "routing (x-project-name header + openinference.project.name resource "
-        "attribute) and will be removed in a future major version.",
+        "project_id / AI_OBSERVABILITY_PROJECT_ID is a debug/testing override "
+        "and should not be used in production: the API key identifies the "
+        "project (ADR-0008). Setting it only affects Phoenix routing "
+        "(x-project-name header + openinference.project.name resource "
+        "attribute).",
         DeprecationWarning,
         stacklevel=3,
     )
@@ -77,15 +79,22 @@ def init(
     service_version: Optional[str] = None,
     deployment_environment: Optional[str] = None,
     capture_prompts: bool = False,
+    loop_detection: Optional[bool] = None,
     **kwargs: Any,
 ) -> None:
     """Initialize the SDK: tracing pipeline + framework auto-instrumentation.
 
     Args:
         api_key / endpoint: platform credential + collector URL.
-        project_id: optional, deprecated — only for Phoenix project routing
-            (the API key identifies the platform project; ADR-0008).
+        project_id: debug/testing override only — should not be used in
+            production. The API key identifies the platform project
+            (ADR-0008); setting this affects Phoenix routing only
+            (x-project-name header + openinference.project.name).
         capture_prompts: opt-in payload capture (per-workflow override allowed).
+        loop_detection: measure repeated LLM/TOOL calls and signature-equal
+            cycles live and stamp ``sdk.loop.*`` evidence (ADR-0014). Defaults
+            to True (env: ``AI_OBSERVABILITY_LOOP_DETECTION``); disabling it
+            stops the SDK from computing/exporting call signatures at all.
     """
     config = resolve_config(
         {
@@ -96,6 +105,7 @@ def init(
             "service_version": service_version,
             "deployment_environment": deployment_environment,
             "capture_prompts": capture_prompts,
+            "loop_detection": loop_detection,
         }
     )
     # Internal test hook: swap the final sink (skips the OTLP exporter).

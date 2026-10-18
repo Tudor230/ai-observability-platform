@@ -23,7 +23,7 @@ def _llm_trace(trace_id: int, attrs: dict, status_message: str | None = None, st
     root = build_span(
         name="checkout", oi_kind="CHAIN", span_id=1, trace_id=trace_id,
         start=now, end=now + timedelta(seconds=1),
-        attrs={"sdk.project_id": "proj-1", "sdk.client_id": "client-42"},
+        attrs={"sdk.project_id": "proj-1"},
     )
     llm = build_span(
         name="llm", oi_kind="LLM", span_id=2, trace_id=trace_id, parent_span_id=1,

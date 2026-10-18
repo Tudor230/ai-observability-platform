@@ -1,14 +1,26 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useAlerts, useMetrics, useOverview } from "../api/hooks";
+import {
+  useAlerts,
+  useFailuresSeries,
+  useMetrics,
+  useOverview,
+} from "../api/hooks";
 import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
-import { FilterToolbar } from "../components/FilterToolbar";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
-import { TrendChart } from "../components/charts/TrendChart";
+import {
+  CostChart,
+  ErrorRateChart,
+  FailuresByKindChart,
+  LatencyChart,
+  TokensChart,
+  TrafficChart,
+} from "../components/charts/insights";
 import { SeverityBadge } from "../components/domain";
 import {
-  Alert,
   CardPanel,
   Delta,
   EmptyState,
@@ -17,22 +29,23 @@ import {
   Skeleton,
 } from "../components/core";
 import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
+import { dayMetricsToSeries } from "../lib/insightSeries";
 
 export default function Overview() {
   const { filters } = useFilters();
-  const { costVisible } = useAuth();
+  const { costVisible, hasRole } = useAuth();
   const overview = useOverview(filters);
   const metrics = useMetrics("total", filters);
   const alerts = useAlerts();
+  const canSeeFailures = hasRole("engineer", "manager", "client");
+  const failures = useFailuresSeries(filters, canSeeFailures);
 
   const data = overview.data;
-  const series = (metrics.data?.items ?? []).map((m) => ({
-    day: m.day.slice(5),
-    cost: m.total_cost,
-    executions: m.executions,
-    input_tokens: m.input_tokens,
-    output_tokens: m.output_tokens,
-  }));
+  const points = useMemo(
+    () => dayMetricsToSeries(metrics.data?.items),
+    [metrics.data]
+  );
+  const failureKinds = failures.data?.kinds ?? [];
 
   const loadError = overview.error ?? metrics.error;
   const loading = overview.isLoading;
@@ -42,9 +55,14 @@ export default function Overview() {
       <PageHeader
         title="Overview"
         subTitle="Usage, cost and reliability across every agent execution."
-        extra={<RefreshButton />}
+        extra={
+          <>
+            <FiltersControl dimensions={["days", "project"]} />
+            <RefreshButton />
+          </>
+        }
       />
-      <FilterToolbar />
+      <FilterChips dimensions={["days", "project"]} />
 
       {overview.isError ? (
         <QueryError what="the overview" error={loadError} />
@@ -94,52 +112,36 @@ export default function Overview() {
               label="Open alerts"
               value={data?.open_alerts ?? 0}
               tone={data && data.open_alerts > 0 ? "warning" : "default"}
-              sub={data && data.open_alerts > 0 ? <Link to="/manager">Review alerts</Link> : "All clear"}
+              sub={data && data.open_alerts > 0 ? <Link to="/alerts">Review alerts</Link> : "All clear"}
             />
           </div>
 
           <div className="grid grid-2">
             {costVisible ? (
-              <CardPanel title="Cost over time" subTitle="USD per day">
-                <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                  <TrendChart
-                    data={series}
-                    series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
-                    valueFormatter={(v) => formatMoney(v)}
-                    height={240}
-                  />
-                </div>
-              </CardPanel>
+              <CostChart data={points} loading={metrics.isLoading} />
             ) : null}
-            <CardPanel title="Executions over time" subTitle="Completed workflow roots per day">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[{ key: "executions", label: "Executions", type: "bar", colorIndex: 6 }]}
-                  height={240}
-                />
-              </div>
-            </CardPanel>
+            <TrafficChart data={points} loading={metrics.isLoading} />
           </div>
 
           <div className="grid grid-2">
-            <CardPanel title="Tokens over time" subTitle="Input vs output tokens">
-              <div style={{ padding: "var(--global-dimension-size-100)" }}>
-                <TrendChart
-                  data={series}
-                  series={[
-                    { key: "input_tokens", label: "Input", colorIndex: 0, stack: true },
-                    { key: "output_tokens", label: "Output", colorIndex: 3, stack: true },
-                  ]}
-                  valueFormatter={(v) => formatTokens(v)}
-                  height={220}
-                />
-              </div>
-            </CardPanel>
+            <TokensChart data={points} loading={metrics.isLoading} />
+            <LatencyChart data={points} loading={metrics.isLoading} />
+          </div>
+
+          {canSeeFailures ? (
+            <FailuresByKindChart
+              items={failures.data?.items}
+              kinds={failureKinds}
+              loading={failures.isLoading}
+            />
+          ) : null}
+
+          <div className="grid grid-2">
+            <ErrorRateChart data={points} loading={metrics.isLoading} height={200} />
             <CardPanel
               title="Open alerts"
               subTitle={alerts.data ? `${alerts.data.total} open` : undefined}
-              extra={<Link to="/manager">View all</Link>}
+              extra={<Link to="/alerts">View all</Link>}
             >
               {(alerts.data?.items ?? []).slice(0, 4).map((alert) => (
                 <div className="list-row" key={alert.id}>
@@ -180,14 +182,6 @@ export default function Overview() {
 
           {metrics.isError ? <QueryError what="time series metrics" error={metrics.error} /> : null}
         </>
-      )}
-
-      {overview.isLoading ? null : (
-        <Alert
-          variant="info"
-          message="All values are computed by the backend from ingested OTLP traces."
-          detail="Unpriced models appear without a cost until a matching price is configured."
-        />
       )}
     </div>
   );

@@ -19,12 +19,21 @@ export interface Overview {
   open_alerts: number;
 }
 
+export interface LoopInfo {
+  signals: string[];
+  tool_repeats: number;
+  llm_repeats: number;
+  cycle_repeats: number;
+  cycle_steps: string[];
+}
+
 export interface Execution {
   id: string;
   trace_id: string;
   workflow_id: string | null;
   session_id: string | null;
   project_id: string | null;
+  project_name: string | null;
   client_id: string | null;
   workflow: string | null;
   workflow_version: string | null;
@@ -47,6 +56,9 @@ export interface Execution {
   retry_count: number;
   unpriced_calls?: number;
   cost_complete?: boolean;
+  /** Loop detection (ADR-0014): repeated identical calls inside this execution. */
+  loop_detected: boolean;
+  loop_info: LoopInfo | null;
 }
 
 export interface Span {
@@ -95,7 +107,6 @@ export interface FailureTree {
 export interface AggregateRow {
   key?: string;
   name?: string;
-  client_id?: string;
   provider?: string;
   model?: string;
   executions: number;
@@ -109,6 +120,118 @@ export interface AggregateRow {
   llm_calls?: number;
   input_tokens?: number;
   output_tokens?: number;
+}
+
+export interface ProjectRateVersion {
+  id: string;
+  project_id: string;
+  project_name: string | null;
+  effective_from: string;
+  revenue_amount: number;
+  revenue_period: "month" | "year";
+  manual_cost_amount: number;
+  manual_cost_period: "month" | "year";
+  currency: string;
+  updated_at: string | null;
+}
+
+export interface ProjectRatesEntry {
+  project_id: string;
+  project_name: string;
+  /** Internal projects serve the org itself: no revenue expected (ADR-0013). */
+  internal: boolean;
+  versions: ProjectRateVersion[];
+}
+
+export interface MarginRate {
+  id: string;
+  effective_from: string;
+  revenue_amount: number;
+  revenue_period: "month" | "year";
+  manual_cost_amount: number;
+  manual_cost_period: "month" | "year";
+}
+
+export interface MarginRow {
+  project_id: string;
+  name: string | null;
+  internal: boolean;
+  /** The version active on the window's last day, or null without a rate. */
+  rate: MarginRate | null;
+  covered_days: number;
+  window_days: number;
+  revenue: number;
+  manual_cost: number;
+  ai_cost: number;
+  /** Null when the project is internal or has no active rate. */
+  margin: number | null;
+  margin_pct: number | null;
+  executions: number;
+  cost_per_execution: number | null;
+  break_even_scale: number | null;
+  break_even_executions: number | null;
+}
+
+export interface MarginPoint {
+  day: string;
+  revenue: number;
+  manual_cost: number;
+  ai_cost: number;
+  internal_cost: number;
+  margin: number;
+}
+
+export interface MarginTotals {
+  revenue: number;
+  manual_cost: number;
+  ai_cost: number;
+  margin: number;
+  margin_pct: number | null;
+  executions: number;
+  projects: number;
+  projects_rated: number;
+  internal_projects: number;
+  coverage_pct: number;
+  covered_cost: number;
+  internal_cost: number;
+  break_even_scale: number | null;
+}
+
+export interface MarginResponse {
+  items: MarginRow[];
+  total: number;
+  series: MarginPoint[];
+  totals: MarginTotals;
+  window: { start: string | null; end: string | null; days: number };
+}
+
+export interface ModelInsight {
+  key: string;
+  provider?: string | null;
+  model?: string | null;
+  calls: number;
+  executions: number;
+  failed_calls: number;
+  error_rate: number;
+  /** Stripped server-side for client accounts. */
+  total_cost?: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  avg_duration_ms: number;
+  p95_duration_ms: number;
+  last_seen?: string | null;
+}
+
+export interface ToolInsight {
+  name: string;
+  calls: number;
+  executions: number;
+  failed_calls: number;
+  error_rate: number;
+  avg_duration_ms: number;
+  p95_duration_ms: number;
+  last_seen?: string | null;
 }
 
 export interface DayMetric {
@@ -142,23 +265,154 @@ export interface BudgetStatus {
   period_start: string;
   period_end: string;
   workflow_name: string | null;
+  project: string | null;
+  department: string | null;
+  team: string | null;
+  scope: string;
+}
+
+export interface BudgetInput {
+  name?: string | null;
+  amount: number;
+  period: string;
+  period_type: string;
+  project?: string | null;
+  workflow_name?: string | null;
+  department?: string | null;
+  team?: string | null;
+}
+
+export interface Pricing {
+  id: string;
+  provider: string;
+  model: string;
+  model_match: "exact" | "prefix" | "default";
+  input_price_per_1m: number;
+  output_price_per_1m: number;
+  cache_read_price_per_1m: number | null;
+  cache_write_price_per_1m: number | null;
+  reasoning_price_per_1m: number | null;
+  currency: string;
+  effective_from: string | null;
+}
+
+export interface PricingInput {
+  provider: string;
+  model: string;
+  model_match: "exact" | "prefix" | "default";
+  input_price_per_1m: number;
+  output_price_per_1m: number;
+  cache_read_price_per_1m?: number | null;
+  cache_write_price_per_1m?: number | null;
+  reasoning_price_per_1m?: number | null;
+  currency?: string;
+  effective_from?: string | null;
+}
+
+export interface FailureSeriesItem {
+  day: string;
+  kind: string;
+  count: number;
+}
+
+export interface FailureSeries {
+  items: FailureSeriesItem[];
+  kinds: string[];
+}
+
+export interface BudgetSeriesPoint {
+  day: string;
+  spend: number;
+  cumulative: number;
+}
+
+export interface BudgetSeries {
+  budget: BudgetStatus;
+  amount: number;
+  period_start: string;
+  period_end: string;
+  items: BudgetSeriesPoint[];
 }
 
 export interface Alert {
   id: string;
   rule_id: string;
+  rule_ref: string | null;
   severity: string;
   message: string;
   dimension: string;
   dimension_key: string | null;
   status: string;
   triggered_at: string | null;
+  scope?: string;
+  scope_name?: string | null;
+  can_ack?: boolean;
+}
+
+export type AlertMetric =
+  | "error_rate"
+  | "daily_tokens"
+  | "tool_calls_per_execution"
+  | "p95_latency"
+  | "cost_anomaly"
+  | "loop_executions";
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  metric: AlertMetric;
+  warning_threshold: number;
+  critical_threshold: number;
+  scope_type: ScopeType;
+  scope_id: string | null;
+  scope_name: string | null;
+  enabled: boolean;
+  builtin: boolean;
+  channel_ids: string[];
+  created_at: string | null;
+}
+
+export interface AlertRuleInput {
+  name: string;
+  metric: AlertMetric;
+  warning_threshold: number;
+  critical_threshold: number;
+  scope_type: ScopeType;
+  scope_id?: string | null;
+  channel_ids?: string[];
+}
+
+export interface AlertChannel {
+  id: string;
+  name: string;
+  type: "email" | "slack" | "webhook";
+  target: string;
+  enabled: boolean;
+  created_at: string | null;
+}
+
+export interface AlertChannelInput {
+  name: string;
+  type: "email" | "slack" | "webhook";
+  target: string;
+  enabled: boolean;
+}
+
+export interface AlertDelivery {
+  id: string;
+  alert_id: string | null;
+  channel_id: string | null;
+  channel_name: string | null;
+  channel_type: string;
+  target: string;
+  status: "sent" | "failed";
+  error: string | null;
+  created_at: string | null;
 }
 
 export interface Filters {
   days: number;
   project_id?: string;
-  client_id?: string;
   workflow?: string;
 }
 

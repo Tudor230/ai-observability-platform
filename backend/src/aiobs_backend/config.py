@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # Alert delivery (F37): POST created alerts as JSON to this webhook
     alert_webhook_url: str | None = None
     alert_webhook_timeout_s: float = 3.0
+    # Email channel SMTP config (audit item 7); email delivery requires host+from
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_starttls: bool = True
     # Data retention (F35): 0 keeps data forever; >0 purges older rows
     retention_days: int = 0
     # Threshold rules (F04) — evaluated per UTC day
@@ -48,6 +55,13 @@ class Settings(BaseSettings):
     alert_p95_latency_ms: float = 30_000
     alert_tool_calls_per_execution: float = 20
     alert_cost_anomaly_factor: float = 3.0
+    alert_loop_executions: float = 5
+    # Loop re-derivation (ADR-0014): identical LLM/TOOL calls needed for
+    # tool_repeat/llm_repeat, consecutive cycle repetitions needed for
+    # `cycle`, and the longest cycle pattern considered.
+    loop_repeat_threshold: int = 3
+    loop_cycle_repeats: int = 3
+    loop_cycle_max_steps: int = 4
 
 
 @lru_cache

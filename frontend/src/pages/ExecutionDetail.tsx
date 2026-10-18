@@ -25,6 +25,7 @@ import {
 import { IconArrowLeft } from "../components/core/icons";
 import { toTraceSpans } from "../lib/traceSpans";
 import { formatMoney, formatMs, formatTokens } from "../lib/format";
+import { loopSignalLabels, loopSummary } from "../lib/loops";
 import type { FailureNode } from "../api/types";
 
 type TabId = "spans" | "failures" | "metadata";
@@ -90,13 +91,17 @@ export default function ExecutionDetail() {
           <span className="row" style={{ minWidth: 0 }}>
             <span className="truncate">{ex.workflow ?? ex.trace_id}</span>
             <StatusBadge status={ex.status} />
+            {ex.loop_detected ? (
+              <Badge variant="warning" title={loopSummary(ex.loop_info)}>
+                loop
+              </Badge>
+            ) : null}
           </span>
         }
         subTitle={
           <span className="row row--wrap" style={{ gap: 8 }}>
             <span className="inline-code">{ex.trace_id}</span>
-            {ex.client_id ? <span>client {ex.client_id}</span> : null}
-            {ex.project_id ? <span>· project {ex.project_id}</span> : null}
+            {ex.project_name ? <span>· project {ex.project_name}</span> : null}
             {ex.workflow_version ? <span>· v{ex.workflow_version}</span> : null}
           </span>
         }
@@ -144,6 +149,33 @@ export default function ExecutionDetail() {
         />
         <Metric label="Retries" value={ex.retry_count} />
       </div>
+
+      {ex.loop_detected ? (
+        <CardPanel
+          title="Loop detected"
+          subTitle="Repeated identical LLM/tool calls inside this execution (ADR-0014)"
+        >
+          <div
+            className="row row--wrap"
+            style={{ padding: "var(--global-dimension-size-200)", gap: 8 }}
+          >
+            {ex.loop_info && ex.loop_info.tool_repeats > 1 ? (
+              <Badge variant="warning">{ex.loop_info.tool_repeats}× same tool call</Badge>
+            ) : null}
+            {ex.loop_info && ex.loop_info.llm_repeats > 1 ? (
+              <Badge variant="warning">{ex.loop_info.llm_repeats}× same LLM call</Badge>
+            ) : null}
+            {ex.loop_info &&
+            ex.loop_info.cycle_repeats > 1 &&
+            ex.loop_info.cycle_steps.length > 0 ? (
+              <Badge variant="warning">
+                {ex.loop_info.cycle_repeats}× cycle {ex.loop_info.cycle_steps.join(" → ")}
+              </Badge>
+            ) : null}
+            <span className="muted">{loopSignalLabels(ex.loop_info).join(" · ")}</span>
+          </div>
+        </CardPanel>
+      ) : null}
 
       <CardPanel title="Trace" subTitle={`${spanItems.length} spans`}>
         <Tabs

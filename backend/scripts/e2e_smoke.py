@@ -35,10 +35,21 @@ def main():
     from aiobs_backend import seed
 
     seed.seed_pricing()
-    key = seed.seed_demo_project(project_id="proj-e2e", name="E2E Project")
+    key = seed.seed_demo_project(name="E2E Project")
     seed.seed_admin(
         os.environ["AIOBS_ADMIN_EMAIL"], os.environ["AIOBS_ADMIN_PASSWORD"]
     )
+
+    # ADR-0012: the project id is server-generated; the root assertion must
+    # carry the real one (a conflicting sdk.project_id is rejected per ADR-0008).
+    from sqlalchemy import select
+
+    from aiobs_backend.models import Project
+
+    with db.session_scope() as session:
+        project_ext = session.execute(
+            select(Project.project_id).where(Project.name == "E2E Project")
+        ).scalar_one()
 
     client = TestClient(app)
     # Key-first ingest (ADR-0008): no x-project-name needed.
@@ -55,8 +66,7 @@ def main():
         start=now,
         end=now + timedelta(seconds=2),
         attrs={
-            "sdk.project_id": "proj-e2e",
-            "sdk.client_id": "client-99",
+            "sdk.project_id": project_ext,
             "sdk.workflow_id": "order-e2e",
             "session.id": "order-e2e",
             "metadata": '{"channel": "web"}',
@@ -106,7 +116,6 @@ def main():
         "overview": client.get("/api/v1/overview"),
         "executions": client.get("/api/v1/executions"),
         "workflows": client.get("/api/v1/workflows"),
-        "clients": client.get("/api/v1/clients"),
         "costs-project": client.get("/api/v1/costs?dimension=project"),
         "costs-model": client.get("/api/v1/costs?dimension=model"),
         "metrics": client.get("/api/v1/metrics?dimension=total"),

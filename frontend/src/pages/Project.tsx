@@ -2,9 +2,20 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { useDirectoryProjects, useOverview, useProjectKeys } from "../api/hooks";
+import {
+  useDirectoryProjects,
+  useMargin,
+  useMetrics,
+  useOverview,
+  useProjectKeys,
+  useProjectRates,
+} from "../api/hooks";
+import { useFilters } from "../state/FiltersContext";
+import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { PageHeader } from "../components/PageHeader";
 import { RefreshButton } from "../components/RefreshButton";
+import { TrendChart } from "../components/charts/TrendChart";
+import { ProjectRateEditor } from "../components/ProjectRateEditor";
 import {
   Alert,
   Badge,
@@ -22,20 +33,34 @@ import {
   TextInput,
   Th,
   Tr,
+  useToast,
 } from "../components/core";
 import { IconCopy, IconKey } from "../components/core/icons";
 import { useAuth } from "../state/AuthContext";
-import { formatMs, formatPct, formatTokens } from "../lib/format";
+import { formatMoney, formatMs, formatPct, formatTokens } from "../lib/format";
 import type { ProjectKey, ProjectKeyRow } from "../api/types";
 
 export default function Project() {
   const { projectId = "" } = useParams();
-  const { hasRole } = useAuth();
+  const { filters } = useFilters();
+  const { hasRole, costVisible } = useAuth();
   const canManageKeys = hasRole("engineer", "manager");
   const queryClient = useQueryClient();
+  const toast = useToast();
   const projects = useDirectoryProjects();
-  const overview = useOverview({ days: 30, project_id: projectId });
+  const overview = useOverview({ days: filters.days, project_id: projectId });
+  const metrics = useMetrics(
+    "project",
+    { days: filters.days, project_id: projectId },
+    projectId
+  );
   const keys = useProjectKeys(projectId, canManageKeys);
+  // Rates and margin are exec/admin surfaces (ADR-0013) — admins pass `exec`.
+  const canEditRates = hasRole("exec");
+  const rates = useProjectRates(canEditRates);
+  const margin = useMargin({ days: filters.days, project_id: projectId }, canEditRates);
+  const rateEntry = rates.data?.items.find((item) => item.project_id === projectId);
+  const marginRow = margin.data?.items[0];
 
   const [label, setLabel] = useState("");
   const [created, setCreated] = useState<ProjectKey | null>(null);
@@ -45,6 +70,12 @@ export default function Project() {
   const [error, setError] = useState<string | null>(null);
 
   const project = projects.data?.items.find((item) => item.project_id === projectId);
+  const chartSeries = (metrics.data?.items ?? []).map((m) => ({
+    day: m.day.slice(5),
+    executions: m.executions,
+    failed: m.failed_executions,
+    cost: m.total_cost,
+  }));
 
   const refreshKeys = () => {
     void queryClient.invalidateQueries({ queryKey: ["project-keys", projectId] });
@@ -58,8 +89,11 @@ export default function Project() {
       setCreated(await api.projects.createKey(projectId, label.trim() || undefined));
       setLabel("");
       refreshKeys();
+      toast.success("Ingest key added — copy it now.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add the key.");
+      const message = err instanceof Error ? err.message : "Failed to add the key.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -71,8 +105,11 @@ export default function Project() {
     try {
       setRotated(await api.projects.rotateKey(projectId, row.id));
       refreshKeys();
+      toast.success("Key rotated — copy the new value now.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to rotate the key.");
+      const message = err instanceof Error ? err.message : "Failed to rotate the key.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -86,8 +123,11 @@ export default function Project() {
       await api.projects.revokeKey(projectId, revoking.id);
       setRevoking(null);
       refreshKeys();
+      toast.success("Key revoked.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete the key.");
+      const message = err instanceof Error ? err.message : "Failed to delete the key.";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -134,10 +174,11 @@ export default function Project() {
   return (
     <div className="page">
       <PageHeader
-        title={`${project.project_id} · ${project.name}`}
+        title={project.name}
         subTitle={`${project.team_name} · ${project.department_name}`}
         extra={
           <>
+            <FiltersControl dimensions={["days"]} />
             <Link to="/projects" className="button" data-size="S">
               All projects
             </Link>
@@ -145,6 +186,7 @@ export default function Project() {
           </>
         }
       />
+      <FilterChips dimensions={["days"]} />
 
       {overview.isError ? <QueryError what="the project overview" error={overview.error} /> : null}
 
@@ -161,10 +203,6 @@ export default function Project() {
 
       <CardPanel title="Details" subTitle="Attribution context and ingest status">
         <div className="kv-grid">
-          <div className="kv">
-            <span className="kv__key">Project id</span>
-            <span className="kv__value inline-code">{project.project_id}</span>
-          </div>
           <div className="kv">
             <span className="kv__key">Team</span>
             <span className="kv__value">{project.team_name}</span>
@@ -183,6 +221,108 @@ export default function Project() {
           </div>
         </div>
       </CardPanel>
+
+      {canEditRates ? (
+        <CardPanel
+          title="Rate & margin"
+          subTitle="What this project pays, what it costs to serve and what it delivers"
+        >
+          {rates.isLoading ? (
+            <div className="stack" style={{ padding: 16 }}>
+              <Skeleton width="70%" />
+            </div>
+          ) : rateEntry ? (
+            <>
+              {marginRow ? (
+                marginRow.internal ? (
+                  <p
+                    className="muted"
+                    style={{ padding: "0 var(--global-dimension-size-100)", margin: 0 }}
+                  >
+                    Internal project — no revenue expected. Its AI cost (
+                    {formatMoney(marginRow.ai_cost)}) is reported as internal spend, not
+                    as a loss.
+                  </p>
+                ) : (
+                  <div
+                    className="grid grid-4"
+                    style={{ padding: "var(--global-dimension-size-100)" }}
+                  >
+                    <Metric
+                      label="Revenue"
+                      value={formatMoney(marginRow.revenue)}
+                      sub={`${marginRow.covered_days}/${marginRow.window_days} days covered`}
+                    />
+                    <Metric label="Manual cost" value={formatMoney(marginRow.manual_cost)} />
+                    <Metric
+                      label="Margin"
+                      value={marginRow.margin === null ? "—" : formatMoney(marginRow.margin)}
+                      tone={(marginRow.margin ?? 0) < 0 ? "danger" : "default"}
+                    />
+                    <Metric
+                      label="Break-even"
+                      value={
+                        marginRow.break_even_scale === null
+                          ? "—"
+                          : `×${marginRow.break_even_scale.toFixed(1)}`
+                      }
+                      sub="volume the contribution covers"
+                    />
+                  </div>
+                )
+              ) : null}
+              <ProjectRateEditor entry={rateEntry} />
+            </>
+          ) : (
+            <EmptyState title="No rate book entry for this project" />
+          )}
+        </CardPanel>
+      ) : null}
+
+      <div className="grid grid-2">
+        <CardPanel title="Executions over time" subTitle={`This project, last ${filters.days} days`}>
+          <div style={{ padding: "var(--global-dimension-size-100)" }}>
+            {metrics.isLoading ? (
+              <Skeleton shape="chart" />
+            ) : chartSeries.length ? (
+              <TrendChart
+                data={chartSeries}
+                series={[
+                  { key: "executions", label: "Executions", type: "bar", colorIndex: 6 },
+                  { key: "failed", label: "Failed", type: "line", colorIndex: 3 },
+                ]}
+                height={220}
+              />
+            ) : (
+              <EmptyState
+                title="No activity in range"
+                description="Executions appear once the SDK ingests traces for this project."
+              />
+            )}
+          </div>
+        </CardPanel>
+        {costVisible ? (
+          <CardPanel title="Cost over time" subTitle="USD per day">
+            <div style={{ padding: "var(--global-dimension-size-100)" }}>
+              {metrics.isLoading ? (
+                <Skeleton shape="chart" />
+              ) : chartSeries.length ? (
+                <TrendChart
+                  data={chartSeries}
+                  series={[{ key: "cost", label: "Cost", colorIndex: 0 }]}
+                  valueFormatter={(v) => formatMoney(v)}
+                  height={220}
+                />
+              ) : (
+                <EmptyState
+                  title="No cost in range"
+                  description="Costs appear once executions are priced."
+                />
+              )}
+            </div>
+          </CardPanel>
+        ) : null}
+      </div>
 
       {error ? <Alert variant="danger" message={error} /> : null}
 
