@@ -85,3 +85,10 @@ The SDK's mock workflows can be pointed straight at the backend ingest
 (`POST /api/v1/traces`, header `authorization: Bearer <key>`; the key alone
 identifies the project — ADR-0008) — traces are processed, classified, costed,
 and appear in the dashboard.
+
+### Public deployment (single machine + Cloudflare Tunnel)
+
+Publish the whole platform at `https://aiobs.tudoroprea.me` from one machine
+without opening inbound ports: loopback-only compose override, host nginx,
+and a Cloudflare Tunnel fronting both the dashboard and the ingest API.
+Runbook: [`ops/README.md`](ops/README.md).
