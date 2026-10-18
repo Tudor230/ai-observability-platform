@@ -75,33 +75,35 @@ curl -s http://127.0.0.1:8081/health     # reaches the backend via nginx
 
 ## 4. Cloudflare Tunnel
 
+One-time setup (done on this machine; the tunnel UUID is in
+[`ops/cloudflared/config.yml`](cloudflared/config.yml)):
+
 ```bash
 cloudflared tunnel login                 # browser: authorize tudoroprea.me
-cloudflared tunnel create aiobs          # prints the tunnel UUID
+cloudflared tunnel create aiobs
 cloudflared tunnel route dns aiobs aiobs.tudoroprea.me
 ```
 
-Put the UUID into [`ops/cloudflared/config.yml`](cloudflared/config.yml)
-(`tunnel:` and `credentials-file:`), then test in the foreground:
+The tunnel is **run manually when needed** (no service, no sudo):
 
 ```bash
 cloudflared tunnel --config ops/cloudflared/config.yml run
 ```
 
-From another terminal:
+It runs in the foreground; `Ctrl+C` closes the public URL again (the
+loopback stack keeps running). Verify from another terminal:
 
 ```bash
 curl -s https://aiobs.tudoroprea.me/health
 ```
 
-Install as a service so it survives reboots:
+To keep it always up instead, install it as a service:
 
 ```bash
 sudo mkdir -p /etc/cloudflared
 sudo cp ops/cloudflared/config.yml /etc/cloudflared/config.yml
-sudo cp ~/.cloudflared/<TUNNEL-UUID>.json /etc/cloudflared/
-# edit /etc/cloudflared/config.yml:
-#   credentials-file: /etc/cloudflared/<TUNNEL-UUID>.json
+sudo cp ~/.cloudflared/0d1658b9-18ad-4768-901a-14a53bf7f2ed.json /etc/cloudflared/
+sudo sed -i 's|/home/tudor/.cloudflared/|/etc/cloudflared/|' /etc/cloudflared/config.yml
 sudo cloudflared --config /etc/cloudflared/config.yml service install
 sudo systemctl enable --now cloudflared
 systemctl status cloudflared
@@ -151,8 +153,9 @@ uv run aiobs-mock --endpoint https://aiobs.tudoroprea.me --api-key <the project 
 
 ## Operations notes
 
-- **The machine is the server**: keep it awake while ingest matters; when it
-  sleeps the tunnel drops and in-flight spans are lost.
+- **The machine is the server**: the public URL exists only while the
+  tunnel command runs (section 4). When the tunnel or the machine stops,
+  in-flight spans are lost.
 - **Rotating keys**: dashboard → a project's page → Keys, or the admin-key
   calls above. Prefer rotate over share.
 - **Cloudflare sits in the data path** (TLS terminates at the edge, the
