@@ -1,0 +1,19 @@
+# Cloudflare Tunnel: aiobs.tudoroprea.me -> host nginx (loopback).
+#
+# Setup (full runbook in ops/README.md):
+#   cloudflared tunnel login
+#   cloudflared tunnel create aiobs
+#   cloudflared tunnel route dns aiobs aiobs.tudoroprea.me
+#
+# Tunnel `aiobs` (0d1658b9-18ad-4768-901a-14a53bf7f2ed, created on this
+# machine). Run ad hoc with:
+#   cloudflared tunnel --config ops/cloudflared/config.yml run
+# or install as a service (see ops/README.md section 4).
+
+tunnel: 0d1658b9-18ad-4768-901a-14a53bf7f2ed
+credentials-file: /home/tudor/.cloudflared/0d1658b9-18ad-4768-901a-14a53bf7f2ed.json
+
+ingress:
+  - hostname: aiobs.tudoroprea.me
+    service: http://127.0.0.1:8081
+  - service: http_status:404

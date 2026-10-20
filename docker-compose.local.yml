@@ -1,0 +1,35 @@
+# Single-machine deployment override: loopback-only ports + real secrets.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# The only public path is the Cloudflare Tunnel -> host nginx (see
+# ops/README.md). Secrets come from `.env` (start from `.env.example`); the
+# stack refuses to start without them.
+#
+# The `!override` tags replace the ports lists from docker-compose.yml —
+# plain overrides would *append* a second set of bindings, leaving the
+# services published on 0.0.0.0 as well.
+
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+
+  phoenix:
+    ports: !override
+      - "127.0.0.1:6006:6006"
+
+  backend:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    environment:
+      AIOBS_ADMIN_API_KEY: ${AIOBS_ADMIN_API_KEY:?set it in .env (see .env.example)}
+      AIOBS_JWT_SECRET: ${AIOBS_JWT_SECRET:?set it in .env (see .env.example)}
+      AIOBS_ADMIN_EMAIL: ${AIOBS_ADMIN_EMAIL:-admin@local}
+      AIOBS_ADMIN_PASSWORD: ${AIOBS_ADMIN_PASSWORD:?set it in .env (see .env.example)}
+      # Public traffic arrives over HTTPS through the Cloudflare Tunnel.
+      AIOBS_COOKIE_SECURE: "true"
+
+  frontend:
+    ports: !override
+      - "127.0.0.1:8080:80"
