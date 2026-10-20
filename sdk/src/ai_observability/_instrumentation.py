@@ -1,14 +1,14 @@
-"""Framework instrumentation wiring (LangChain + LlamaIndex + Ollama + Groq + ChromaDB).
+"""Framework instrumentation wiring (LangChain + LlamaIndex + Ollama + Groq + ChromaDB + Databricks AI Search).
 
 Reuses the OpenInference instrumentors with the SDK-owned TracerProvider and
-the SDK's own minimal ChromaDB interceptor (OpenInference has no ChromaDB
-instrumentor). Never double-instrument: warn at init when another instrumentor
-is active.
+the SDK's own minimal ChromaDB and Databricks AI Search interceptors
+(OpenInference has neither). Never double-instrument: warn at init when another
+instrumentor is active.
 
 The instrumented packages (``langchain_core``, ``llama_index.core``,
-``ollama``, ``groq``, ``chromadb``) are **optional**: each is skipped quietly
-(debug log) when not importable. An instrumentor that fails for any other
-reason warns and never propagates into ``init()`` (plan §8).
+``ollama``, ``groq``, ``chromadb``, ``databricks.ai_search``) are **optional**:
+each is skipped quietly (debug log) when not importable. An instrumentor that
+fails for any other reason warns and never propagates into ``init()`` (plan §8).
 
 Payload capture is left ON at the instrumentor level; the enrichment layer
 enforces the SDK's opt-in ``capture_prompts`` policy at export time (that is
@@ -24,6 +24,11 @@ from typing import Optional
 from opentelemetry.sdk.trace import TracerProvider
 
 from ._chroma import instrument_chroma, uninstrument_chroma
+from ._databricks import (
+    already_instrumented_databricks,
+    instrument_databricks,
+    uninstrument_databricks,
+)
 from ._langgraph import (
     _already_instrumented_langgraph,
     instrument_langgraph,
@@ -64,6 +69,12 @@ def _groq_available() -> bool:
 
 def _chroma_available() -> bool:
     return _module_available("chromadb")
+
+
+def _databricks_available() -> bool:
+    return _module_available("databricks.ai_search") or _module_available(
+        "databricks.vector_search"
+    )
 
 
 def _already_instrumented_langchain() -> bool:
@@ -148,6 +159,7 @@ def instrument_frameworks(provider: TracerProvider) -> None:
     _instrument_ollama(provider)
     _instrument_groq(provider)
     _instrument_chroma(provider)
+    _instrument_databricks(provider)
     _instrument_langgraph()
 
 
@@ -284,6 +296,35 @@ def _instrument_chroma(provider: TracerProvider) -> None:
         )
 
 
+def _instrument_databricks(provider: TracerProvider) -> None:
+    """Databricks AI Search index queries (plan §7.7).
+
+    The SDK owns this interceptor because OpenInference has no Databricks
+    instrumentor; it wraps ``similarity_search`` on the canonical
+    ``databricks.ai_search`` classes (and the legacy Vector Search classes when
+    installed) before the app queries.
+    """
+    if not _databricks_available():
+        logger.debug(
+            "databricks-ai-search is not installed; skipping Databricks AI Search instrumentation"
+        )
+        return
+    if already_instrumented_databricks():
+        logger.warning(
+            "Databricks AI Search is already instrumented; "
+            "skipping to avoid double instrumentation."
+        )
+        return
+    try:
+        instrument_databricks(provider)
+    except Exception:
+        uninstrument_databricks()
+        logger.warning(
+            "Databricks AI Search instrumentation failed; continuing without it",
+            exc_info=True,
+        )
+
+
 def uninstrument_frameworks() -> None:
     global _langchain_instrumentor, _llamaindex_instrumentor, _ollama_instrumentor
     global _groq_instrumentor
@@ -312,4 +353,5 @@ def uninstrument_frameworks() -> None:
             logger.exception("Failed to uninstrument Groq")
         _groq_instrumentor = None
     uninstrument_chroma()
+    uninstrument_databricks()
     uninstrument_langgraph()

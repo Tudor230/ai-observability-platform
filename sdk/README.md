@@ -182,6 +182,13 @@ See `examples/README.md`.
   when `chromadb` is not installed. Inside a LangChain/LangGraph run the span
   parents under the active node (the callback tracer does not attach its spans
   to the OTel context), otherwise under the workflow root.
+* **Databricks AI Search**: `similarity_search(...)` on `AISearchIndex` /
+  `AsyncAISearchIndex` (and legacy `VectorSearchIndex` imports) becomes an
+  OpenInference **RETRIEVER** span named `databricks.ai_search.query`, with
+  query text, index/endpoint identity, query type, result count, and the
+  returned rows as `retrieval.documents.*` + `output.value`. Nests under the
+  active LangGraph node when one is running; skipped silently when
+  `databricks-ai-search` is not installed.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).

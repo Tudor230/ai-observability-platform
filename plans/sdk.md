@@ -218,6 +218,16 @@ Reuse `openinference-instrumentation-groq` (v0.1.30+, `groq >= 0.9.0`) with our 
 - **Coverage**: non-streaming `chat.completions.create`. `stream=True` produces one LLM span but upstream does not accumulate the streamed content or usage (verified against 0.1.30), so streams carry provider only; no scenario.
 - **Cost**: Groq is a hosted provider with published rates, so there is **no** zero-rate row; the backend seeds exact list rates for `openai/gpt-oss-120b` and `openai/gpt-oss-20b` (the models hosted apps default to) so they are priced out of the box (`plans/backend.md` §8.1).
 
+### 7.7 Databricks AI Search (Vector Search)
+
+OpenInference ships no Databricks instrumentor, so the SDK owns a minimal one for AI Search (formerly Vector Search) index queries. It wraps `similarity_search` on `databricks.ai_search.index.AISearchIndex` and `databricks.ai_search.async_index.AsyncAISearchIndex` (including the legacy `VectorSearchIndex` aliases), plus the separate `databricks.vector_search` package when installed.
+
+- **Span shape**: OpenInference **RETRIEVER** span named `databricks.ai_search.query`; `input.value` = `query_text`, `db.system=databricks`, `db.operation=query`, `db.collection.name` = index name, `databricks.ai_search.endpoint`, `query_type`, `num_results`, `result_count`, `columns`, `filters`, `score_threshold`, and `query_vector_dimension` for vector-only queries. Returned rows become `retrieval.documents.N.document.{id,content,metadata,score}`; `output.value` carries the same rows as a JSON array. Column roles are inferred from the manifest/requested projection (`id`/`primary_key`/`doc_id`, `content`/`text`/`page_content`, `score`/`_score`/`similarity`/`distance`) with a JSON fallback.
+- **Parenting**: uses the shared LangChain run bridge, so the span nests under the LangGraph node or other LangChain run that issued the query, otherwise under the workflow root.
+- **Errors**: exceptions record the exception event + ERROR status and re-raise unchanged.
+- **Capture**: the interceptor records query text and rows unconditionally; the enrichment layer strips `input.value`, `output.value`, and `retrieval.documents.*` at export when `capture_prompts` is off (`databricks.ai_search.result_count` and the request metadata survive).
+- **Scope**: `similarity_search` only (sync + async). Index management (`create`, `sync`, `upsert`, `delete`, `scan`) is not instrumented; `databricks-ai-search` is an optional dependency and the interceptor is skipped quietly when absent.
+
 ## 8. Export reliability
 
 Observability must never break the app:
