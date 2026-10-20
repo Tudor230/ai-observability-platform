@@ -179,7 +179,9 @@ See `examples/README.md`.
   `db.system=chroma` / `db.operation` / `db.collection.name`, plus an exception
   event + ERROR status on failure. The SDK owns this interceptor (OpenInference
   has no ChromaDB instrumentor); sync `Collection.query` only, skipped silently
-  when `chromadb` is not installed.
+  when `chromadb` is not installed. Inside a LangChain/LangGraph run the span
+  parents under the active node (the callback tracer does not attach its spans
+  to the OTel context), otherwise under the workflow root.
 * Payload redaction: `capture_prompts` is off by default; per-workflow
   override via `workflow(..., capture_prompts=True)`. `sdk.hitl.*` is always
   captured (it is operational data, not prompt payload).

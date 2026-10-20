@@ -5,8 +5,9 @@ not convert Chroma spans), so the SDK owns a minimal one: a wrapt wrapper
 around ``Collection.query`` that emits an OpenInference **RETRIEVER** span —
 query text as ``input.value``, hits as ``retrieval.documents.*``
 (id/content/metadata/distance), ``db.system``/``db.operation``/
-``db.collection.name`` — nested under the active workflow root. Failed queries
-record the exception + ERROR status and re-raise unchanged.
+``db.collection.name`` — nested under the active LangChain/LangGraph run when
+one is active, otherwise under the active workflow root. Failed queries record
+the exception + ERROR status and re-raise unchanged.
 
 Payload capture follows the SDK-wide policy: the wrapper always records the
 query text and documents; the enrichment layer strips those payload
@@ -29,6 +30,7 @@ from typing import Any
 import wrapt
 from aiobs_contracts import KIND_RETRIEVER, RETRIEVAL_DOCUMENTS
 from opentelemetry import trace as trace_api
+from opentelemetry.context import Context
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
@@ -122,6 +124,44 @@ def _query_owner(cls: type) -> type | None:
     return None
 
 
+# --- span parenting ------------------------------------------------------------
+
+
+def _langchain_parent_context() -> Context | None:
+    """Explicit parent for the active LangChain/LangGraph run, when there is one.
+
+    OpenInference's LangChain tracer links its spans through its own run tree
+    and deliberately does not attach them to the OTel context. A raw
+    instrumentor normally parents to the nearest manually attached span (the
+    workflow root or a graph wrapper), not the LangGraph node executing the
+    query. ``get_current_span`` reads LangChain's run context and returns the
+    span for the current run, so the Chroma span nests under that node.
+
+    Returns ``None`` outside a LangChain run (or when the active run belongs to
+    a different trace), leaving the ambient context as the parent.
+    """
+    try:
+        from openinference.instrumentation.langchain import get_current_span
+    except Exception:
+        # LangChain is optional: without it there is no run context to bridge.
+        return None
+    try:
+        span = get_current_span()
+    except Exception:
+        logger.debug("LangChain current-span lookup failed", exc_info=True)
+        return None
+    if span is None:
+        return None
+    span_context = span.get_span_context()
+    if not span_context.is_valid:
+        return None
+    ambient = trace_api.get_current_span().get_span_context()
+    if ambient.is_valid and ambient.trace_id != span_context.trace_id:
+        # A stale run config from another trace must never relink the span.
+        return None
+    return trace_api.set_span_in_context(span)
+
+
 # --- span emission -------------------------------------------------------------
 
 
@@ -129,7 +169,11 @@ def _query_wrapper(wrapped, instance, args, kwargs):
     tracer = _tracer
     if tracer is None:
         return wrapped(*args, **kwargs)
-    with tracer.start_as_current_span(_SPAN_NAME, kind=SpanKind.INTERNAL) as span:
+    with tracer.start_as_current_span(
+        _SPAN_NAME,
+        context=_langchain_parent_context(),
+        kind=SpanKind.INTERNAL,
+    ) as span:
         span.set_attributes(_request_attributes(instance, wrapped, args, kwargs))
         # Failures propagate: the span context manager records the exception
         # event and sets ERROR status (OTel defaults), then the error re-raises.

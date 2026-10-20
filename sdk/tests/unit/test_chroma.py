@@ -8,6 +8,7 @@ no Chroma server and no model download.
 from __future__ import annotations
 
 import json
+from typing import TypedDict
 
 import ai_observability
 import pytest
@@ -65,6 +66,8 @@ def test_query_span_carries_kind_input_and_documents(tail_exporter):
     retriever = _retriever(spans)[0]
     attrs = dict(retriever.attributes)
     assert retriever.name == "chroma.query"
+    # No LangChain run is active, so the workflow root remains the parent.
+    assert retriever.parent.span_id == _root(spans).context.span_id
     assert retriever.status.status_code == StatusCode.OK
     assert attrs["db.system"] == "chroma"
     assert attrs["db.operation"] == "query"
@@ -135,6 +138,36 @@ def test_documents_are_redacted_by_default_but_count_survives(tail_exporter):
     assert "retrieval.documents.0.document.content" not in attrs
     assert "retrieval.documents.0.document.metadata" not in attrs
     assert attrs["chroma.query.result_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_query_nests_under_active_langgraph_node(tail_exporter):
+    from langgraph.graph import END, START, StateGraph
+
+    class _State(TypedDict):
+        value: int
+
+    def search(state: _State):
+        make_collection().query(query_texts=["hardware"], n_results=1)
+        return {"value": state["value"] + 1}
+
+    graph = (
+        StateGraph(_State)
+        .add_node("search", search)
+        .add_edge(START, "search")
+        .add_edge("search", END)
+        .compile()
+    )
+    with ai_observability.workflow(
+        name="wf", workflow_id="w-chroma-6", capture_prompts=True
+    ):
+        await graph.ainvoke({"value": 0})
+
+    spans = _finished(tail_exporter)
+    node_span = next(span for span in spans if span.name == "search")
+    retriever = _retriever(spans)[0]
+    assert retriever.parent is not None
+    assert retriever.parent.span_id == node_span.context.span_id
 
 
 def test_uninstrumented_collection_produces_no_retriever_span(tail_exporter):
