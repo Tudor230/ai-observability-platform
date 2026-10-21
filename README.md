@@ -52,9 +52,10 @@ docker compose up -d --build        # one command, everything
 
 The dashboard requires a session; the compose stack seeds the bootstrap admin
 above. Reads are scoped to the caller's memberships (ADR-0006): log in to see
-the org-wide admin views, then create departments/teams/projects through
-**Requests** (requests you already cover are auto-approved), manage keys from
-**Projects**, and provision logins from **Accounts**. A project can hold several
+the org-wide admin views, then create departments/teams through **Requests**
+(requests you already cover are auto-approved), add projects to your teams from
+**Projects**, manage keys there, and provision logins from **Accounts**. A
+project can hold several
 labelled ingest keys, each listed redacted and individually rotated or
 soft-revoked.
 

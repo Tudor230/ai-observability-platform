@@ -66,7 +66,10 @@ Authorization is membership-based; see
   is **self-approved and materialized immediately** (admin creating a
   department, covering manager creating a team/project). New departments can
   only be requested by users holding an `admin`, `exec`, or `manager`
-  membership — engineers and clients get `403`.
+  membership — engineers and clients get `403`. A project can only be added to
+  one of the requester's teams — a direct team grant, a team inside a granted
+  department, or the team behind a granted project; `GET /teams?mine=true`
+  returns that same set for pickers.
 - **Ingest keys (ADR-0007/ADR-0008)**: an approved project starts keyless; any
   engineer/manager member can manage its keys — `GET/POST
   /api/v1/projects/{project_id}/keys`, `POST …/keys/{key_id}/rotate`

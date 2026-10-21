@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ...models import Department, Project, ProjectKey, Team
 from ..deps import AccessScope, get_db, require_access
+from ..memberships import allowed_team_ids, approved_memberships
 
 router = APIRouter(tags=["directory"])
 
@@ -68,8 +69,15 @@ def list_departments(
 def list_teams(
     access: AccessScope = Depends(require_access("engineer", "manager", "exec")),
     department_id: str | None = Query(default=None),
+    mine: bool = Query(default=False),
     session: Session = Depends(get_db),
 ) -> dict:
+    """Teams for pickers; ``mine=true`` keeps only teams the caller belongs to.
+
+    "Their teams" means teams granted directly, every team of a granted
+    department, and the team behind a granted project. Global callers are
+    unrestricted.
+    """
     stmt = (
         select(Team, Department)
         .join(Department, Department.id == Team.department_id)
@@ -77,6 +85,16 @@ def list_teams(
     )
     if department_id:
         stmt = stmt.where(Team.department_id == department_id)
+    if mine and not access.unrestricted:
+        granted = (
+            allowed_team_ids(session, approved_memberships(session, access.user.id))
+            if access.user
+            else frozenset()
+        )
+        if granted is not None:
+            if not granted:
+                return {"items": [], "total": 0}
+            stmt = stmt.where(Team.id.in_(granted))
     items = [
         {
             "id": team.id,

@@ -231,8 +231,10 @@ export const api = {
   directory: {
     projects: () => get<List<DirectoryProject>>("/projects"),
     departments: () => get<List<Department>>("/departments"),
-    teams: (departmentId?: string) =>
-      get<List<Team>>(`/teams${qs({ department_id: departmentId })}`),
+    teams: (departmentId?: string, mine?: boolean) =>
+      get<List<Team>>(
+        `/teams${qs({ department_id: departmentId, mine: mine ? true : undefined })}`
+      ),
   },
 
   requests: {

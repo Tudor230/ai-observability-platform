@@ -1216,6 +1216,30 @@ describe("Projects + Project", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
   });
 
+  it("adds a project to one of the caller's teams", async () => {
+    h.me.mockResolvedValue(profile(["engineer"]));
+    renderWithProviders(<Projects />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add project" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByPlaceholderText("e.g. Demo Project"), {
+      target: { value: "New API" },
+    });
+
+    const team = await within(dialog).findByLabelText("Project team");
+    fireEvent.focus(team);
+    const optionsList = document.querySelector(".combobox__list") as HTMLElement;
+    fireEvent.mouseDown(await within(optionsList).findByText("A (Ops)"));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add project" }));
+    await waitFor(() =>
+      expect(h.requestsCreate).toHaveBeenCalledWith("create_project", {
+        name: "New API",
+        team_id: "t1",
+      })
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("renders the project page with keys and charts", async () => {
     const Routed = () => (
       <Routes>

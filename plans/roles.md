@@ -139,7 +139,7 @@ configured origins.
 |---|---|---|
 | `create_department` | `{name}` — requester becomes initial manager; **admins/execs/managers only** (engineers and clients get 403) | admin/exec |
 | `create_team` | `{name, department_id}` | managers covering the department |
-| `create_project` | `{project_id, name, team_id}` | managers covering the team or its department |
+| `create_project` | `{name, team_id}` — the team must be one the requester belongs to (direct team grant, a team under a department grant, or the team behind a project grant) | managers covering the team or its department |
 | `membership` | `{role, scope_type, scope_id}` | managers covering the scope; **manager grants → admin/exec only**; exact duplicate grants are rejected `409` |
 
 ### 5.2 Lifecycle
@@ -216,7 +216,10 @@ one. Computed per request in `require_access`.
   for the `client` role (data minimization, not UI-only hiding).
 - New non-admin scoped `GET /projects` (plus `GET /departments`,
   `GET /teams`) in a new `routes/directory.py`, feeding the frontend filter and
-  forms.
+  forms. `GET /teams?mine=true` narrows the list to the caller's own teams
+  (direct team grants, every team in a granted department, and the team behind
+  a granted project) for the project-creation picker; the unfiltered directory
+  stays available for membership requests.
 - Key management is member-authorized (coverage check) instead of admin-only:
   `GET/POST /projects/{id}/keys`, `POST …/keys/{key_id}/rotate` (regenerate in
   place), `DELETE …/keys/{key_id}` (soft revoke). Ingest accepts **any active
@@ -300,7 +303,9 @@ failure-kind drill-down, recent executions (failure tree, no spans/prompts), and
 scoped alerts — no costs.
 
 `src/pages/Projects.tsx` (list): every visible project with team/department,
-per-project usage KPIs, and key count; rows open the project page.
+per-project usage KPIs, and key count; rows open the project page. An **Add
+project** dialog lets internal users create a project under one of their teams
+(managers self-approve; engineer requests wait for the covering manager).
 `src/pages/Project.tsx`: identity + per-project overview KPIs + **key
 management** — redacted list, add key (plaintext once), per-key rotate, and
 soft-delete confirmation; clients see a read-only view.

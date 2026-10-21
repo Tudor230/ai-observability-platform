@@ -206,6 +206,92 @@ def test_manager_creates_team_project_and_mints_key(anon, session_factory):
     assert duplicate.status_code == 409
 
 
+def test_my_teams_follow_membership_coverage(anon, client, session_factory):
+    with session_factory() as session:
+        ops = seed_department(session, "Ops")
+        core = seed_team(session, name="Core", department=ops)
+        data = seed_team(session, name="Data", department=ops)
+        other = seed_team(
+            session,
+            name="Other",
+            department=seed_department(session, "Other Dept"),
+        )
+        _, engineer_key = seed_user(
+            session, "eng@x", role="engineer", scope_type="team", scope_id=core.id
+        )
+        _, manager_key = seed_user(
+            session, "mgr@x", role="manager", scope_type="department", scope_id=ops.id
+        )
+        _, exec_key = seed_user(
+            session, "exec@x", role="exec", scope_type="global"
+        )
+        core_id, data_id, other_id = core.id, data.id, other.id
+        session.commit()
+
+    engineer = anon.get(
+        "/api/v1/teams?mine=true", headers={"x-api-key": engineer_key}
+    ).json()["items"]
+    assert [team["id"] for team in engineer] == [core_id]
+
+    manager = anon.get(
+        "/api/v1/teams?mine=true", headers={"x-api-key": manager_key}
+    ).json()["items"]
+    assert {team["id"] for team in manager} == {core_id, data_id}
+
+    # The unfiltered directory stays available for membership requests.
+    directory = anon.get(
+        "/api/v1/teams", headers={"x-api-key": engineer_key}
+    ).json()["items"]
+    assert {team["id"] for team in directory} == {core_id, data_id, other_id}
+
+    # Global callers (admin key and exec membership) are never narrowed.
+    everything = client.get("/api/v1/teams?mine=true").json()["items"]
+    assert {team["id"] for team in everything} == {core_id, data_id, other_id}
+    exec_teams = anon.get(
+        "/api/v1/teams?mine=true", headers={"x-api-key": exec_key}
+    ).json()["items"]
+    assert {team["id"] for team in exec_teams} == {core_id, data_id, other_id}
+
+
+def test_project_requests_are_limited_to_my_teams(anon, session_factory):
+    with session_factory() as session:
+        ops = seed_department(session, "Ops")
+        mine = seed_team(session, name="Mine", department=ops)
+        elsewhere = seed_team(
+            session,
+            name="Elsewhere",
+            department=seed_department(session, "Elsewhere Dept"),
+        )
+        _, engineer_key = seed_user(
+            session, "eng@x", role="engineer", scope_type="team", scope_id=mine.id
+        )
+        mine_id, elsewhere_id = mine.id, elsewhere.id
+        session.commit()
+
+    headers = {"x-api-key": engineer_key}
+    allowed = anon.post(
+        "/api/v1/requests",
+        json={
+            "type": "create_project",
+            "payload": {"name": "My API", "team_id": mine_id},
+        },
+        headers=headers,
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["status"] == "pending"
+
+    denied = anon.post(
+        "/api/v1/requests",
+        json={
+            "type": "create_project",
+            "payload": {"name": "Someone Else's API", "team_id": elsewhere_id},
+        },
+        headers=headers,
+    )
+    assert denied.status_code == 403, denied.text
+    assert "your teams" in denied.json()["detail"]
+
+
 def test_membership_flow_and_manager_grant_restriction(
     app, anon, client, session_factory
 ):

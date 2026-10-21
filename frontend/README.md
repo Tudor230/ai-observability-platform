@@ -63,6 +63,9 @@ src/lib/          formatting, forecast, chart theming, span→AgentPrism adapter
   users who lack admin/exec/manager rights (an engineer+manager sees both).
 - Membership scopes and the department/team/project pickers use
   `SearchableSelect` — a filterable, scrollable combobox.
+- The Projects page offers **Add project**: pick one of the caller's teams and
+  create the project through the request flow (a covering manager self-approves;
+  an engineer's request queues for approval).
 
 ## Design system
 

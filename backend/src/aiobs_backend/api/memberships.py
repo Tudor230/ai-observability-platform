@@ -110,6 +110,48 @@ def allowed_project_ids(
     return frozenset(rows)
 
 
+def allowed_team_ids(
+    session: Session, memberships: list[Membership]
+) -> frozenset[str] | None:
+    """Internal team ids the memberships grant access to.
+
+    ``None`` means unrestricted: any global grant sees every team. Department
+    grants cover every team in the department; project grants cover the team
+    that owns the project.
+    """
+    department_ids: set[str] = set()
+    team_ids: set[str] = set()
+    project_ids: set[str] = set()
+    for m in memberships:
+        if m.status != APPROVED:
+            continue
+        if m.scope_type == "global":
+            return None
+        if not m.scope_id:
+            continue
+        if m.scope_type == "department":
+            department_ids.add(m.scope_id)
+        elif m.scope_type == "team":
+            team_ids.add(m.scope_id)
+        elif m.scope_type == "project":
+            project_ids.add(m.scope_id)
+    if project_ids:
+        team_ids.update(
+            session.execute(
+                select(Project.team_id).where(Project.id.in_(project_ids))
+            ).scalars()
+        )
+    conditions = []
+    if department_ids:
+        conditions.append(Team.department_id.in_(department_ids))
+    if team_ids:
+        conditions.append(Team.id.in_(team_ids))
+    if not conditions:
+        return frozenset()
+    rows = session.execute(select(Team.id).where(or_(*conditions))).scalars().all()
+    return frozenset(rows)
+
+
 def allowed_budget_units(
     session: Session, memberships: list[Membership]
 ) -> tuple[frozenset[str], frozenset[str]]:

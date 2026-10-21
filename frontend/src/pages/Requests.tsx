@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import {
   useDepartments,
   useDirectoryProjects,
+  useMyTeams,
   useRequests,
   useTeams,
 } from "../api/hooks";
@@ -91,6 +92,7 @@ export default function Requests() {
 
   const departments = useDepartments();
   const teams = useTeams();
+  const myTeams = useMyTeams();
   const projects = useDirectoryProjects();
   const approvals = useRequests("to_approve", canApprove);
   const mine = useRequests("mine");
@@ -425,11 +427,11 @@ export default function Requests() {
                       <SearchableSelect
                         value={teamId}
                         onChange={setTeamId}
-                        options={(teams.data?.items ?? []).map((t) => ({
+                        options={(myTeams.data?.items ?? []).map((t) => ({
                           value: t.id,
                           label: `${t.name} (${t.department_name})`,
                         }))}
-                        placeholder="Select a team…"
+                        placeholder="Select one of your teams…"
                         aria-label="Team"
                       />
                     </Field>
@@ -468,7 +470,9 @@ export default function Requests() {
                 <div className="request-form__hint muted">
                   {activeType === "create_department"
                     ? "Admin/exec approve new departments; you become its initial manager."
-                    : activeType === "membership"
+                    : activeType === "create_project"
+                      ? "Projects can be added only to teams you belong to. A manager covering the team approves this request."
+                      : activeType === "membership"
                       ? `${
                           membershipRole === "manager"
                             ? "Manager grants are approved by admin/exec only."

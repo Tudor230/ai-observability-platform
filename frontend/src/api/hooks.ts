@@ -243,11 +243,16 @@ export function useDepartments() {
   });
 }
 
-export function useTeams(departmentId?: string) {
+export function useTeams(departmentId?: string, mine = false) {
   return useQuery({
-    queryKey: ["directory", "teams", departmentId ?? "all"],
-    queryFn: () => api.directory.teams(departmentId),
+    queryKey: ["directory", "teams", departmentId ?? "all", mine ? "mine" : "all"],
+    queryFn: () => api.directory.teams(departmentId, mine),
   });
+}
+
+/** The teams the caller belongs to (used when adding projects). */
+export function useMyTeams() {
+  return useTeams(undefined, true);
 }
 
 export function useRequests(view: "all" | "mine" | "to_approve", enabled = true) {

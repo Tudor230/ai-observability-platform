@@ -706,6 +706,7 @@ Docker stack.
 | F55 | `GET /margin` prorates revenue and manual cost per calendar day from the version active that day (`month ≡ 365/12`, `year ≡ 365`), reports per-project revenue/manual/AI cost/margin/margin %/break-even, a conservative total (all external AI cost, coverage beside it), a daily series and the internal-spend split; exec-only |
 | F56 | Internal projects (`projects.internal`) need no revenue: their AI cost is reported as internal spend, excluded from margin totals and coverage, and the flag wins over any rate versions — so internal tooling never reads as a loss |
 | F57 | Executive surface: Revenue/Margin/Margin % stat cards, margin over time, a sortable margin-by-project card with break-even, the scaling forecast (×1/×2/×5/×10 + break-even multiple) and the project-rates editor; both latency panels left the exec page (Manager keeps them) |
+| F58 | Users can add projects to their own teams: the Projects page has an **Add project** dialog, `GET /teams?mine=true` returns direct team grants + teams in granted departments + the team behind a granted project, and `POST /requests` rejects a `create_project` targeting any other team with 403 (managers still self-approve; engineer requests queue) |
 | — | Mutating endpoints commit **before** responding: FastAPI runs yield-dependency teardown after the response, which caused cross-request read-after-write races (found while stabilizing the KPI gate) |
 
 ### Partially fixed

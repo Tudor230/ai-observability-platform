@@ -1,29 +1,41 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useDirectoryProjects, useOverview } from "../api/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "../api/client";
+import { useDirectoryProjects, useMyTeams, useOverview } from "../api/hooks";
 import { useAuth } from "../state/AuthContext";
 import { useFilters } from "../state/FiltersContext";
 import { PageHeader } from "../components/PageHeader";
 import { FilterChips, FiltersControl } from "../components/FiltersControl";
 import { RefreshButton } from "../components/RefreshButton";
 import {
+  Alert,
   Badge,
+  Button,
   CardPanel,
+  Dialog,
   EmptyState,
+  Field,
   QueryError,
+  SearchableSelect,
   Skeleton,
   Table,
   TableWrap,
   Td,
+  TextInput,
   Th,
   Tr,
+  useToast,
 } from "../components/core";
 import { formatMoney, formatPct, formatTokens } from "../lib/format";
 import type { DirectoryProject } from "../api/types";
 
 export default function Projects() {
   const { filters } = useFilters();
-  const { costVisible } = useAuth();
+  const { costVisible, hasRole } = useAuth();
   const projects = useDirectoryProjects();
+  const canAddProject = hasRole("admin", "exec", "manager", "engineer");
+  const [adding, setAdding] = useState(false);
 
   return (
     <div className="page">
@@ -32,6 +44,11 @@ export default function Projects() {
         subTitle="Every project you belong to, with a usage overview and its ingest keys."
         extra={
           <>
+            {canAddProject ? (
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                Add project
+              </Button>
+            ) : null}
             <FiltersControl dimensions={["days"]} />
             <RefreshButton />
           </>
@@ -85,12 +102,116 @@ export default function Projects() {
         ) : (
           <EmptyState
             title="No projects yet"
-            description="Register a project through Requests — it appears here once approved."
+            description="Add a project to one of your teams — it appears here once approved."
             extra={<Link to="/requests">Open Requests</Link>}
           />
         )}
       </CardPanel>
+
+      {adding ? <AddProjectDialog onClose={() => setAdding(false)} /> : null}
     </div>
+  );
+}
+
+function AddProjectDialog({ onClose }: { onClose: () => void }) {
+  const teams = useMyTeams();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const options = (teams.data?.items ?? []).map((team) => ({
+    value: team.id,
+    label: `${team.name} (${team.department_name})`,
+  }));
+
+  const submit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || !teamId) {
+      setError("Enter a project name and select one of your teams.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.requests.create("create_project", {
+        name: trimmed,
+        team_id: teamId,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["directory"] });
+      if (result.status === "approved") {
+        toast.success("Project added to the team.");
+      } else {
+        toast.success("Project request submitted for a manager's approval.");
+      }
+      onClose();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to add the project.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      title="Add project"
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="primary"
+            disabled={busy || !name.trim() || !teamId}
+            onClick={() => void submit()}
+          >
+            {busy ? "Adding…" : "Add project"}
+          </Button>
+          <Button variant="quiet" onClick={onClose}>
+            Cancel
+          </Button>
+        </>
+      }
+    >
+      <div className="stack">
+        {error ? <Alert variant="danger" message={error} /> : null}
+        <p className="muted" style={{ margin: 0 }}>
+          Projects belong to a team. Choose one of your teams; a manager covering
+          it approves the new project when needed.
+        </p>
+        <Field label="Project name">
+          <TextInput
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Demo Project"
+            autoFocus
+          />
+        </Field>
+        {teams.isLoading ? (
+          <Skeleton width="70%" />
+        ) : options.length ? (
+          <Field label="Team">
+            <SearchableSelect
+              value={teamId}
+              onChange={setTeamId}
+              options={options}
+              placeholder="Select one of your teams…"
+              aria-label="Project team"
+            />
+          </Field>
+        ) : (
+          <EmptyState
+            title="No teams yet"
+            description="You need a team membership before adding a project."
+            extra={<Link to="/requests">Request a membership</Link>}
+          />
+        )}
+      </div>
+    </Dialog>
   );
 }
 

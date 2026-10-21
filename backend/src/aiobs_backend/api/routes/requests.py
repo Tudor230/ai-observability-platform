@@ -23,6 +23,7 @@ from ...security import generate_project_id
 from ..deps import AccessScope, get_db, require_access
 from ..memberships import (
     add_membership,
+    allowed_team_ids,
     approved_memberships,
     covers_scope,
     effective_roles,
@@ -249,6 +250,15 @@ def create_request(
             detail="only managers, executives, and admins can request new departments",
         )
     data = _validate_payload(session, body.type, body.payload)
+    if body.type == "create_project" and not access.unrestricted:
+        # Users may add projects only to their own teams (direct team grants,
+        # teams inside a department grant, or the team behind a project grant).
+        granted = allowed_team_ids(session, memberships)
+        if granted is not None and data["team_id"] not in granted:
+            raise HTTPException(
+                status_code=403,
+                detail="you can only add projects to your teams",
+            )
     if body.type == "membership" and has_membership(
         session,
         user_id=access.user.id,
