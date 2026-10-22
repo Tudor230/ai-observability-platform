@@ -29,6 +29,7 @@ from ._databricks import (
     instrument_databricks,
     uninstrument_databricks,
 )
+from ._dedupe import suppress_duplicate_raw_spans
 from ._langgraph import (
     _already_instrumented_langgraph,
     instrument_langgraph,
@@ -158,6 +159,13 @@ def instrument_frameworks(provider: TracerProvider) -> None:
     _instrument_llamaindex(provider)
     _instrument_ollama(provider)
     _instrument_groq(provider)
+    # Raw provider clients are also called from LangChain chat models
+    # (ChatOllama/ChatGroq). Suppress the raw span for those calls so one
+    # provider request is not exported (and counted) twice.
+    suppress_duplicate_raw_spans(
+        ollama=_ollama_instrumentor is not None,
+        groq=_groq_instrumentor is not None,
+    )
     _instrument_chroma(provider)
     _instrument_databricks(provider)
     _instrument_langgraph()

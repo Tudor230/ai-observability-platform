@@ -198,6 +198,10 @@ it:
 | Raw `ollama` client, raw `groq` client | LLM spans with token counts and errors |
 | Raw `chromadb` client (`collection.query`) | RETRIEVER span with documents |
 
+Raw Ollama/Groq calls made from a LangChain chat model (`ChatOllama` /
+`ChatGroq`) are not double-traced: the LangChain LLM span wins, so calls,
+tokens and cost are counted once.
+
 For anything else — your own steps, validation, queue hops, business logic —
 use the manual span helper (sync/async context manager or decorator):
 
@@ -259,6 +263,7 @@ get a kind; repeated identical tool calls get the `loop` badge and feed the
 | Execution shows no prompts | expected: capture is opt-in (`capture_prompts=True`) |
 | Two or more executions instead of one | `workflow()` opened once per stage or retry for one logical run — open one outer workflow, or reuse `workflow_id` (see §6) |
 | An extra execution rooted at an LLM/RETRIEVER span | the call ran on a thread without the active context — propagate context (e.g. `copy_context().run`) or keep it inside the workflow |
+| Two concurrent LLM spans with the same model/tokens | old SDK double-instrumented `ChatOllama`/`ChatGroq` + the raw client — upgrade to SDK **0.3.1+** |
 | Duplicated spans/`warn: already instrumented` | another OpenInference/Arize instrumentor is active for the same framework — keep only one |
 | `loop` badge on a healthy-looking run | the run repeated identical calls (same tool+args or same LLM input ≥3×, or a repeating 2–4 step cycle) — inspect the execution's loop panel |
 | Export errors in logs | check `export_stats()["last_error"]`; 401 = bad key, 409 = conflicting project header |
