@@ -10,7 +10,7 @@ Read this once, top to bottom (15 minutes), before touching code.
 
 ## 1. What you get
 
-Once integrated, every run of your workflow appears in the dashboard as an
+Once integrated, every top-level `workflow()` appears in the dashboard as an
 **execution** with:
 
 - the full span tree (agent → LLM/TOOL/RETRIEVER/CHAIN spans),
@@ -120,14 +120,68 @@ def handle_order(order_id: str) -> str:
 - `name` — the workflow name shown in the dashboard (required).
 - `workflow_id` — a *stable* id for one logical run. Pass your own (order id,
   session id, LangGraph `thread_id`): retries, HITL interrupt/resume, or a
-  later re-run of the same id join the same trace. Omit it and every run gets
-  a fresh trace.
+  later re-run of the same id join the same trace. Omit it and every top-level
+  `workflow()` gets a fresh trace (see “One run is not automatically one
+  execution” below).
 - `version`, `context` — displayed on the execution, searchable; keep
   business metadata here (it is redacted for secrets before storage).
 - `capture_prompts=True` on one workflow opts that run into payload capture —
   handy for debugging a specific tenant without touching global config.
 - Workflows nest: an inner `workflow()` becomes a child span, not a new
   execution.
+
+### One run is not automatically one execution
+
+The dashboard groups spans by **trace**: normally one root span plus everything
+under it. It has no separate notion of your app's "run", so every top-level
+`workflow()` is a new execution. Two patterns show up in real integrations:
+
+1. **One workflow per stage.** A pipeline that opens
+   `workflow(name="document-extraction")` for each document, then
+   `workflow(name="grounded-answer")` for the answer, produces one execution
+   per stage. A KEDB query hit this: two `coordinator.search_port` roots plus
+   one `grounded-answer` root, three executions for one request.
+
+2. **A span emitted off-thread.** Raw clients (Ollama/Groq/ChromaDB) and
+   manual spans use the OTel context of the thread they run on. If you
+   dispatch the call to a plain `ThreadPoolExecutor` or `threading.Thread`,
+   that context is not inherited, so the span has no parent and starts a new
+   trace. An onboarding run showed this: the `document-extraction` workflow
+   root was present, but the OCR `Chat` call inside it was exported as a
+   separate root.
+
+Keep one logical run in one execution by opening a single outer workflow and
+letting stages nest:
+
+```python
+def handle(request_id: str, documents: list[Document]) -> str:
+    with workflow(name="onboarding", workflow_id=request_id):
+        for doc in documents:
+            with workflow(name="document-extraction", context={"file": doc.name}):
+                ocr(doc)                 # nested, same trace
+        return answer(...)               # nested, same trace
+```
+
+If a stage is only a step and should never be its own execution, use
+`span(...)` instead of `workflow(...)` — but it still needs an enclosing
+workflow, otherwise it is a root too.
+
+For calls that really run on another thread, carry the context over (with
+OTel's default contextvars-based context):
+
+```python
+import contextvars
+
+ctx = contextvars.copy_context()
+executor.submit(ctx.run, ocr, path)
+```
+
+If the stages live in separate processes or hosts, give every top-level
+`workflow()` the **same `workflow_id`** (your request id). The SDK derives the
+trace id from that seed, so the roots join one trace. The trace will contain
+multiple root spans — the platform supports that (it is how LangGraph
+interrupt/resume already works) — but an outer workflow is cleaner because the
+execution is named after the real entry point and renders as one tree.
 
 Long-running services: one `init()` at startup and a `workflow()` per request
 (FastAPI middleware, request handler, job runner — thin wrappers are fine).
@@ -203,7 +257,8 @@ get a kind; repeated identical tool calls get the `loop` badge and feed the
 | No executions appear | endpoint points at Phoenix (`:6006`) instead of the platform; wrong/rotated key; app exits before export (call `flush()`) |
 | Executions appear without cost | model not in the pricing table — shows `*`/“unpriced”; ask an admin to add pricing |
 | Execution shows no prompts | expected: capture is opt-in (`capture_prompts=True`) |
-| Two executions instead of one | `workflow()` opened twice for one logical run (e.g. one per HTTP retry) — reuse `workflow_id` |
+| Two or more executions instead of one | `workflow()` opened once per stage or retry for one logical run — open one outer workflow, or reuse `workflow_id` (see §6) |
+| An extra execution rooted at an LLM/RETRIEVER span | the call ran on a thread without the active context — propagate context (e.g. `copy_context().run`) or keep it inside the workflow |
 | Duplicated spans/`warn: already instrumented` | another OpenInference/Arize instrumentor is active for the same framework — keep only one |
 | `loop` badge on a healthy-looking run | the run repeated identical calls (same tool+args or same LLM input ≥3×, or a repeating 2–4 step cycle) — inspect the execution's loop panel |
 | Export errors in logs | check `export_stats()["last_error"]`; 401 = bad key, 409 = conflicting project header |
