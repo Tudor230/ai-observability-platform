@@ -30,6 +30,17 @@ function span(partial: Partial<Span> & { span_id: string }): Span {
   return { ...base, ...partial };
 }
 
+type TraceSpanNode = ReturnType<typeof toTraceSpans>[number];
+
+function findNode(nodes: TraceSpanNode[], id: string): TraceSpanNode | undefined {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const found = node.children ? findNode(node.children, id) : undefined;
+    if (found) return found;
+  }
+  return undefined;
+}
+
 const execution: Partial<Execution> = {
   id: "ex-1",
   trace_id: "trace-1",
@@ -117,6 +128,118 @@ describe("toTraceSpans", () => {
       span({ span_id: "not-a-tool", kind: "UNKNOWN", name: "tooling" }),
     ];
     expect(countToolSpans(spans)).toBe(2);
+  });
+
+  it("re-parents untyped leaves under the tightest recognized span", () => {
+    const tree = toTraceSpans([
+      span({
+        span_id: "root",
+        kind: "CHAIN",
+        name: "rca-investigation",
+        started_at: "2026-10-31T13:59:48.000Z",
+        ended_at: "2026-10-31T14:00:02.000Z",
+      }),
+      span({
+        span_id: "wrapper",
+        parent_id: "root",
+        kind: "UNKNOWN",
+        name: "rca.investigation",
+        started_at: "2026-10-31T13:59:48.000Z",
+        ended_at: "2026-10-31T14:00:02.000Z",
+      }),
+      span({
+        span_id: "graph",
+        parent_id: "wrapper",
+        kind: "CHAIN",
+        name: "LangGraph",
+        started_at: "2026-10-31T13:59:48.100Z",
+        ended_at: "2026-10-31T14:00:01.900Z",
+      }),
+      span({
+        span_id: "planner",
+        parent_id: "graph",
+        kind: "CHAIN",
+        name: "investigation_planner",
+        started_at: "2026-10-31T13:59:48.500Z",
+        ended_at: "2026-10-31T13:59:50.500Z",
+      }),
+      span({
+        span_id: "gather",
+        parent_id: "graph",
+        kind: "CHAIN",
+        name: "gather_evidence",
+        started_at: "2026-10-31T13:59:50.600Z",
+        ended_at: "2026-10-31T13:59:54.000Z",
+      }),
+      span({
+        span_id: "llm",
+        parent_id: "wrapper",
+        kind: "LLM",
+        name: "Completions",
+        started_at: "2026-10-31T13:59:48.600Z",
+        ended_at: "2026-10-31T13:59:50.400Z",
+      }),
+      span({
+        span_id: "tool",
+        parent_id: "wrapper",
+        kind: "UNKNOWN",
+        name: "tool.find_logs",
+        started_at: "2026-10-31T13:59:50.700Z",
+        ended_at: "2026-10-31T13:59:51.000Z",
+      }),
+      span({
+        span_id: "tool-2",
+        parent_id: "wrapper",
+        kind: "UNKNOWN",
+        name: "tool.find_changes",
+        started_at: "2026-10-31T13:59:51.100Z",
+        ended_at: "2026-10-31T13:59:51.200Z",
+      }),
+    ]);
+
+    expect(findNode(tree, "wrapper")?.children?.map((node) => node.id)).toEqual([
+      "graph",
+    ]);
+    expect(findNode(tree, "planner")?.children?.map((node) => node.id)).toEqual([
+      "llm",
+    ]);
+    expect(findNode(tree, "gather")?.children?.map((node) => node.id)).toEqual([
+      "tool",
+      "tool-2",
+    ]);
+    expect(findNode(tree, "tool")?.type).toBe("tool_execution");
+  });
+
+  it("does not lift a leaf out of its untyped wrapper", () => {
+    const tree = toTraceSpans([
+      span({
+        span_id: "root",
+        kind: "CHAIN",
+        name: "rca-investigation",
+        started_at: "2026-10-31T13:59:48.000Z",
+        ended_at: "2026-10-31T14:00:02.000Z",
+      }),
+      span({
+        span_id: "wrapper",
+        parent_id: "root",
+        kind: "UNKNOWN",
+        name: "rca.investigation",
+        started_at: "2026-10-31T13:59:48.000Z",
+        ended_at: "2026-10-31T14:00:02.000Z",
+      }),
+      span({
+        span_id: "tool",
+        parent_id: "wrapper",
+        kind: "UNKNOWN",
+        name: "tool.find_logs",
+        started_at: "2026-10-31T13:59:50.000Z",
+        ended_at: "2026-10-31T13:59:51.000Z",
+      }),
+    ]);
+
+    expect(findNode(tree, "wrapper")?.children?.map((node) => node.id)).toEqual([
+      "tool",
+    ]);
   });
 
   it("exposes the failure under the library's error attribute keys", () => {

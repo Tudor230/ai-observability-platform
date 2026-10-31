@@ -49,6 +49,109 @@ function categoryOf(span: Span): TraceSpanCategory {
   return isToolSpan(span) ? "tool_execution" : "span";
 }
 
+function isRecognizedKind(span: Span): boolean {
+  return Boolean(KIND_TO_CATEGORY[(span.kind ?? "").toUpperCase()]);
+}
+
+interface Interval {
+  start: number;
+  end: number;
+}
+
+function intervalOf(span: Span): Interval | null {
+  if (!span.started_at) return null;
+  const start = Date.parse(span.started_at);
+  if (!Number.isFinite(start)) return null;
+  const end = span.ended_at
+    ? Date.parse(span.ended_at)
+    : start + (span.duration_ms ?? 0);
+  if (!Number.isFinite(end)) return null;
+  return { start, end: Math.max(start, end) };
+}
+
+function isAncestor(
+  candidateId: string,
+  descendantId: string | null,
+  parentById: Map<string, string | null>
+): boolean {
+  const seen = new Set<string>();
+  let current = descendantId;
+  while (current && !seen.has(current)) {
+    if (current === candidateId) return true;
+    seen.add(current);
+    current = parentById.get(current) ?? null;
+  }
+  return false;
+}
+
+/**
+ * App-emitted leaf spans (for example `tool.*`) often inherit an ambient
+ * wrapper such as `rca.investigation` as their OTel parent: the OpenInference
+ * LangChain tracer does not attach node spans to the context. When that parent
+ * has no OpenInference kind, infer the tightest recognized span that fully
+ * contains the leaf by time. Candidates above the wrapper are ignored, so a
+ * leaf is never pulled out of its app-owned wrapper without a more specific
+ * framework span to land in.
+ *
+ * The inferred edge only points at a strictly longer interval, or an
+ * equal-length one with a smaller span id; that partial order cannot form a
+ * cycle.
+ */
+function inferredParentId(
+  span: Span,
+  spans: Span[],
+  byId: Map<string, Span>,
+  parentById: Map<string, string | null>,
+  hasChildren: Set<string>
+): string | null {
+  const originalParentId = parentById.get(span.span_id) ?? null;
+  if (!originalParentId || hasChildren.has(span.span_id)) {
+    return originalParentId;
+  }
+  const originalParent = byId.get(originalParentId);
+  if (!originalParent || isRecognizedKind(originalParent)) {
+    return originalParentId;
+  }
+  const spanInterval = intervalOf(span);
+  if (!spanInterval) return originalParentId;
+
+  const spanDuration = spanInterval.end - spanInterval.start;
+  let best: { id: string; duration: number; start: number } | null = null;
+
+  for (const candidate of spans) {
+    if (candidate.span_id === span.span_id) continue;
+    if (!isRecognizedKind(candidate)) continue;
+    if (isAncestor(candidate.span_id, originalParentId, parentById)) continue;
+
+    const candidateInterval = intervalOf(candidate);
+    if (!candidateInterval) continue;
+    if (
+      candidateInterval.start > spanInterval.start ||
+      candidateInterval.end < spanInterval.end
+    ) {
+      continue;
+    }
+
+    const duration = candidateInterval.end - candidateInterval.start;
+    if (duration < spanDuration) continue;
+    if (duration === spanDuration && candidate.span_id >= span.span_id) {
+      continue;
+    }
+    if (
+      !best ||
+      duration < best.duration ||
+      (duration === best.duration && candidateInterval.start > best.start) ||
+      (duration === best.duration &&
+        candidateInterval.start === best.start &&
+        candidate.span_id < best.id)
+    ) {
+      best = { id: candidate.span_id, duration, start: candidateInterval.start };
+    }
+  }
+
+  return best?.id ?? originalParentId;
+}
+
 /** Attribute keys AgentPrism's error surface reads (see its data package). */
 const ERROR_MESSAGE_KEYS = ["error.message", "status.message", "exception.message"];
 const ERROR_STACK_KEYS = ["error.stack", "exception.stacktrace", "exception.stack"];
@@ -235,10 +338,20 @@ function toTraceSpan(span: Span): TraceSpan {
  */
 export function toTraceSpans(spans: Span[]): TraceSpan[] {
   const ids = new Set(spans.map((span) => span.span_id));
-  const byParent = new Map<string | null, Span[]>();
+  const byId = new Map(spans.map((span) => [span.span_id, span]));
+  const parentById = new Map<string, string | null>();
+  const hasChildren = new Set<string>();
 
   for (const span of spans) {
     const parent = span.parent_id && ids.has(span.parent_id) ? span.parent_id : null;
+    parentById.set(span.span_id, parent);
+    if (parent) hasChildren.add(parent);
+  }
+
+  const byParent = new Map<string | null, Span[]>();
+
+  for (const span of spans) {
+    const parent = inferredParentId(span, spans, byId, parentById, hasChildren);
     const siblings = byParent.get(parent) ?? [];
     siblings.push(span);
     byParent.set(parent, siblings);
