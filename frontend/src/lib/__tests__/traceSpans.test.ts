@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toTraceRecord, toTraceSpans } from "../traceSpans";
+import { countToolSpans, toTraceRecord, toTraceSpans } from "../traceSpans";
 import type { Execution, Span } from "../../api/types";
 
 function span(partial: Partial<Span> & { span_id: string }): Span {
@@ -99,6 +99,24 @@ describe("toTraceSpans", () => {
     expect(node.tokensCount).toBe(1200);
     expect(node.cost).toBe(0.0031);
     expect(node.metadata).toMatchObject({ model: "gpt-4o", provider: "openai" });
+  });
+
+  it("treats untyped tool.* spans as tool executions", () => {
+    const [node] = toTraceSpans([
+      span({ span_id: "tool", kind: "UNKNOWN", name: "tool.find_logs" }),
+    ]);
+    expect(node.type).toBe("tool_execution");
+  });
+
+  it("counts TOOL spans and untyped tool.* spans, not other spans", () => {
+    const spans = [
+      span({ span_id: "tool-kind", kind: "TOOL", name: "lookup_order" }),
+      span({ span_id: "tool-name", kind: "UNKNOWN", name: "tool.find_logs" }),
+      span({ span_id: "chain", kind: "CHAIN", name: "workflow" }),
+      span({ span_id: "llm", kind: "LLM", name: "tool.helper_completion" }),
+      span({ span_id: "not-a-tool", kind: "UNKNOWN", name: "tooling" }),
+    ];
+    expect(countToolSpans(spans)).toBe(2);
   });
 
   it("exposes the failure under the library's error attribute keys", () => {

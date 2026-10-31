@@ -24,6 +24,31 @@ const KIND_TO_CATEGORY: Record<string, TraceSpanCategory> = {
   EVENT: "event",
 };
 
+const TOOL_NAME_PREFIX = "tool.";
+
+/**
+ * True for OpenInference TOOL spans and for app-emitted spans named
+ * `tool.<name>` that carry no `openinference.span.kind` (stored as UNKNOWN).
+ */
+export function isToolSpan(span: Span): boolean {
+  const kind = (span.kind ?? "").toUpperCase();
+  if (kind === "TOOL") return true;
+  // An explicit non-tool kind wins over the name heuristic.
+  if (kind && KIND_TO_CATEGORY[kind]) return false;
+  return (span.name ?? "").toLowerCase().startsWith(TOOL_NAME_PREFIX);
+}
+
+/** Number of tool spans in a flat execution span list. */
+export function countToolSpans(spans: Span[]): number {
+  return spans.filter(isToolSpan).length;
+}
+
+function categoryOf(span: Span): TraceSpanCategory {
+  const byKind = KIND_TO_CATEGORY[(span.kind ?? "").toUpperCase()];
+  if (byKind) return byKind;
+  return isToolSpan(span) ? "tool_execution" : "span";
+}
+
 /** Attribute keys AgentPrism's error surface reads (see its data package). */
 const ERROR_MESSAGE_KEYS = ["error.message", "status.message", "exception.message"];
 const ERROR_STACK_KEYS = ["error.stack", "exception.stacktrace", "exception.stack"];
@@ -167,7 +192,7 @@ function toTraceSpan(span: Span): TraceSpan {
     startTime: start,
     endTime: end,
     duration: span.duration_ms ?? 0,
-    type: KIND_TO_CATEGORY[span.kind] ?? "span",
+    type: categoryOf(span),
     status: statusOf(span),
     raw: JSON.stringify(
       {

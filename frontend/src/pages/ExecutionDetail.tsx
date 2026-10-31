@@ -23,7 +23,7 @@ import {
   Tr,
 } from "../components/core";
 import { IconArrowLeft } from "../components/core/icons";
-import { toTraceSpans } from "../lib/traceSpans";
+import { countToolSpans, toTraceSpans } from "../lib/traceSpans";
 import { formatMoney, formatMs, formatTokens } from "../lib/format";
 import { loopSignalLabels, loopSummary } from "../lib/loops";
 import type { FailureNode } from "../api/types";
@@ -42,6 +42,12 @@ export default function ExecutionDetail() {
   const ex = execution.data;
   const spanItems = useMemo(() => spans.data?.items ?? [], [spans.data]);
   const traceSpans = useMemo(() => toTraceSpans(spanItems), [spanItems]);
+  // The backend counts only OpenInference TOOL spans. Integrations that emit
+  // app-owned `tool.*` spans without a kind still need them in the Calls metric.
+  const toolCalls = useMemo(
+    () => Math.max(ex?.tool_calls ?? 0, countToolSpans(spanItems)),
+    [ex?.tool_calls, spanItems]
+  );
   const failureNodes = failures.data?.nodes ?? [];
 
   if (execution.isLoading) {
@@ -138,7 +144,7 @@ export default function ExecutionDetail() {
         <Metric label="Duration" value={formatMs(ex.duration_ms)} />
         <Metric
           label="Calls"
-          value={`${ex.llm_calls} LLM · ${ex.tool_calls} tool`}
+          value={`${ex.llm_calls} LLM · ${toolCalls} tool`}
           sub={`${ex.retrieval_calls} retrieval · ${ex.agent_calls} agent`}
         />
         <Metric

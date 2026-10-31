@@ -715,6 +715,41 @@ describe("ExecutionDetail", () => {
     expect(screen.getByRole("tab", { name: /Failures/ })).toBeInTheDocument();
   });
 
+  it("counts untyped tool.* spans in the Calls metric", async () => {
+    h.execution.mockResolvedValue({ ...execution, tool_calls: 0 });
+    h.spans.mockResolvedValue({
+      items: [
+        {
+          id: "s1",
+          span_id: "s1",
+          parent_id: null,
+          kind: "UNKNOWN",
+          name: "tool.find_logs",
+          status: "ok",
+          error_type: null,
+          error_message: null,
+          error_kind: null,
+          started_at: "2026-10-01T10:00:00Z",
+          ended_at: "2026-10-01T10:00:02Z",
+          duration_ms: 2000,
+          llm_model: null,
+          llm_provider: null,
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          tool_name: null,
+          retrieval_doc_count: null,
+          retry_count: 0,
+          cost: null,
+          attributes: {},
+        },
+      ],
+      total: 1,
+    });
+    renderWithProviders(<Routed />, { route: "/engineering/e1" });
+    expect(await screen.findByText("1 LLM · 1 tool")).toBeInTheDocument();
+  });
+
   it("renders the loop panel for a looped execution", async () => {
     h.execution.mockResolvedValue({
       ...execution,
@@ -1496,8 +1531,11 @@ describe("Project rate book", () => {
       )
     );
 
-    // Flagging the project internal never leaves the page.
-    fireEvent.click(screen.getByRole("button", { name: "Mark internal" }));
+    // Flagging the project internal never leaves the page. The previous
+    // submit disables the button until its promise settles, so wait for it.
+    const markInternal = screen.getByRole("button", { name: "Mark internal" });
+    await waitFor(() => expect(markInternal).toBeEnabled());
+    fireEvent.click(markInternal);
     await waitFor(() => expect(h.ratesInternal).toHaveBeenCalledWith("p1", true));
   });
 
