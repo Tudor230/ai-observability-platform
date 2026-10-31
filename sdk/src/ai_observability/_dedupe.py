@@ -17,6 +17,13 @@ has an active LangChain **LLM** run, it sets OTel's suppression key for the
 duration of the raw call, making the raw instrumentor a no-op. Raw calls made
 inside non-LLM LangChain runs (tools/chains) and calls outside LangChain keep
 their span.
+
+The same guard attaches the active LangChain/LangGraph span to the OTel context
+around the raw call. The upstream Ollama/Groq instrumentors start their spans
+from the ambient context, and the OpenInference LangChain tracer deliberately
+does not attach its callback spans there; without this bridge a raw LLM span
+that runs inside a node becomes a sibling of the whole graph instead of a child
+of the node (and the same happens to the SDK's manual ``span()`` helper).
 """
 
 from __future__ import annotations
@@ -26,8 +33,22 @@ from typing import Any, Mapping
 
 from opentelemetry import context as context_api
 from opentelemetry import trace as trace_api
+from opentelemetry.context import Token
+
+from ._context import langchain_parent_context
 
 logger = logging.getLogger(__name__)
+
+
+def _attach_langchain_parent() -> Token | None:
+    """Make the active LangChain/LangGraph span the ambient OTel parent.
+
+    Returns the detach token, or ``None`` when no framework run is active.
+    """
+    parent_context = langchain_parent_context()
+    if parent_context is None:
+        return None
+    return context_api.attach(parent_context)
 
 
 def _langchain_llm_span_active() -> bool:
@@ -84,7 +105,12 @@ class _SyncGuard:
         kwargs: Mapping[str, Any],
     ) -> Any:
         if not _langchain_llm_span_active():
-            return wrapped(*args, **kwargs)
+            parent_token = _attach_langchain_parent()
+            try:
+                return wrapped(*args, **kwargs)
+            finally:
+                if parent_token is not None:
+                    context_api.detach(parent_token)
         token = context_api.attach(
             context_api.set_value(context_api._SUPPRESS_INSTRUMENTATION_KEY, True)
         )
@@ -105,7 +131,12 @@ class _AsyncGuard:
         kwargs: Mapping[str, Any],
     ) -> Any:
         if not _langchain_llm_span_active():
-            return await wrapped(*args, **kwargs)
+            parent_token = _attach_langchain_parent()
+            try:
+                return await wrapped(*args, **kwargs)
+            finally:
+                if parent_token is not None:
+                    context_api.detach(parent_token)
         token = context_api.attach(
             context_api.set_value(context_api._SUPPRESS_INSTRUMENTATION_KEY, True)
         )

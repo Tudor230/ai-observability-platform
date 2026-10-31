@@ -2,9 +2,10 @@
 
 OpenInference's LangChain tracer links its spans through its own run tree and
 deliberately does not attach them to the OTel context. Raw instrumentors (Chroma,
-Databricks AI Search) would therefore parent to the nearest manually attached
-span — the workflow root or a graph wrapper — rather than the LangGraph node
-executing the call. ``get_current_span`` bridges that gap for both.
+Databricks AI Search, Ollama, Groq) and manual ``span()`` calls would therefore
+parent to the nearest manually attached span — the workflow root or a graph
+wrapper — rather than the LangGraph node executing the call.
+``get_current_span`` bridges that gap for all of them.
 """
 
 from __future__ import annotations

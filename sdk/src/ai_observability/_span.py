@@ -10,6 +10,10 @@ manager and as a decorator (sync and async), with identical parameters:
     def run_validation():
         return result
 
+Inside a LangChain/LangGraph run the span nests under the active framework
+span (the callback tracer does not attach its spans to the OTel context);
+outside one it nests under the active workflow root, as before.
+
 The decorator form automatically captures the function's ``input.value``
 (its arguments as a name -> value mapping) and ``output.value`` (return) on
 the span. Exceptions propagate unchanged: the SDK tracer records the exception
@@ -37,6 +41,7 @@ from ._attributes import (
     OPENINFERENCE_SPAN_KIND,
     OUTPUT_VALUE,
 )
+from ._context import langchain_parent_context
 from ._state import get_state
 
 
@@ -48,7 +53,11 @@ def _span_cm(name: str, context: Optional[dict]) -> Iterator[Span]:
     recorded and marked ERROR by the SDK tracer, never raised.
     """
     tracer = get_state().get_tracer()
-    with tracer.start_as_current_span(name, kind=SpanKind.INTERNAL) as otel_span:
+    with tracer.start_as_current_span(
+        name,
+        context=langchain_parent_context(),
+        kind=SpanKind.INTERNAL,
+    ) as otel_span:
         attributes = {OPENINFERENCE_SPAN_KIND: CHAIN_KIND}
         if context is not None:
             attributes[METADATA] = json.dumps(context, default=str)

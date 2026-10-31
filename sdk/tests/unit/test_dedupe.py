@@ -98,7 +98,9 @@ def test_raw_ollama_inside_a_langchain_chain_keeps_its_span(tail_exporter):
 
     spans = _finished(tail_exporter)
     assert "Chat" in _names(spans)
-    assert "Chat" in [s.name for s in _llm(spans)]
+    chat = next(s for s in _llm(spans) if s.name == "Chat")
+    chain = next(s for s in spans if s.name == "provider_call")
+    assert chat.parent.span_id == chain.context.span_id
 
 
 def test_langchain_llm_run_suppresses_the_raw_groq_span(tail_exporter):

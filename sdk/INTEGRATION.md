@@ -202,6 +202,9 @@ Raw Ollama/Groq calls made from a LangChain chat model (`ChatOllama` /
 `ChatGroq`) are not double-traced: the LangChain LLM span wins, so calls,
 tokens and cost are counted once.
 
+Raw Ollama/Groq calls made inside a LangGraph node, and manual `span()` calls,
+nest under that node rather than under the workflow root.
+
 For anything else — your own steps, validation, queue hops, business logic —
 use the manual span helper (sync/async context manager or decorator):
 

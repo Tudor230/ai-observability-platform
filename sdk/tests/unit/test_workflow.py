@@ -189,6 +189,37 @@ def test_span_helper_under_workflow(tail_exporter):
     assert json.loads(dict(step.attributes)[METADATA]) == {"checks": 3}
 
 
+@pytest.mark.asyncio
+async def test_span_helper_nests_under_active_langgraph_node(tail_exporter):
+    from typing import TypedDict
+
+    from langgraph.graph import END, START, StateGraph
+
+    class _State(TypedDict):
+        value: int
+
+    def step(state: _State):
+        with ai_observability.span("validate"):
+            pass
+        return {"value": state["value"] + 1}
+
+    graph = (
+        StateGraph(_State)
+        .add_node("step", step)
+        .add_edge(START, "step")
+        .add_edge("step", END)
+        .compile()
+    )
+    with ai_observability.workflow(name="wf", workflow_id="w-span-node"):
+        await graph.ainvoke({"value": 0})
+
+    spans = _finished(tail_exporter)
+    node_span = next(span for span in spans if span.name == "step")
+    step_span = next(span for span in spans if span.name == "validate")
+    assert step_span.parent is not None
+    assert step_span.parent.span_id == node_span.context.span_id
+
+
 def test_span_helper_records_exception(tail_exporter):
     with pytest.raises(RuntimeError):
         with ai_observability.span("step"):

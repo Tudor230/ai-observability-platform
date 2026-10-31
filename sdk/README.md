@@ -48,7 +48,8 @@ with workflow(
 ) as wf:
     run_agent()                # LangChain/LlamaIndex/Ollama/Groq/ChromaDB spans nest under it
 
-# Manual step for non-framework code
+# Manual step for non-framework code (nests under the active
+# LangChain/LangGraph span when one is running)
 with span("validate_output", context={"checks": 3}):
     validate(result)
 
@@ -164,17 +165,21 @@ See `examples/README.md`.
   `llm.provider=ollama`, model, token counts (`prompt_eval_count`/`eval_count`),
   input/output messages, and exception events. Instrument before the first chat
   call; skipped silently when the `ollama` package is not installed. Local
-  models price at $0 via the backend's seeded zero-rate default row. Calls made
-  from LangChain's `ChatOllama` are covered by the LangChain LLM span; the raw
-  span is suppressed so one provider request is counted once.
+  models price at $0 via the backend's seeded zero-rate default row. Nests
+  under the active LangGraph node when one is running, otherwise under the
+  workflow root. Calls made from LangChain's `ChatOllama` are covered by the
+  LangChain LLM span; the raw span is suppressed so one provider request is
+  counted once.
 * **Raw Groq client**: plain `Groq().chat.completions.create(...)` calls
   become OpenInference **LLM** spans (`Completions`) with `llm.provider=groq`,
   model, token counts from the response `usage`, input/output messages, and
   exception events (`groq.RateLimitError` → `rate_limit`). Streaming yields one
-  span but upstream does not accumulate content/usage. Skipped silently when
-  the `groq` package is not installed; the backend seeds Groq's gpt-oss list
-  rates so they price out of the box. As with Ollama, a `ChatGroq` call keeps
-  the LangChain span and suppresses the duplicate raw span.
+  span but upstream does not accumulate content/usage. Nests under the active
+  LangGraph node when one is running, otherwise under the workflow root.
+  Skipped silently when the `groq` package is not installed; the backend seeds
+  Groq's gpt-oss list rates so they price out of the box. As with Ollama, a
+  `ChatGroq` call keeps the LangChain span and suppresses the duplicate raw
+  span.
 * **Raw ChromaDB client**: plain `collection.query(...)` calls become
   OpenInference **RETRIEVER** spans (`chroma.query`) with `input.value` (query
   text), `retrieval.documents.*` (id/content/metadata/distance), `output.value`

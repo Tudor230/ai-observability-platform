@@ -6,7 +6,10 @@ only the HTTP boundary (``Client._request``) is replaced with scripted replies.
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 import ollama
+import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace.status import StatusCode
 
@@ -67,6 +70,8 @@ def test_chat_span_carries_provider_model_tokens_and_messages(tail_exporter):
     assert attrs["llm.token_count.total"] == 6
     assert attrs["llm.input_messages.0.message.content"] == "hi"
     assert attrs["llm.output_messages.0.message.content"] == "ok"
+    # No LangChain run is active, so the workflow root remains the parent.
+    assert llm.parent.span_id == _root(spans).context.span_id
     assert _root(spans).status.status_code == StatusCode.OK
 
 
@@ -120,6 +125,38 @@ def test_streamed_chat_finishes_one_span_with_accumulated_output(tail_exporter):
     assert attrs["llm.token_count.prompt"] == 3
     assert attrs["llm.token_count.completion"] == 2
     assert attrs["llm.token_count.total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_chat_nests_under_active_langgraph_node(tail_exporter):
+    from langgraph.graph import END, START, StateGraph
+
+    class _State(TypedDict):
+        value: int
+
+    with patched_ollama(chat_response("ok", prompt_tokens=4, completion_tokens=2)):
+        def call_llm(state: _State):
+            ollama.chat(model=MODEL, messages=[{"role": "user", "content": "hi"}])
+            return {"value": state["value"] + 1}
+
+        graph = (
+            StateGraph(_State)
+            .add_node("call_llm", call_llm)
+            .add_edge(START, "call_llm")
+            .add_edge("call_llm", END)
+            .compile()
+        )
+        with ai_observability.workflow(name="wf", workflow_id="w-ollama-6"):
+            # Mirror an app-owned wrapper span: the node span must still win
+            # over the ambient wrapper for the raw provider call.
+            with ai_observability.span("rca.investigation"):
+                await graph.ainvoke({"value": 0})
+
+    spans = _finished(tail_exporter)
+    node_span = next(span for span in spans if span.name == "call_llm")
+    llm = _llm(spans)[0]
+    assert llm.parent is not None
+    assert llm.parent.span_id == node_span.context.span_id
 
 
 def test_uninstrumented_client_produces_no_llm_span(tail_exporter):
